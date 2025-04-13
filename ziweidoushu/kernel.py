@@ -2,7 +2,7 @@ import pandas as pd
 from .base import DI_ZHI, PALACE_NAME, TIAN_GAN, ZiWeiConfig
 from .other_star import OtherStarPosition
 from .palace import get_yan_shou_by_tian_gan, calculate_ming_palaces, get_zi_wei_xing_at_gong_wei, get_wsj, get_shi_si_zhu_xing_layout
-from .utils import gregorian_to_lunar, year_to_tian_gan_di_zhi
+from .zwds_utils import gregorian_to_lunar, year_to_tian_gan_di_zhi
 
 class ZiweiChart:
     def __init__(self, config:ZiWeiConfig):

@@ -12,8 +12,8 @@ class OtherStarPosition:
         self.get_huo_ling_star_positions()
         self.get_tian_kong()
         self.get_di_jie()
-        self.get_tai_fu()
-        self.get_feng_gao()
+        # self.get_tai_fu()
+        # self.get_feng_gao()
         return self.total_star
 
     # 取左輔, 右弼
