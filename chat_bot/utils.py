@@ -1,9 +1,9 @@
 from langchain.chat_models import ChatOpenAI
-from langchain_google_genai import ChatGoogleGenerativeAI
+# from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_community.chat_models import ChatHuggingFace
 from langchain.chains import LLMChain
-from langchain.prompts import PromptTemplate
 from langchain.llms.base import BaseLLM
+import re
 
 def build_llm(model_name: str, temperature: float = 0.7) -> LLMChain:
     """
@@ -13,14 +13,14 @@ def build_llm(model_name: str, temperature: float = 0.7) -> LLMChain:
     """
 
     # 根據 model_name 選擇對應的 llm
-    if model_name.lower() == "gpt3.5":
+    if model_name.lower() == "gpt-3.5":
         llm: BaseLLM = ChatOpenAI(model="gpt-3.5-turbo", temperature=temperature)
     
-    elif model_name.lower() == "gpt4o":
+    elif model_name.lower() == "gpt-4o":
         llm: BaseLLM = ChatOpenAI(model="gpt-4o", temperature=temperature)
     
-    elif model_name.lower() == "gemini":
-        llm: BaseLLM = ChatGoogleGenerativeAI(model="gemini-pro", temperature=temperature)
+    # elif model_name.lower() == "gemini":
+    #     llm: BaseLLM = ChatGoogleGenerativeAI(model="gemini-pro", temperature=temperature)
     
     elif model_name.lower() == "llama3":
         # 這裡以 HuggingFace 上的 LLaMA 3 為例，需事先設定好 HF token
@@ -34,3 +34,7 @@ def build_llm(model_name: str, temperature: float = 0.7) -> LLMChain:
         raise ValueError(f"Unsupported model_name: {model_name}")
     
     return llm
+def process_llm_output(text):
+    if "<output>\n" in text:
+        return re.sub(r'^<output>\n(.*)\n</output>$', r'\1', text)
+    return text
