@@ -78,7 +78,7 @@ HUA_DICT = {
 }
 
 class ZiWeiConfig:
-    def __init__(self, year:int, month:int, day:int, hour:int, is_male:bool, is_lunar:bool = False):
+    def __init__(self, year:int, month:int, day:int, hour:int, is_male:bool=True, is_lunar:bool = False):
         self.year = year
         self.month = month
         self.day = day
@@ -87,4 +87,4 @@ class ZiWeiConfig:
         self.is_lunar = is_lunar
         self.year_of_tian_gan_di_zhi = ""
         self.hour_of_di_zhi = ""
-        
+
