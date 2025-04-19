@@ -1,7 +1,7 @@
 # from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph
-import tiktoken
+
 from functools import partial
 from .node import chat, get_birth_info, generate_ziwei, check_horoscope, start
 from .node.chat_state import ChatState
@@ -10,16 +10,11 @@ from .utils.utils import build_llm
 MODEL_MAP_DICT = {"gpt-3.5":"gpt-3.5-turbo", "gpt-4o": "gpt-4o"}
 
 class LLMProcessor:
-    def __init__(self, model: str = "gpt-3.5"):
+    def __init__(self, model: str = "gemini-2"):
         self.llm = build_llm(model)
         self.chat_memory = []
         self.max_token = 4096
         self.is_debug = True
-
-    @staticmethod
-    def get_token_count(text_list, model="gpt-3.5-turbo") -> int:
-        enc = tiktoken.encoding_for_model(model)
-        return sum(len(enc.encode(item.content)) for item in text_list)
 
     def set_kernel_pipeline(self):
         """
@@ -46,16 +41,6 @@ class LLMProcessor:
 
         workflow.add_conditional_edges("start", check_horoscope)
 
-        # # 如果已經有命盤, 不需要再 detect 是不是需要算命了
-        # workflow.add_conditional_edges(
-        #     "chat",
-        #     should_detect_intent,
-        #     {
-        #         "detect_intent": "detect_intent",
-        #         "end": "__end__"
-        #     }
-        # )
-        # workflow.add_edge("detect_intent", "get_birth_info")
         # 如果生日資訊沒有湊齊, 就會請 user 補充
         workflow.add_conditional_edges(
             "get_birth_info",

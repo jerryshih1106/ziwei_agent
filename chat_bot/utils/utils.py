@@ -1,13 +1,17 @@
 import re
 from langchain.chat_models import ChatOpenAI
 from langchain_community.chat_models import ChatHuggingFace
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.llms.base import BaseLLM
+import time
+from functools import wraps
+from ..global_config import GlobalConfig
 
-def build_llm(model_name: str, temperature: float = 0.7) -> BaseLLM:
+def build_llm(model_name: str = "gemini-2", temperature: float = 0.7) -> BaseLLM:
     """
     根據 model_name 回傳對應的 LLM 物件
 
-    支援的 model_name: "gpt-3.5", "gpt-4o", "llama3", "qwen"
+    支援的 model_name: "gpt-3.5", "gpt-4o", "llama3", "gemini-2"
     """
 
     model_name = model_name.lower()
@@ -18,22 +22,8 @@ def build_llm(model_name: str, temperature: float = 0.7) -> BaseLLM:
     elif model_name == "gpt-4o":
         llm: BaseLLM = ChatOpenAI(model="gpt-4o", temperature=temperature)
 
-    # elif model_name == "gemini":
-    #     llm: BaseLLM = ChatGoogleGenerativeAI(model="gemini-pro", temperature=temperature)
-
-    elif model_name == "llama3":
-        llm: BaseLLM = ChatHuggingFace(
-            repo_id="meta-llama/Meta-Llama-3-8B-Instruct",
-            task="text-generation",
-            model_kwargs={"temperature": temperature, "max_new_tokens": 4096}
-        )
-
-    elif model_name == "qwen":
-        llm: BaseLLM = ChatHuggingFace(
-            repo_id="Qwen/Qwen1.5-7B-Chat",
-            task="text-generation",
-            model_kwargs={"temperature": temperature, "max_new_tokens": 4096}
-        )
+    elif model_name == "gemini-2":
+        llm: BaseLLM = ChatGoogleGenerativeAI(model="gemini-2.0-flash-001", temperature=temperature)
 
     else:
         raise ValueError(f"Unsupported model_name: {model_name}")
@@ -52,3 +42,10 @@ def process_llm_output(text):
     if "<output>\n" in text:
         return re.sub(r'^<output>\n(.*)\n</output>$', r'\1', text)
     return text
+
+def sleep_for_tpm(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        time.sleep(GlobalConfig.TPM_TIME)
+        return func(*args, **kwargs)
+    return wrapper

@@ -1,9 +1,18 @@
 import streamlit as st
 from langchain_core.messages import HumanMessage
+from dotenv import load_dotenv
 
 from chat_bot.llm_processor import LLMProcessor
 
-IS_CHAT_MODE = True
+#---line---
+# from flask import Flask, request
+# from linebot import LineBotApi, WebhookHandler
+# from linebot.models import TextSendMessage   # 載入 TextSendMessage 模組
+# import json
+
+load_dotenv()
+
+IS_CHAT_MODE = False
 
 def chat_bot():
     """
@@ -17,13 +26,13 @@ def chat_bot():
     lang_config = {"configurable": {"thread_id": "1", "session_id": "zi-wei"}}
 
 
-    st.title("紫葳斗數算命 GPT")
+    st.title("算命 GPT")
     st.container()
 
     if "messages" not in st.session_state:
         st.session_state["messages"] = [
             {"role":
-                "assistant", "content": "HIHI, 請跟我說一下你的國曆出生年月日和時間, 我會轉換成農曆並幫你排盤"
+                "assistant", "content": "HIHI～ 請跟我說一下你的國曆出生年月日和時間, 我來幫你排盤"
             }
         ]
 
@@ -55,7 +64,7 @@ if __name__ == "__main__":
         graph = LLMProcessor().set_kernel_pipeline()
         config = {"configurable": {"thread_id": "1", "session_id": "zi-wei"}}
         while True:
-            prompt = input("👤 You: ")
+            prompt = input("👤 You: ")  
 
             output = graph.invoke(
                 {"messages": [HumanMessage(prompt)]},
