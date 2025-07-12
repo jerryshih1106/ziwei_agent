@@ -11,6 +11,7 @@ class ChatState(BaseModel):
         "year": None,
         "month": None,
         "day": None,
-        "hour": None
+        "hour": None,
+        "is_male": None
     })
     horoscope: str = ""

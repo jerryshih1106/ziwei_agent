@@ -77,8 +77,23 @@ HUA_DICT = {
     "癸": ["破軍", "巨門", "太陰", "貪狼"]
 }
 
+XIAO_XIEN_START = {
+    "寅":4,
+    "午":4,
+    "戌":4,
+    "申":10,
+    "子":10,
+    "辰":10,
+    "巳":7,
+    "酉":7,
+    "丑":7,
+    "亥":1,
+    "卯":1,
+    "未":1,
+}
+
 class ZiWeiConfig:
-    def __init__(self, year:int, month:int, day:int, hour:int, is_male:bool=True, is_lunar:bool = False):
+    def __init__(self, year:int, month:int, day:int, hour:int, is_male:bool, is_lunar:bool = False):
         self.year = year
         self.month = month
         self.day = day
@@ -87,4 +102,3 @@ class ZiWeiConfig:
         self.is_lunar = is_lunar
         self.year_of_tian_gan_di_zhi = ""
         self.hour_of_di_zhi = ""
-

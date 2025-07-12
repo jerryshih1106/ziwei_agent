@@ -1,7 +1,7 @@
 import pandas as pd
 from .base import DI_ZHI, PALACE_NAME, TIAN_GAN, ZiWeiConfig
 from .other_star import OtherStarPosition
-from .palace import get_yan_shou_by_tian_gan, calculate_ming_palaces, get_zi_wei_xing_at_gong_wei, get_wsj, get_shi_si_zhu_xing_layout
+from .palace import generate_1year_luck, get_yan_shou_by_tian_gan, calculate_ming_palaces, get_zi_wei_xing_at_gong_wei, get_wsj, get_shi_si_zhu_xing_layout, generate_10year_luck
 from .zwds_utils import gregorian_to_lunar, year_to_tian_gan_di_zhi
 
 class ZiweiChart:
@@ -21,8 +21,8 @@ class ZiweiChart:
         self.preprocessing_config()
         ming_palace, dizhi_palace_list, _ = calculate_ming_palaces(self.config.month, self.config.hour)
         print("命宮: ", DI_ZHI[ming_palace], "身宮: ", DI_ZHI[_])
-        
-        ziwei_palace = get_zi_wei_xing_at_gong_wei(self.config.day, get_wsj((self.config.year_of_tian_gan_di_zhi[0]) + DI_ZHI[ming_palace]))
+        wsj = get_wsj((self.config.year_of_tian_gan_di_zhi[0]) + DI_ZHI[ming_palace])
+        ziwei_palace = get_zi_wei_xing_at_gong_wei(self.config.day, wsj)
         print("紫薇宮: ", ziwei_palace)
         # 計算十四正星的位置
         self.star_positions = get_shi_si_zhu_xing_layout(ziwei_palace)
@@ -34,7 +34,14 @@ class ZiweiChart:
         # 取四化星
         si_hua_xing = other_star_position.get_shi_gan_si_hua_xing()
 
+        # 取大限
+        da_xian = generate_10year_luck(self.config.is_male, self.config.year_of_tian_gan_di_zhi[0], wsj, ming_palace)
+        # 取小限
+        xia_xian = generate_1year_luck(self.config.is_male, self.config.year_of_tian_gan_di_zhi[1])
+        
+        print("ming_palace: ", ming_palace)
         tian_gan_list = get_yan_shou_by_tian_gan(self.config.year_of_tian_gan_di_zhi)
+        
         palace_data = []
         for i, _ in enumerate(PALACE_NAME):
             tian_gan = tian_gan_list[i]  # 假設天干按順序排列
@@ -47,7 +54,9 @@ class ZiweiChart:
                 "天干": tian_gan,
                 "地支": di_zhi,
                 "星": ", ".join(stars),
-                "化": ", ".join(hua)
+                "化": ", ".join(hua),
+                "大限": da_xian[i],
+                "小限": xia_xian[i],
             })
 
         return pd.DataFrame(palace_data)

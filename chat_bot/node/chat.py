@@ -1,4 +1,4 @@
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, PromptTemplate
 from typing import Callable
 from langchain_core.messages import AIMessage
 import tiktoken
@@ -20,9 +20,9 @@ def process_hist_chat(hist_chat:list, llm: Callable):
     review_list = [text.content for text in hist_chat]
     hist_chat_string = "".join(review_list)
     if get_token_count(review_list, model=GlobalConfig.MODEL) > GlobalConfig.MAX_TOKENS:
-        current_prompt = ChatPromptTemplate.from_messages(MEMORY_PROMPT)
+        current_prompt = PromptTemplate.from_template(MEMORY_PROMPT)
         chain = current_prompt | llm
-        hist_chat_string = chain.invoke({"hist_chat": ''.join(review_list)})
+        hist_chat_string = chain.invoke({"hist_chat": ''.join(review_list)}).content
         hist_chat = [AIMessage(role="system", content=hist_chat_string)]
     if GlobalConfig.IS_DEBUG:
         print("-" * 50)

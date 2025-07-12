@@ -1,4 +1,4 @@
-from .base import PALACE_NAME, WSJ_DICT, WUXING_JU_MAP, LUNAR_DAY_TABLE, DI_ZHI, TIAN_FU_POSITION, FOUR_HUA, HUA_DICT, TIAN_GAN
+from .base import XIAO_XIEN_START, PALACE_NAME, WSJ_DICT, WUXING_JU_MAP, LUNAR_DAY_TABLE, DI_ZHI, TIAN_FU_POSITION, FOUR_HUA, HUA_DICT, TIAN_GAN
 
 
 def get_zi_wei_xing_at_gong_wei(nongli_day: int, wu_xing_ju: str) -> str:
@@ -78,3 +78,33 @@ def get_yan_shou_by_tian_gan(tian_gan: str) -> list:
             ind = TIAN_GAN.index(key)
             ming_sort_list = [TIAN_GAN[(ind + i) % 10] for i in range(12)]
             return ming_sort_list[-2:] + ming_sort_list[:-2]
+
+def is_forward_direction(is_male: str, tian_gan: str) -> bool:
+    if is_male == True:
+        odd_tian_gan = [TIAN_GAN[i] for i in range(0,10,2)]
+        return tian_gan in odd_tian_gan  # 陽男順行
+    else:
+        even_tian_gan = [TIAN_GAN[i] for i in range(1,10,2)]
+        return tian_gan in even_tian_gan  # 陰女順行
+
+    # 生成大限範圍
+def generate_10year_luck(is_male: bool, tian_gan: str, ju: str, ming_palaces:int) -> list[str]:
+    start_age = WUXING_JU_MAP[ju] + 2
+    direction_forward = is_forward_direction(is_male, tian_gan)
+
+    age_ranges = [f"{start_age + i*10}~{start_age + i*10 + 9}歲" for i in range(12)]
+    if not direction_forward:
+        age_ranges = list(reversed(age_ranges))
+        ming_palaces = (ming_palaces + 1) % 12
+
+    return age_ranges[-ming_palaces:] + age_ranges[:-ming_palaces]
+
+    # 生成小限範圍
+def generate_1year_luck(is_male: bool, di_zhi: str) -> list[str]:
+    age_ranges = [[(i+1)+j*12 for j in range(7)] for i in range(12)]
+    start_ind = XIAO_XIEN_START[di_zhi]
+    if not is_male:
+        age_ranges = list(reversed(age_ranges))
+        start_ind = (start_ind + 1) % 12
+
+    return age_ranges[-start_ind:] + age_ranges[:-start_ind]

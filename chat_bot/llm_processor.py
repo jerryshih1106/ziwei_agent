@@ -12,9 +12,6 @@ MODEL_MAP_DICT = {"gpt-3.5":"gpt-3.5-turbo", "gpt-4o": "gpt-4o"}
 class LLMProcessor:
     def __init__(self, model: str = "gemini-2"):
         self.llm = build_llm(model)
-        self.chat_memory = []
-        self.max_token = 4096
-        self.is_debug = True
 
     def set_kernel_pipeline(self):
         """
