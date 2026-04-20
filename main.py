@@ -1,5 +1,6 @@
 import streamlit as st
 import traceback
+import uuid
 from langchain_core.messages import HumanMessage, AIMessage
 from dotenv import load_dotenv
 from chat_bot.global_config import GlobalConfig
@@ -7,17 +8,20 @@ from chat_bot.llm_processor import LLMProcessor
 
 #---line---
 from flask import Flask, request
-# 載入 json 標準函式庫，處理回傳的資料格式
 import json
-# 載入 LINE Message API 相關函式庫
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
-from linebot.models import MessageEvent, TextMessage, TextSendMessage
+from linebot.models import TextSendMessage
 
 load_dotenv()
 
 IS_CHAT_MODE = False
 IS_LINEBOT_MODE = True
+
+
+def _extract_last_message(output: dict) -> str:
+    last = output["messages"][-1]
+    return last["content"] if isinstance(last, dict) else last.content
+
 
 def chat_bot():
     """
@@ -26,7 +30,7 @@ def chat_bot():
     graph_key = "zi-wei-graph"
 
     if graph_key not in st.session_state:
-        st.session_state[graph_key] = LLMProcessor().set_kernel_pipeline()
+        st.session_state[graph_key] = LLMProcessor().set_pipeline()
     lang_graph = st.session_state[graph_key]
     lang_config = {"configurable": {"thread_id": "1", "session_id": "zi-wei"}}
 
@@ -53,28 +57,22 @@ def chat_bot():
             config=lang_config
         )
 
-        if isinstance(output["messages"][-1], dict):
-            cur_msg = output["messages"][-1]["content"]
-        else:
-            cur_msg = output["messages"][-1].content
+        cur_msg = _extract_last_message(output)
 
         st.session_state.messages.append({"role": "assistant", "content": cur_msg})
         st.chat_message("assistant").write(cur_msg)
 
 def general_mode():
-    graph = LLMProcessor().set_kernel_pipeline()
+    graph = LLMProcessor().set_pipeline()
     config = {"configurable": {"thread_id": "1", "session_id": "zi-wei"}}
     while True:
-        prompt = input("👤 You: ")  
+        prompt = input("👤 You: ")
 
         output = graph.invoke(
             {"messages": [HumanMessage(prompt)]},
             config=config
         )
-        if isinstance(output["messages"][-1], dict):
-            cur_msg = output["messages"][-1]["content"]
-        else:
-            cur_msg = output["messages"][-1].content
+        cur_msg = _extract_last_message(output)
         print(cur_msg)
 
 if __name__ == "__main__":
@@ -85,67 +83,86 @@ if __name__ == "__main__":
         general_mode()
     else:
         app = Flask(__name__)
-        SESSION_STATS = {}
-        HOROSCOPE = {}
+
+        # Pipeline 在啟動時建立一次，讓 MemorySaver 可跨 request 持續存活
+        _pipeline = LLMProcessor().set_pipeline()
+
+        # LangGraph 模式：手動管理每個使用者的訊息歷史與命盤
+        SESSION_STATS: dict = {}
+        HOROSCOPE: dict = {}
+
+        # Agent skill 模式：每個使用者對應一個 thread_id（/reset 時換新的）
+        AGENT_THREAD: dict = {}
+
         @app.route("/", methods=['POST'])
         def linebot():
             """
-            line bot, need open ngrok
+            LINE Bot route（同時支援 agent skill 模式與 langgraph 模式）。
+            需先開啟 ngrok。
             """
-            graph = LLMProcessor().set_kernel_pipeline()
-            body = request.get_data(as_text=True)                    # 取得收到的訊息內容
+            body = request.get_data(as_text=True)
             try:
-                json_data = json.loads(body)                         # json 格式化訊息內容
-                access_token = GlobalConfig.LINE_ACCESS_KEY
-                secret = GlobalConfig.LINE_SECRET
-                line_bot_api = LineBotApi(access_token)              # 確認 token 是否正確
-                handler = WebhookHandler(secret)                     # 確認 secret 是否正確
-                signature = request.headers['X-Line-Signature']      # 加入回傳的 headers
-                handler.handle(body, signature)                      # 綁定訊息回傳的相關資訊
-                tk = json_data['events'][0]['replyToken']            # 取得回傳訊息的 Token
-                recieve_type = json_data['events'][0]['message']['type']     # 取得 LINe 收到的訊息類型
-                if recieve_type =='text':
-                    msg = json_data['events'][0]['message']['text']  # 取得 LINE 收到的文字訊息
-                    user_id = json_data['events'][0]['source']['userId']
-                    # config["configurable"]["session_id"] = session_id
+                json_data = json.loads(body)
+                line_bot_api = LineBotApi(GlobalConfig.LINE_ACCESS_KEY)
+                handler = WebhookHandler(GlobalConfig.LINE_SECRET)
+                handler.handle(body, request.headers['X-Line-Signature'])
+                event = json_data['events'][0]
+                tk = event['replyToken']
 
-                    config = {
-                        "configurable": {
-                            "thread_id": user_id,       # 每個使用者自己的 thread
-                            "session_id": user_id      # 這個是你原本寫的，不一定要
-                        }
-                    }
-                    
-                    # 初始化歷史
+                if event['message']['type'] != 'text':
+                    reply = '我是算命機器人, 看不到文字以外的訊息喔!'
+                    line_bot_api.reply_message(tk, TextSendMessage(reply))
+                    return 'OK'
+
+                msg = event['message']['text']
+                user_id = event['source']['userId']
+                is_reset = "/reset" in msg
+
+                if GlobalConfig.USE_AGENT_SKILL:
+                    # ── Agent skill 模式 ──────────────────────────────────────
+                    # /reset 或第一次見到此 user → 派發新的 thread_id
+                    if is_reset or user_id not in AGENT_THREAD:
+                        AGENT_THREAD[user_id] = str(uuid.uuid4())
+                        if is_reset:
+                            line_bot_api.reply_message(
+                                tk, TextSendMessage('已重置對話！請重新告訴我你的出生資料。')
+                            )
+                            return 'OK'
+
+                    config = {"configurable": {"thread_id": AGENT_THREAD[user_id]}}
+                    output = _pipeline.invoke(
+                        {"messages": [HumanMessage(content=msg)]},
+                        config=config,
+                    )
+                    reply = _extract_last_message(output)
+
+                else:
+                    # ── LangGraph 固定流程模式 ────────────────────────────────
+                    config = {"configurable": {"thread_id": user_id, "session_id": user_id}}
                     if user_id not in SESSION_STATS:
                         SESSION_STATS[user_id] = []
-                    if user_id not in HOROSCOPE or "/reset" in msg:
+                    if user_id not in HOROSCOPE or is_reset:
                         HOROSCOPE[user_id] = ""
                         SESSION_STATS[user_id] = []
-                    # 加入使用者訊息
+
                     SESSION_STATS[user_id].append(HumanMessage(content=msg))
-
-                    output = graph.invoke(
+                    output = _pipeline.invoke(
                         {"messages": SESSION_STATS[user_id], "horoscope": HOROSCOPE[user_id]},
-                        config=config
+                        config=config,
                     )
-                    if HOROSCOPE[user_id] == "":
-                        HOROSCOPE[user_id] = output["horoscope"]
+                    if not HOROSCOPE[user_id]:
+                        HOROSCOPE[user_id] = output.get("horoscope", "")
 
-                    if isinstance(output["messages"][-1], dict):
-                        reply = output["messages"][-1]["content"]
-                        SESSION_STATS[user_id].append(AIMessage(content=reply))
-                    else:
-                        reply = output["messages"][-1].content
-                        SESSION_STATS[user_id].append(AIMessage(content=reply))
-                        print("cur_statue:", SESSION_STATS[user_id])
-                else:
-                    reply = '我是算命機器人, 看不到文字以外的訊息喔!'
+                    reply = _extract_last_message(output)
+                    SESSION_STATS[user_id].append(AIMessage(content=reply))
+                    print("cur_state:", SESSION_STATS[user_id])
+
                 print(reply)
-                line_bot_api.reply_message(tk,TextSendMessage(reply))# 回傳訊息
+                line_bot_api.reply_message(tk, TextSendMessage(reply))
+
             except Exception as e:
-                print("output['messages'][-1]", (output["messages"][-1]))
                 print(traceback.format_exc())
-                print(body, e)                                          # 如果發生錯誤，印出收到的內容
-            return 'OK'                                              # 驗證 Webhook 使用，不能省略
+                print(body, e)
+            return 'OK'
+
         app.run()

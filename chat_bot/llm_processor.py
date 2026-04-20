@@ -1,11 +1,14 @@
-# from langchain_openai import ChatOpenAI
+import logging
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import StateGraph
-
 from functools import partial
+
 from .node import chat, get_birth_info, generate_ziwei, check_horoscope, start
 from .node.chat_state import ChatState
 from .utils.utils import build_llm
+from .global_config import GlobalConfig
+
+logger = logging.getLogger(__name__)
 
 MODEL_MAP_DICT = {"gpt-3.5":"gpt-3.5-turbo", "gpt-4o": "gpt-4o"}
 
@@ -53,3 +56,18 @@ class LLMProcessor:
         workflow.add_edge("chat", "__end__")
 
         return workflow.compile(checkpointer=MemorySaver())
+
+    def set_pipeline(self):
+        """
+        根據 GlobalConfig.USE_AGENT_SKILL 選擇 pipeline：
+        - True  → AgentProcessor (create_react_agent + skill 模式)
+        - False → set_kernel_pipeline (固定 LangGraph 流程)
+
+        兩者都回傳可呼叫 .invoke({"messages": [...]}, config=...) 的 compiled graph。
+        """
+        if GlobalConfig.USE_AGENT_SKILL:
+            from .agent_processor import AgentProcessor  # 本地 import 避免循環依賴
+            logger.info("pipeline 模式: Agent Skill (create_react_agent)")
+            return AgentProcessor(model=GlobalConfig.MODEL).set_pipeline()
+        logger.info("pipeline 模式: LangGraph 固定流程")
+        return self.set_kernel_pipeline()

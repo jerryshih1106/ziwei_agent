@@ -10,23 +10,18 @@ def get_zi_wei_xing_at_gong_wei(nongli_day: int, wu_xing_ju: str) -> str:
     # 返回結果
     return LUNAR_DAY_TABLE[row_idx][cln_idx]
 
-def calculate_ming_palaces(birth_month, birth_hour):
-    # Calculate the Ming Palace
+def calculate_ming_palaces(birth_month: int, birth_hour: int):
     ming_palace = ((2 + birth_month - 1) - (birth_hour + 1) // 2) % 12
-    dizhi_palace_list = []
-    for i in range(len(PALACE_NAME)):
-        dizhi_palace_list.append(PALACE_NAME[ming_palace - i])
-    # Calculate the Shen Palace
+    dizhi_palace_list = [PALACE_NAME[ming_palace - i] for i in range(12)]
     shen_palace = ((2 + birth_month - 1) + (birth_hour + 1) // 2) % 12
     return ming_palace, dizhi_palace_list, shen_palace
 
 # 五行局
-def get_wsj(s:str) -> str:
+def get_wsj(s: str) -> str:
     for k, v in WSJ_DICT.items():
         if s[0] in k:
             for k_1, v_1 in v.items():
                 if s[1] in k_1:
-                    print("五行局: ", v_1)
                     return v_1
 # 排 14 星          
 def get_shi_si_zhu_xing_layout(zi_wei_at_di_zhi):
@@ -43,21 +38,15 @@ def get_shi_si_zhu_xing_layout(zi_wei_at_di_zhi):
     # 天府星布局
     tian_fu_series_layout = ["天府", "太陰", "貪狼", "巨門", "天相", "天梁", "七殺", "", "", "", "破軍", ""]
 
-    # 填充紫微布局
-    for item in zi_wei_series_layout:
-        if item:  # 忽略空项
-            if zi_wei_di_zhi_idx < 11:
-                di_zhi_gong_wei[DI_ZHI[zi_wei_di_zhi_idx]].add(item)
-            di_zhi_gong_wei[DI_ZHI[zi_wei_di_zhi_idx % 12]].add(item)
-        zi_wei_di_zhi_idx += 1
+    def _fill_layout(layout, start_idx):
+        idx = start_idx
+        for item in layout:
+            if item:
+                di_zhi_gong_wei[DI_ZHI[idx % 12]].add(item)
+            idx += 1
 
-    # 填充天府布局
-    for item in tian_fu_series_layout:
-        if item:  # 忽略空项
-            if tian_fu_di_zhi_idx < 11:
-                di_zhi_gong_wei[DI_ZHI[tian_fu_di_zhi_idx]].add(item)
-            di_zhi_gong_wei[DI_ZHI[tian_fu_di_zhi_idx % 12]].add(item)
-        tian_fu_di_zhi_idx += 1
+    _fill_layout(zi_wei_series_layout, zi_wei_di_zhi_idx)
+    _fill_layout(tian_fu_series_layout, tian_fu_di_zhi_idx)
 
     return di_zhi_gong_wei
 
@@ -79,12 +68,12 @@ def get_yan_shou_by_tian_gan(tian_gan: str) -> list:
             ming_sort_list = [TIAN_GAN[(ind + i) % 10] for i in range(12)]
             return ming_sort_list[-2:] + ming_sort_list[:-2]
 
-def is_forward_direction(is_male: str, tian_gan: str) -> bool:
-    if is_male == True:
-        odd_tian_gan = [TIAN_GAN[i] for i in range(0,10,2)]
+def is_forward_direction(is_male: bool, tian_gan: str) -> bool:
+    if is_male:
+        odd_tian_gan = [TIAN_GAN[i] for i in range(0, 10, 2)]
         return tian_gan in odd_tian_gan  # 陽男順行
     else:
-        even_tian_gan = [TIAN_GAN[i] for i in range(1,10,2)]
+        even_tian_gan = [TIAN_GAN[i] for i in range(1, 10, 2)]
         return tian_gan in even_tian_gan  # 陰女順行
 
     # 生成大限範圍

@@ -1,7 +1,9 @@
-
+import logging
 import pandas as pd
 from sentence_transformers import SentenceTransformer, util
 from ..global_config import GlobalConfig
+
+logger = logging.getLogger(__name__)
 
 class RagProcessor:
     """
@@ -26,8 +28,9 @@ class RagProcessor:
         if not GlobalConfig.RAG_MODEL:
             try:
                 GlobalConfig.RAG_MODEL = SentenceTransformer(GlobalConfig.LOCAL_RAG_MODEL_PATH)
-                print("load local rag model success")
+                logger.info("載入本地 RAG 模型成功: %s", GlobalConfig.LOCAL_RAG_MODEL_PATH)
             except Exception:
+                logger.warning("本地 RAG 模型載入失敗，改用遠端模型: %s", self.model_name, exc_info=True)
                 GlobalConfig.RAG_MODEL = SentenceTransformer(self.model_name)
 
     def retrieve_definitions(self, domain_df:pd.DataFrame, keywords:list, top_k:int=1) -> str:
@@ -43,7 +46,7 @@ class RagProcessor:
             keyword_embedding = GlobalConfig.RAG_MODEL.encode(keyword, convert_to_tensor=True)
             hits = util.semantic_search(keyword_embedding, self.object_embeddings, top_k=top_k)[0]
             for hit in hits:
-                if hit['score'] < 0.7:
+                if hit['score'] < GlobalConfig.RAG_SIMILARITY_THRESHOLD:
                     continue
                 results["object"].append(domain_df.iloc[hit['corpus_id']]['object'])
                 results["definition"].append(domain_df.iloc[hit['corpus_id']]['definition'])

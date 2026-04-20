@@ -1,5 +1,8 @@
+import os
 import pandas as pd
 from langchain.prompts import PromptTemplate
+
+_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from langchain_core.messages import AIMessage
 from .chat_state import ChatState
 from ziweidoushu.kernel import ZiweiChart
@@ -14,7 +17,7 @@ def generate_ziwei(state:ChatState):
     config = ZiWeiConfig(birth_info["year"], birth_info["month"], birth_info["day"], birth_info["hour"], bool(birth_info["is_male"]))
     ziwei_inst = ZiweiChart(config)
     df = ziwei_inst.gen_chart()
-    ziwei_domain_df = pd.read_csv(("basic_document/star_palace_meaning.csv"))
+    ziwei_domain_df = pd.read_csv(os.path.join(_PROJECT_ROOT, "basic_document", "star_palace_meaning.csv"))
     ziwei_report = get_palace_information(df, ziwei_domain_df)
     state.horoscope = ziwei_report
     state.messages.append(AIMessage(content="我已經排好你的命盤了: \n" + transformed_llm_visualize(df.to_markdown()) + "\n\n\n 有什麼需要提問的嗎?"))
