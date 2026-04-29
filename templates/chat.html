@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>紫微AI算命｜立即對話</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --gold: #c9a227;
+      --gold-light: #e8c84a;
+      --gold-dark: #9a7a1a;
+      --bg-dark: #0d0718;
+      --bg-card: #1c1035;
+      --purple: #2d1b54;
+      --text-light: #f0e8ff;
+      --text-muted: #a090c0;
+      --jade: #27ae60;
+      --user-bubble: #2d1b54;
+      --ai-bubble: #1c1035;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ── Top Bar ── */
+    .topbar {
+      background: rgba(13, 7, 24, 0.95);
+      border-bottom: 1px solid rgba(201, 162, 39, 0.25);
+      padding: 0 16px;
+      height: 60px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-shrink: 0;
+      backdrop-filter: blur(8px);
+    }
+    .back-btn {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 1.3rem;
+      padding: 4px 8px;
+      border-radius: 8px;
+      transition: color 0.2s, background 0.2s;
+    }
+    .back-btn:hover { color: var(--gold); background: rgba(201,162,39,0.1); }
+
+    .bot-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 1;
+    }
+    .bot-avatar {
+      width: 38px; height: 38px;
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold-light));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.2rem;
+    }
+    .bot-name {
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      font-size: 1rem;
+      color: var(--gold);
+    }
+    .bot-status {
+      font-size: 0.78rem;
+      color: var(--jade);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .status-dot {
+      width: 6px; height: 6px;
+      background: var(--jade);
+      border-radius: 50%;
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+    .topbar-actions { display: flex; gap: 8px; }
+    .topbar-btn {
+      background: rgba(201,162,39,0.1);
+      border: 1px solid rgba(201,162,39,0.25);
+      color: var(--gold);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .topbar-btn:hover { background: rgba(201,162,39,0.2); }
+
+    /* ── Main layout ── */
+    .main-layout {
+      display: flex;
+      flex: 1;
+      overflow: hidden;
+    }
+
+    /* ── Quick Info Sidebar ── */
+    .sidebar {
+      width: 280px;
+      border-right: 1px solid rgba(201, 162, 39, 0.15);
+      background: rgba(28, 16, 53, 0.6);
+      padding: 20px 16px;
+      overflow-y: auto;
+      flex-shrink: 0;
+    }
+
+    .sidebar-section { margin-bottom: 24px; }
+    .sidebar-title {
+      font-size: 0.78rem;
+      letter-spacing: 3px;
+      color: var(--gold);
+      text-transform: uppercase;
+      margin-bottom: 12px;
+    }
+
+    .quick-fill {
+      background: rgba(45, 27, 84, 0.5);
+      border: 1px solid rgba(201,162,39,0.2);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .quick-fill:hover { border-color: var(--gold); background: rgba(201,162,39,0.08); }
+    .qf-label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 4px; }
+    .qf-text { font-size: 0.9rem; color: var(--text-light); line-height: 1.4; }
+
+    .time-table { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+    .time-item {
+      background: rgba(45, 27, 84, 0.4);
+      border: 1px solid rgba(201,162,39,0.12);
+      border-radius: 6px;
+      padding: 7px 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .time-item:hover { border-color: rgba(201,162,39,0.4); background: rgba(201,162,39,0.07); }
+    .time-zhi { font-weight: 700; color: var(--gold); font-size: 0.88rem; }
+    .time-range { font-size: 0.72rem; color: var(--text-muted); }
+
+    .info-card {
+      background: rgba(45, 27, 84, 0.3);
+      border: 1px solid rgba(201,162,39,0.15);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 8px;
+    }
+    .info-card-title { font-size: 0.85rem; font-weight: 700; color: var(--gold); margin-bottom: 8px; }
+    .info-card p { font-size: 0.82rem; color: var(--text-muted); line-height: 1.6; }
+
+    /* ── Chat Area ── */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px 16px;
+      scroll-behavior: smooth;
+    }
+    .messages::-webkit-scrollbar { width: 4px; }
+    .messages::-webkit-scrollbar-thumb { background: rgba(201,162,39,0.3); border-radius: 2px; }
+
+    .msg {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 16px;
+      align-items: flex-start;
+      animation: slideUp 0.3s ease;
+    }
+    @keyframes slideUp { from{opacity:0;transform:translateY(10px)} to{opacity:1;transform:translateY(0)} }
+
+    .msg.user { flex-direction: row-reverse; }
+
+    .msg-avatar {
+      width: 36px; height: 36px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem;
+      flex-shrink: 0;
+    }
+    .msg.ai .msg-avatar {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold-light));
+    }
+    .msg.user .msg-avatar {
+      background: linear-gradient(135deg, #5a3a9c, #3d2470);
+    }
+
+    .msg-bubble {
+      max-width: 70%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 0.95rem;
+      line-height: 1.7;
+      position: relative;
+    }
+    .msg.ai .msg-bubble {
+      background: var(--ai-bubble);
+      border: 1px solid rgba(201,162,39,0.2);
+      border-top-left-radius: 4px;
+      color: var(--text-light);
+    }
+    .msg.user .msg-bubble {
+      background: var(--user-bubble);
+      border: 1px solid rgba(90,58,156,0.4);
+      border-top-right-radius: 4px;
+      color: var(--text-light);
+    }
+
+    /* Markdown styling in bubbles */
+    .msg-bubble h1, .msg-bubble h2, .msg-bubble h3 {
+      color: var(--gold);
+      margin: 8px 0 4px;
+      font-family: 'Noto Serif TC', serif;
+    }
+    .msg-bubble table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 8px 0;
+      font-size: 0.85rem;
+    }
+    .msg-bubble table th {
+      background: rgba(201,162,39,0.2);
+      color: var(--gold);
+      padding: 6px 10px;
+      border: 1px solid rgba(201,162,39,0.3);
+    }
+    .msg-bubble table td {
+      padding: 5px 10px;
+      border: 1px solid rgba(201,162,39,0.15);
+      color: var(--text-muted);
+    }
+    .msg-bubble strong { color: var(--gold-light); }
+    .msg-bubble em { color: var(--text-muted); }
+    .msg-bubble ul, .msg-bubble ol { padding-left: 20px; }
+    .msg-bubble li { margin-bottom: 4px; }
+    .msg-bubble code {
+      background: rgba(201,162,39,0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 0.88rem;
+      color: var(--gold);
+    }
+
+    .msg-time {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+      text-align: right;
+    }
+    .msg.ai .msg-time { text-align: left; }
+
+    /* Typing indicator */
+    .typing-indicator .msg-bubble {
+      padding: 14px 20px;
+    }
+    .dots {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+    }
+    .dot {
+      width: 8px; height: 8px;
+      background: var(--text-muted);
+      border-radius: 50%;
+      animation: bounce 1.2s ease-in-out infinite;
+    }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+    @keyframes bounce {
+      0%,60%,100%{transform:translateY(0)} 30%{transform:translateY(-6px)}
+    }
+
+    /* ── Input Area ── */
+    .input-area {
+      border-top: 1px solid rgba(201,162,39,0.2);
+      background: rgba(13, 7, 24, 0.9);
+      padding: 12px 16px;
+      flex-shrink: 0;
+    }
+
+    .quick-questions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .qq-chip {
+      background: rgba(45, 27, 84, 0.6);
+      border: 1px solid rgba(201,162,39,0.2);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .qq-chip:hover {
+      border-color: var(--gold);
+      color: var(--gold);
+      background: rgba(201,162,39,0.1);
+    }
+
+    .input-row {
+      display: flex;
+      gap: 10px;
+      align-items: flex-end;
+    }
+
+    #user-input {
+      flex: 1;
+      background: rgba(45, 27, 84, 0.4);
+      border: 1.5px solid rgba(201,162,39,0.25);
+      border-radius: 24px;
+      padding: 11px 18px;
+      color: var(--text-light);
+      font-size: 0.95rem;
+      font-family: 'Noto Sans TC', sans-serif;
+      outline: none;
+      resize: none;
+      min-height: 44px;
+      max-height: 120px;
+      line-height: 1.5;
+      transition: border-color 0.2s;
+    }
+    #user-input:focus { border-color: var(--gold); }
+    #user-input::placeholder { color: var(--text-muted); }
+
+    .send-btn {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
+      border: none;
+      border-radius: 50%;
+      color: var(--bg-dark);
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform 0.2s, opacity 0.2s;
+      flex-shrink: 0;
+    }
+    .send-btn:hover { transform: scale(1.08); }
+    .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+    .input-hint {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 6px;
+      text-align: center;
+    }
+
+    /* ── Welcome message ── */
+    .welcome-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 40px;
+      gap: 16px;
+    }
+    .welcome-icon { font-size: 4rem; }
+    .welcome-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+    .welcome-sub { color: var(--text-muted); max-width: 360px; font-size: 0.95rem; line-height: 1.7; }
+    .welcome-start-btn {
+      background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
+      color: var(--bg-dark);
+      border: none;
+      padding: 12px 28px;
+      border-radius: 50px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 8px;
+      transition: transform 0.2s;
+    }
+    .welcome-start-btn:hover { transform: translateY(-2px); }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .msg-bubble { max-width: 85%; }
+      .quick-questions { gap: 6px; }
+    }
+  </style>
+  <!-- Marked.js for markdown rendering -->
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+</head>
+<body>
+
+<!-- Top Bar -->
+<div class="topbar">
+  <a href="/" class="back-btn" title="返回首頁">←</a>
+  <div class="bot-info">
+    <div class="bot-avatar">🔯</div>
+    <div>
+      <div class="bot-name">紫微AI算命大師</div>
+      <div class="bot-status"><span class="status-dot"></span> 線上服務中</div>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button class="topbar-btn" onclick="resetChat()">🔄 重置</button>
+  </div>
+</div>
+
+<!-- Main layout -->
+<div class="main-layout">
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-title">快速填入範例</div>
+      <div class="quick-fill" onclick="fillInput('我是1990年3月15日卯時出生的女生，請幫我排命盤')">
+        <div class="qf-label">範例 1 — 女性</div>
+        <div class="qf-text">1990年3月15日，卯時，女生</div>
+      </div>
+      <div class="quick-fill" onclick="fillInput('我是1985年8月22日午時出生的男生，麻煩幫我排紫微斗數命盤')">
+        <div class="qf-label">範例 2 — 男性</div>
+        <div class="qf-text">1985年8月22日，午時，男生</div>
+      </div>
+      <div class="quick-fill" onclick="fillInput('2000年1月1日子時男生')">
+        <div class="qf-label">範例 3 — 簡短格式</div>
+        <div class="qf-text">2000年1月1日，子時，男</div>
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="sidebar-title">時辰對照表（點擊填入）</div>
+      <div class="time-table">
+        {% for item in time_table %}
+        <div class="time-item" onclick="appendTime('{{ item.zhi }}')">
+          <div class="time-zhi">{{ item.zhi }}時</div>
+          <div class="time-range">{{ item.range }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+
+    <div class="sidebar-section">
+      <div class="info-card">
+        <div class="info-card-title">💡 提示</div>
+        <p>告訴 AI 以下資訊即可排盤：<br>
+        ① 西元出生年月日<br>
+        ② 出生時辰（地支）<br>
+        ③ 性別（男/女）</p>
+      </div>
+      <div class="info-card">
+        <div class="info-card-title">🔄 重置對話</div>
+        <p>點擊右上角「重置」可清除記憶，重新開始排盤。</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Chat Area -->
+  <div class="chat-area">
+    <div class="messages" id="messages">
+      <!-- Welcome screen shown before first message -->
+      <div class="welcome-screen" id="welcome-screen">
+        <div class="welcome-icon">🔯</div>
+        <div class="welcome-title">紫微AI算命大師</div>
+        <p class="welcome-sub">
+          請告訴我你的<strong style="color:var(--gold)">出生年月日、時辰和性別</strong>，
+          我將立即為你排出專屬紫微斗數命盤，解析感情、事業、財運全方位人生藍圖。
+        </p>
+        <button class="welcome-start-btn" onclick="startChat()">開始算命 →</button>
+      </div>
+    </div>
+
+    <!-- Input Area -->
+    <div class="input-area">
+      <div class="quick-questions" id="quick-questions">
+        <div class="qq-chip" onclick="sendQuick('我想了解感情運勢')">💕 感情運勢</div>
+        <div class="qq-chip" onclick="sendQuick('我的事業運如何？')">💼 事業運</div>
+        <div class="qq-chip" onclick="sendQuick('財運方面有什麼建議？')">💰 財運</div>
+        <div class="qq-chip" onclick="sendQuick('今年流年運勢如何？')">📅 流年運勢</div>
+        <div class="qq-chip" onclick="sendQuick('健康方面需要注意什麼？')">❤️ 健康</div>
+        <div class="qq-chip" onclick="sendQuick('/reset')">🔄 重置</div>
+      </div>
+      <div class="input-row">
+        <textarea
+          id="user-input"
+          placeholder="告訴我你的出生年月日、時辰和性別，例如：1990年3月15日卯時女生"
+          rows="1"
+          onkeydown="handleKey(event)"
+          oninput="autoResize(this)"
+        ></textarea>
+        <button class="send-btn" id="send-btn" onclick="sendMessage()" title="送出">➤</button>
+      </div>
+      <div class="input-hint">Enter 送出 ／ Shift+Enter 換行</div>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Fix #4：使用 sessionStorage 持久化 SESSION_ID，頁面重整後對話不中斷
+  let SESSION_ID = sessionStorage.getItem('ziwei_session_id');
+  if (!SESSION_ID) {
+    SESSION_ID = 'web_' + Date.now();
+    sessionStorage.setItem('ziwei_session_id', SESSION_ID);
+  }
+  let chatStarted = false;
+  let isLoading = false;
+
+  // Configure marked
+  if (typeof marked !== 'undefined') {
+    marked.setOptions({ breaks: true, gfm: true });
+  }
+
+  function renderMarkdown(text) {
+    if (typeof marked !== 'undefined') {
+      return marked.parse(text);
+    }
+    return text.replace(/\n/g, '<br>');
+  }
+
+  function getTime() {
+    const now = new Date();
+    return now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
+  }
+
+  function startChat() {
+    document.getElementById('welcome-screen').remove();
+    chatStarted = true;
+    appendAIMessage('HIHI～ 你好！我是紫微AI算命大師 🔯\n\n請告訴我你的**出生年月日、時辰和性別**，我就能為你排出完整的紫微斗數命盤！\n\n例如：「我是1990年3月15日卯時出生的女生」');
+    document.getElementById('user-input').focus();
+  }
+
+  function escapeHtml(text) {
+    // Fix #5：完整 HTML entity 轉義，防止 XSS
+    return text
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+      .replace(/\n/g, '<br>');
+  }
+
+  function appendUserMessage(text) {
+    const msgs = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg user';
+    div.innerHTML = `
+      <div>
+        <div class="msg-bubble">${escapeHtml(text)}</div>
+        <div class="msg-time">${getTime()}</div>
+      </div>
+      <div class="msg-avatar">👤</div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function appendAIMessage(text) {
+    const msgs = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg ai';
+    div.innerHTML = `
+      <div class="msg-avatar">🔯</div>
+      <div>
+        <div class="msg-bubble">${renderMarkdown(text)}</div>
+        <div class="msg-time">${getTime()}</div>
+      </div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function showTyping() {
+    const msgs = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg ai typing-indicator';
+    div.id = 'typing-indicator';
+    div.innerHTML = `
+      <div class="msg-avatar">🔯</div>
+      <div class="msg-bubble">
+        <div class="dots">
+          <div class="dot"></div>
+          <div class="dot"></div>
+          <div class="dot"></div>
+        </div>
+      </div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function removeTyping() {
+    const el = document.getElementById('typing-indicator');
+    if (el) el.remove();
+  }
+
+  async function sendMessage() {
+    if (isLoading) return;
+    const input = document.getElementById('user-input');
+    const text = input.value.trim();
+    if (!text) return;
+
+    // Start chat if not started
+    if (!chatStarted) {
+      document.getElementById('welcome-screen')?.remove();
+      chatStarted = true;
+    }
+
+    input.value = '';
+    autoResize(input);
+    appendUserMessage(text);
+
+    isLoading = true;
+    document.getElementById('send-btn').disabled = true;
+    showTyping();
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: text, session_id: SESSION_ID })
+      });
+      const data = await res.json();
+      removeTyping();
+      appendAIMessage(data.reply || '抱歉，發生了一些問題，請稍後再試。');
+    } catch (err) {
+      removeTyping();
+      appendAIMessage('⚠️ 連線發生問題，請檢查網路後重試。');
+    } finally {
+      isLoading = false;
+      document.getElementById('send-btn').disabled = false;
+    }
+  }
+
+  function sendQuick(text) {
+    const input = document.getElementById('user-input');
+    input.value = text;
+    autoResize(input);  // Fix #6：確保 textarea 高度正確更新
+    sendMessage();
+  }
+
+  function fillInput(text) {
+    const input = document.getElementById('user-input');
+    input.value = text;
+    input.focus();
+    autoResize(input);
+  }
+
+  function appendTime(zhi) {
+    const input = document.getElementById('user-input');
+    if (!input.value.includes(zhi)) {
+      input.value = input.value + (input.value ? '，' : '') + zhi + '時';
+    }
+    input.focus();
+  }
+
+  function handleKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  }
+
+  function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+  }
+
+  async function resetChat() {
+    if (!confirm('確定要重置對話嗎？所有命盤記錄將清除。')) return;
+    try {
+      await fetch('/api/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: SESSION_ID })
+      });
+    } catch(e) {}
+    // Fix #4：重置時產生新 SESSION_ID 並存入 sessionStorage
+    SESSION_ID = 'web_' + Date.now();
+    sessionStorage.setItem('ziwei_session_id', SESSION_ID);
+    const msgs = document.getElementById('messages');
+    msgs.innerHTML = '';
+    chatStarted = true;
+    appendAIMessage('✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你重新排盤。');
+  }
+</script>
+</body>
+</html>

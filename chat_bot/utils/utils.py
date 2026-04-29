@@ -1,10 +1,9 @@
 import re
-from langchain.chat_models import ChatOpenAI
-from langchain_community.chat_models import ChatHuggingFace
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.llms.base import BaseLLM
 import time
 from functools import wraps
+from langchain_openai import ChatOpenAI
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.language_models import BaseChatModel as BaseLLM
 from ..global_config import GlobalConfig
 
 def build_llm(model_name: str = "gemini-2", temperature: float = 0.7) -> BaseLLM:
@@ -39,8 +38,10 @@ def process_llm_output(text):
     Returns:
         str: llm output without <output></output>
     """
-    if "<output>\n" in text:
-        return re.sub(r'^<output>\n(.*)\n</output>$', r'\1', text)
+    if "<output>" in text:
+        match = re.search(r'<output>\n?(.*?)\n?</output>', text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
     return text
 
 def sleep_for_tpm(func):

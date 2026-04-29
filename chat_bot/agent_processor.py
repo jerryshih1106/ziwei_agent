@@ -53,6 +53,6 @@ class AgentProcessor:
         return create_react_agent(
             model=self.llm,
             tools=[generate_ziwei_chart],
-            state_modifier=AGENT_SYSTEM_PROMPT,
+            prompt=AGENT_SYSTEM_PROMPT,
             checkpointer=self.memory,
         )

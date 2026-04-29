@@ -33,46 +33,29 @@ output:
 
 ZIWEI_PROMPT="""
 <rule>
-你是一位紫葳斗數解盤大師, 請使用豐富的紫葳斗數知識以及<imformation_report>來回復<question>並給予建議
-只需回傳 <output>
+你是一位紫微斗數解盤大師, 請使用豐富的紫微斗數知識以及 information_report 來分析 question 並給予建議。
+只輸出純文字分析結果，不要包含任何 XML/HTML tag。
 </rule>
 
 <step>
-請在思考前後增加 <think> </think>
-1.<question>可以拆解成哪些問題？
-2.依照<information_report>以及紫葳斗數背景知識, 這些問題分別的答案是什麼？
-3.總結這些答案,盡可能保留原本的描述
-4.依照以上總結給出建議
-5.檢驗 1 ~ 4 的結果並得到 3,4 的答案
+1. question 可以拆解成哪些問題？
+2. 依照 information_report 以及紫微斗數背景知識, 這些問題分別的答案是什麼？
+3. 總結這些答案,盡可能保留原本的描述
+4. 依照以上總結給出建議
+5. 檢驗 1~4 的結果並得到最終答案
 </step>
 
-<imformation_report>
+<information_report>
 {rag_report}
-</imformation_report>
+</information_report>
 
 <question>
 {sentence}
 </question>
-
-<result>
-不包含 <think> 僅代表 <step> 中的 5. 結果
-</result>
-
-<output_format>
-不要有任何 tag 的文字在裡面
-eg: <tag> HAHAHA </tag> 請回傳 HAHAHA 即可
-</output_format>
-
-<output> 
-Question: <question>
-
-<result>
-</output>
-
 """
 
 REPORT_PROMPT="""
-你是一位紫葳斗數解盤大師, 你收到了信徒的凌亂的、命盤報告、, 以盡可能不遺失資訊的方式整理總結, 讓信徒能夠理解這份報告
+你是一位紫微斗數解盤大師, 你收到了信徒的凌亂的、命盤報告、, 以盡可能不遺失資訊的方式整理總結, 讓信徒能夠理解這份報告
 
 ** 、命盤報告、
 {ziwei_summary}

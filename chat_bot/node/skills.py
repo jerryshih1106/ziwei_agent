@@ -1,5 +1,7 @@
 import os
+import json
 import logging
+import threading
 import pandas as pd
 from langchain_core.tools import tool
 
@@ -9,6 +11,29 @@ from ziweidoushu.base import ZiWeiConfig
 logger = logging.getLogger(__name__)
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_CACHE_PATH = os.path.join(_PROJECT_ROOT, "basic_document", "horoscope_cache.json")
+_DOMAIN_CSV = os.path.join(_PROJECT_ROOT, "basic_document", "star_palace_meaning.csv")
+_cache_lock = threading.Lock()
+_domain_df_cache = None  # Fix #4：CSV module-level 快取
+
+
+def _load_cache() -> dict:
+    if os.path.exists(_CACHE_PATH):
+        try:
+            with open(_CACHE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except (json.JSONDecodeError, OSError):
+            return {}
+    return {}
+
+
+def _save_cache(cache: dict) -> None:
+    with open(_CACHE_PATH, "w", encoding="utf-8") as f:
+        json.dump(cache, f, ensure_ascii=False, indent=2)
+
+
+def _cache_key(year: int, month: int, day: int, hour: int, is_male: bool) -> str:
+    return f"{year}-{month:02d}-{day:02d}-{hour:02d}-{'M' if is_male else 'F'}"
 
 
 @tool
@@ -33,24 +58,39 @@ def generate_ziwei_chart(
     若任何欄位尚未確認，請先詢問使用者補全，不要呼叫此工具。
 
     Returns:
-        str: 命盤 Markdown 表格 + 逐宮解析報告
+        str: 命盤 Markdown 表格 + 逐宮解析報告（若已有快取則直接回傳，不重新計算）
     """
+    key = _cache_key(year, month, day, hour, bool(is_male))
+
+    with _cache_lock:
+        cache = _load_cache()
+        if key in cache:
+            logger.info("generate_ziwei_chart: cache hit for key=%s", key)
+            return cache[key]
+
+    logger.info("generate_ziwei_chart: cache miss, computing for key=%s", key)
+
     # 延遲 import 避免循環依賴
     from .gen_ziwei import get_palace_information, transformed_llm_visualize
-
-    logger.debug(
-        "generate_ziwei_chart called: year=%s month=%s day=%s hour=%s is_male=%s",
-        year, month, day, hour, is_male,
-    )
 
     config = ZiWeiConfig(year, month, day, hour, bool(is_male))
     ziwei_inst = ZiweiChart(config)
     df = ziwei_inst.gen_chart()
 
-    csv_path = os.path.join(_PROJECT_ROOT, "basic_document", "star_palace_meaning.csv")
-    ziwei_domain_df = pd.read_csv(csv_path)
+    global _domain_df_cache
+    if _domain_df_cache is None:
+        _domain_df_cache = pd.read_csv(_DOMAIN_CSV)
+    ziwei_domain_df = _domain_df_cache
 
     horoscope_report = get_palace_information(df, ziwei_domain_df)
     chart_md = transformed_llm_visualize(df.to_markdown())
 
-    return f"【命盤】\n{chart_md}\n\n【逐宮解析】\n{horoscope_report}"
+    result = f"【命盤】\n{chart_md}\n\n【逐宮解析】\n{horoscope_report}"
+
+    with _cache_lock:
+        cache = _load_cache()  # re-read to avoid overwriting concurrent writes
+        cache[key] = result
+        _save_cache(cache)
+    logger.info("generate_ziwei_chart: saved to cache, key=%s", key)
+
+    return result

@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 
 
 def get_birth_info(state: ChatState, llm):
+    # Fix #7：messages 為空時直接返回，避免 IndexError
+    if not state.messages:
+        return state
     logger.debug("[get_birth_info] messages=%s type=%s", state.messages, type(state.messages[-1]))
     user_input = state.messages[-1].content
     birth_info = state.birth_info
@@ -51,13 +54,17 @@ def get_birth_info(state: ChatState, llm):
     response = llm.invoke(prompt)
     try:
         json_str = response.content
-        match = re.search(r'\{.*?\}', json_str)
+        match = re.search(r'\{.*?\}', json_str, re.DOTALL)
         if match:
             json_str = match.group()
         extracted = json.loads(json_str)
         for key in ["year", "month", "day", "hour", "is_male"]:
-            if extracted.get(key) is not None:
-                birth_info[key] = int(extracted[key])
+            val = extracted.get(key)
+            if val is not None:
+                try:
+                    birth_info[key] = int(val)  # Fix #7：LLM 回傳非數字時 ValueError，逐欄位 try
+                except (ValueError, TypeError):
+                    logger.warning("[get_birth_info] 欄位 %s 值 %r 無法轉為整數，略過", key, val)
     except Exception:
         logger.warning("[get_birth_info] LLM 回傳無法解析為 JSON，略過本次抽取", exc_info=True)
 
@@ -67,7 +74,7 @@ def get_birth_info(state: ChatState, llm):
 
     if missing:
         prompt = f"缺少的 information: {missing}\n\n 請一次性提供你的西元完整出生年月日以及時辰以及生理性別, 請盡量講明白一點（例如：1995年7月15日出生在16點, 性別男）"
-        state.messages = [AIMessage(role="system", content=prompt)]
+        state.messages = [AIMessage(content=prompt)]
         state.birth_info = birth_info
         return state
     state.birth_info = birth_info

@@ -10,10 +10,8 @@ from .global_config import GlobalConfig
 
 logger = logging.getLogger(__name__)
 
-MODEL_MAP_DICT = {"gpt-3.5":"gpt-3.5-turbo", "gpt-4o": "gpt-4o"}
-
 class LLMProcessor:
-    def __init__(self, model: str = "gemini-2"):
+    def __init__(self, model: str = GlobalConfig.MODEL):  # Fix #9：跟隨 GlobalConfig
         self.llm = build_llm(model)
 
     def set_kernel_pipeline(self):
@@ -23,12 +21,10 @@ class LLMProcessor:
         workflow = StateGraph(ChatState)
 
         # 節點設定
-        # detect_intent_node = partial(detect_intent, llm=self.llm)
-        start_node = partial(start)
         chat_node = partial(chat, llm=self.llm)
         get_birth_info_node = partial(get_birth_info, llm=self.llm)
 
-        workflow.add_node("start", start_node)
+        workflow.add_node("start", start)  # Fix #4：partial(start) 無額外參數，直接用 start
 
         # workflow.add_node("detect_intent", detect_intent_node)
         # workflow.add_node("skip_detect_intent", lambda state: state)  # 空節點，原樣傳回 state

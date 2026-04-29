@@ -1,0 +1,1474 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>紫微斗數 AI 算命大師｜專業命盤解析</title>
+  <meta name="description" content="運用 AI 技術結合千年紫微斗數智慧，提供精準命盤排盤、逐宮解析、感情事業財運全方位諮詢。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700;900&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --gold: #c9a227;
+      --gold-light: #e8c84a;
+      --gold-dark: #9a7a1a;
+      --deep-purple: #1a0a2e;
+      --purple: #2d1b54;
+      --purple-mid: #3d2470;
+      --purple-light: #5a3a9c;
+      --bg-dark: #0d0718;
+      --bg-card: #1c1035;
+      --text-light: #f0e8ff;
+      --text-muted: #a090c0;
+      --red-fortune: #c0392b;
+      --jade: #27ae60;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Noto Sans TC', sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-light);
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    /* ── Starfield ── */
+    #stars-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 0;
+      opacity: 0.5;
+    }
+
+    /* ── Nav ── */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      background: rgba(13, 7, 24, 0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(201, 162, 39, 0.3);
+      padding: 0 5%;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 64px;
+    }
+
+    .nav-logo {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: var(--gold);
+      letter-spacing: 2px;
+    }
+    .nav-logo span { color: var(--text-light); }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+      list-style: none;
+    }
+    .nav-links a {
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover { color: var(--gold); }
+
+    .nav-cta {
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      color: var(--bg-dark) !important;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-weight: 700 !important;
+    }
+    .nav-cta:hover { opacity: 0.9; }
+
+    /* ── Hero ── */
+    #hero {
+      position: relative;
+      z-index: 1;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 120px 5% 80px;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: rgba(201, 162, 39, 0.15);
+      border: 1px solid rgba(201, 162, 39, 0.4);
+      border-radius: 20px;
+      padding: 6px 16px;
+      font-size: 0.85rem;
+      color: var(--gold);
+      margin-bottom: 24px;
+      letter-spacing: 1px;
+    }
+    .badge-dot {
+      width: 8px; height: 8px;
+      background: var(--gold);
+      border-radius: 50%;
+      animation: pulse 1.5s ease-in-out infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.4); opacity: 0.7; }
+    }
+
+    .hero-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: clamp(2.8rem, 7vw, 5.5rem);
+      font-weight: 900;
+      line-height: 1.15;
+      margin-bottom: 8px;
+    }
+
+    .hero-title .gold {
+      background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-dark));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .hero-sub {
+      font-family: 'Noto Serif TC', serif;
+      font-size: clamp(1.2rem, 2.5vw, 1.8rem);
+      color: var(--text-muted);
+      margin-bottom: 24px;
+      letter-spacing: 3px;
+    }
+
+    .hero-desc {
+      max-width: 600px;
+      font-size: 1.05rem;
+      color: var(--text-muted);
+      margin-bottom: 48px;
+    }
+
+    .hero-cta-group {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, var(--gold-light), var(--gold), var(--gold-dark));
+      color: var(--bg-dark);
+      padding: 16px 36px;
+      border-radius: 50px;
+      font-size: 1.1rem;
+      font-weight: 700;
+      text-decoration: none;
+      border: none;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+      box-shadow: 0 4px 24px rgba(201, 162, 39, 0.4);
+      letter-spacing: 1px;
+    }
+    .btn-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 32px rgba(201, 162, 39, 0.6);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--gold);
+      padding: 16px 36px;
+      border-radius: 50px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      text-decoration: none;
+      border: 1.5px solid var(--gold);
+      cursor: pointer;
+      transition: all 0.2s;
+      letter-spacing: 1px;
+    }
+    .btn-secondary:hover {
+      background: rgba(201, 162, 39, 0.1);
+      transform: translateY(-3px);
+    }
+
+    .hero-stats {
+      display: flex;
+      gap: 48px;
+      margin-top: 64px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .stat-item {
+      text-align: center;
+    }
+    .stat-num {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 2.2rem;
+      font-weight: 700;
+      color: var(--gold);
+      display: block;
+    }
+    .stat-label {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+    }
+
+    /* ── Sections general ── */
+    section {
+      position: relative;
+      z-index: 1;
+      padding: 100px 5%;
+    }
+
+    .section-header {
+      text-align: center;
+      margin-bottom: 64px;
+    }
+    .section-label {
+      font-size: 0.8rem;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: clamp(1.8rem, 4vw, 2.8rem);
+      font-weight: 700;
+      line-height: 1.3;
+    }
+    .section-title .gold {
+      background: linear-gradient(135deg, var(--gold-light), var(--gold));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .section-desc {
+      color: var(--text-muted);
+      margin-top: 16px;
+      font-size: 1.05rem;
+      max-width: 560px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    /* ── Feature section ── */
+    #features { background: rgba(26, 10, 46, 0.6); }
+
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+    .feature-card {
+      background: linear-gradient(135deg, rgba(45, 27, 84, 0.6), rgba(28, 16, 53, 0.8));
+      border: 1px solid rgba(201, 162, 39, 0.2);
+      border-radius: 16px;
+      padding: 32px 28px;
+      transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
+    }
+    .feature-card:hover {
+      transform: translateY(-6px);
+      border-color: rgba(201, 162, 39, 0.5);
+      box-shadow: 0 12px 40px rgba(201, 162, 39, 0.15);
+    }
+    .feature-icon {
+      font-size: 2.5rem;
+      margin-bottom: 16px;
+      display: block;
+    }
+    .feature-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 12px;
+    }
+    .feature-desc { color: var(--text-muted); font-size: 0.95rem; }
+
+    /* ── How to Use ── */
+    #howto { background: var(--bg-dark); }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 32px;
+      counter-reset: steps;
+    }
+    .step-card {
+      text-align: center;
+      position: relative;
+    }
+    .step-card::before {
+      content: "";
+      display: block;
+      width: 1px;
+      height: 40px;
+      background: linear-gradient(to bottom, transparent, rgba(201,162,39,0.3));
+      position: absolute;
+      top: -40px;
+      left: 50%;
+      transform: translateX(-50%);
+    }
+    .step-num {
+      width: 56px; height: 56px;
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--bg-dark);
+      margin: 0 auto 20px;
+      position: relative;
+      z-index: 1;
+    }
+    .step-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--text-light);
+      margin-bottom: 10px;
+    }
+    .step-desc { color: var(--text-muted); font-size: 0.92rem; }
+
+    .steps-connector {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 24px 0;
+    }
+
+    .howto-methods {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 32px;
+      margin-top: 64px;
+    }
+
+    .method-card {
+      background: linear-gradient(135deg, rgba(45, 27, 84, 0.5), rgba(28, 16, 53, 0.7));
+      border: 1px solid rgba(201, 162, 39, 0.25);
+      border-radius: 20px;
+      padding: 36px 32px;
+      position: relative;
+      overflow: hidden;
+    }
+    .method-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--gold-dark), var(--gold-light), var(--gold-dark));
+    }
+    .method-badge {
+      display: inline-block;
+      background: rgba(201, 162, 39, 0.15);
+      border: 1px solid rgba(201, 162, 39, 0.3);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 0.8rem;
+      color: var(--gold);
+      margin-bottom: 16px;
+    }
+    .method-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .method-steps {
+      list-style: none;
+      space-y: 12px;
+    }
+    .method-steps li {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      margin-bottom: 12px;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+    }
+    .method-steps li::before {
+      content: "✦";
+      color: var(--gold);
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .method-cta {
+      margin-top: 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--gold);
+      font-weight: 600;
+      text-decoration: none;
+      font-size: 0.95rem;
+      border-bottom: 1px solid transparent;
+      transition: border-color 0.2s;
+    }
+    .method-cta:hover { border-color: var(--gold); }
+
+    /* ── LINE section ── */
+    #line-bot {
+      background: linear-gradient(135deg, rgba(39, 174, 96, 0.08), rgba(13, 7, 24, 0.9));
+    }
+
+    .line-container {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 64px;
+      align-items: center;
+    }
+    .line-info h2 {
+      font-family: 'Noto Serif TC', serif;
+      font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+      font-weight: 700;
+      margin-bottom: 20px;
+      line-height: 1.3;
+    }
+    .line-info p { color: var(--text-muted); margin-bottom: 16px; }
+
+    .line-id-box {
+      background: rgba(39, 174, 96, 0.1);
+      border: 1.5px solid rgba(39, 174, 96, 0.4);
+      border-radius: 12px;
+      padding: 16px 24px;
+      display: inline-flex;
+      align-items: center;
+      gap: 16px;
+      margin: 24px 0;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .line-id-box:hover { background: rgba(39, 174, 96, 0.18); }
+    .line-icon { font-size: 2rem; }
+    .line-id-label { font-size: 0.8rem; color: var(--text-muted); }
+    .line-id-value {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: #2ecc71;
+      letter-spacing: 2px;
+    }
+    .copy-hint { font-size: 0.75rem; color: var(--text-muted); }
+
+    .line-features {
+      list-style: none;
+      margin-top: 20px;
+    }
+    .line-features li {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+      color: var(--text-muted);
+    }
+    .line-features li::before { content: "✓"; color: #2ecc71; font-weight: 700; }
+
+    .line-qr-card {
+      background: white;
+      border-radius: 20px;
+      padding: 24px;
+      text-align: center;
+      min-width: 200px;
+      box-shadow: 0 8px 40px rgba(39, 174, 96, 0.2);
+    }
+    .qr-placeholder {
+      width: 160px; height: 160px;
+      margin: 0 auto 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #f0f0f0;
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+    }
+    .qr-grid {
+      display: grid;
+      grid-template-columns: repeat(10, 14px);
+      grid-template-rows: repeat(10, 14px);
+      gap: 1px;
+    }
+    .qr-cell {
+      width: 14px; height: 14px;
+      background: #222;
+      border-radius: 1px;
+    }
+    .qr-label {
+      font-size: 0.85rem;
+      color: #333;
+      font-weight: 600;
+    }
+
+    /* ── Pricing ── */
+    #pricing {
+      background: rgba(26, 10, 46, 0.5);
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 28px;
+      margin-bottom: 64px;
+    }
+
+    .pricing-card {
+      background: linear-gradient(180deg, rgba(45, 27, 84, 0.5), rgba(28, 16, 53, 0.7));
+      border: 1px solid rgba(201, 162, 39, 0.2);
+      border-radius: 20px;
+      padding: 36px 28px;
+      position: relative;
+      transition: transform 0.3s, box-shadow 0.3s;
+    }
+    .pricing-card:hover {
+      transform: translateY(-6px);
+      box-shadow: 0 16px 48px rgba(201, 162, 39, 0.15);
+    }
+    .pricing-card.popular {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 1px var(--gold-dark), 0 8px 40px rgba(201, 162, 39, 0.25);
+    }
+    .popular-badge {
+      position: absolute;
+      top: -14px; left: 50%;
+      transform: translateX(-50%);
+      background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
+      color: var(--bg-dark);
+      font-size: 0.78rem;
+      font-weight: 700;
+      padding: 5px 16px;
+      border-radius: 20px;
+      white-space: nowrap;
+      letter-spacing: 1px;
+    }
+    .plan-name {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 8px;
+    }
+    .plan-desc { color: var(--text-muted); font-size: 0.9rem; margin-bottom: 20px; }
+    .plan-price {
+      margin-bottom: 28px;
+    }
+    .price-amount {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 3rem;
+      font-weight: 900;
+      color: var(--text-light);
+      line-height: 1;
+    }
+    .price-amount .currency {
+      font-size: 1.4rem;
+      vertical-align: top;
+      margin-top: 8px;
+      display: inline-block;
+      color: var(--text-muted);
+    }
+    .price-period { font-size: 0.9rem; color: var(--text-muted); }
+    .price-free { font-size: 2.5rem; font-weight: 900; color: var(--jade); }
+
+    .plan-features { list-style: none; margin-bottom: 28px; }
+    .plan-features li {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+      font-size: 0.92rem;
+      color: var(--text-muted);
+    }
+    .plan-features li.included { color: var(--text-light); }
+    .plan-features li.included::before { content: "✦"; color: var(--gold); }
+    .plan-features li.excluded { opacity: 0.4; }
+    .plan-features li.excluded::before { content: "✕"; color: var(--text-muted); }
+
+    .btn-plan {
+      width: 100%;
+      padding: 14px;
+      border-radius: 50px;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      letter-spacing: 0.5px;
+    }
+    .btn-plan-primary {
+      background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
+      color: var(--bg-dark);
+    }
+    .btn-plan-primary:hover { opacity: 0.9; transform: translateY(-2px); }
+    .btn-plan-outline {
+      background: transparent;
+      color: var(--gold);
+      border: 1.5px solid rgba(201, 162, 39, 0.4);
+    }
+    .btn-plan-outline:hover {
+      border-color: var(--gold);
+      background: rgba(201, 162, 39, 0.08);
+    }
+
+    /* ── Payment ── */
+    .payment-section {
+      margin-top: 64px;
+      background: linear-gradient(135deg, rgba(45, 27, 84, 0.4), rgba(28, 16, 53, 0.6));
+      border: 1px solid rgba(201, 162, 39, 0.2);
+      border-radius: 20px;
+      padding: 40px;
+    }
+    .payment-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 8px;
+    }
+    .payment-subtitle { color: var(--text-muted); margin-bottom: 32px; }
+
+    .payment-methods {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      gap: 16px;
+    }
+    .payment-method {
+      background: rgba(13, 7, 24, 0.5);
+      border: 1px solid rgba(201, 162, 39, 0.15);
+      border-radius: 12px;
+      padding: 20px 16px;
+      text-align: center;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .payment-method:hover {
+      border-color: rgba(201, 162, 39, 0.4);
+      background: rgba(201, 162, 39, 0.05);
+    }
+    .pm-icon { font-size: 2rem; margin-bottom: 8px; display: block; }
+    .pm-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+    .pm-detail { font-size: 0.78rem; color: var(--text-muted); }
+
+    .payment-note {
+      margin-top: 20px;
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ── Testimonials ── */
+    #testimonials { background: var(--bg-dark); }
+
+    .testimonials-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 24px;
+    }
+    .testimonial-card {
+      background: linear-gradient(135deg, rgba(45, 27, 84, 0.4), rgba(28, 16, 53, 0.6));
+      border: 1px solid rgba(201, 162, 39, 0.15);
+      border-radius: 16px;
+      padding: 28px;
+    }
+    .stars { color: var(--gold); margin-bottom: 12px; font-size: 1rem; letter-spacing: 2px; }
+    .testimonial-text { color: var(--text-muted); font-size: 0.95rem; margin-bottom: 20px; line-height: 1.8; }
+    .testimonial-author { display: flex; align-items: center; gap: 12px; }
+    .author-avatar {
+      width: 42px; height: 42px;
+      background: linear-gradient(135deg, var(--purple-light), var(--gold-dark));
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      font-size: 1.1rem;
+      color: white;
+    }
+    .author-name { font-weight: 600; font-size: 0.95rem; }
+    .author-meta { font-size: 0.8rem; color: var(--text-muted); }
+
+    /* ── FAQ ── */
+    #faq { background: rgba(26, 10, 46, 0.4); }
+
+    .faq-list { max-width: 720px; margin: 0 auto; }
+    .faq-item {
+      border-bottom: 1px solid rgba(201, 162, 39, 0.15);
+      padding: 20px 0;
+    }
+    .faq-question {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 1rem;
+      color: var(--text-light);
+      gap: 16px;
+    }
+    .faq-question:hover { color: var(--gold); }
+    .faq-toggle {
+      color: var(--gold);
+      font-size: 1.4rem;
+      flex-shrink: 0;
+      transition: transform 0.3s;
+      line-height: 1;
+    }
+    .faq-item.open .faq-toggle { transform: rotate(45deg); }
+    .faq-answer {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      line-height: 1.8;
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease, padding 0.3s;
+    }
+    .faq-item.open .faq-answer {
+      max-height: 300px;
+      padding-top: 12px;
+    }
+
+    /* ── CTA Section ── */
+    #cta-section {
+      background: linear-gradient(135deg, rgba(201, 162, 39, 0.08), rgba(26, 10, 46, 0.9));
+      text-align: center;
+      padding: 100px 5%;
+    }
+    #cta-section h2 {
+      font-family: 'Noto Serif TC', serif;
+      font-size: clamp(2rem, 4vw, 3rem);
+      font-weight: 700;
+      margin-bottom: 20px;
+    }
+    #cta-section p { color: var(--text-muted); margin-bottom: 40px; font-size: 1.05rem; }
+
+    /* ── Footer ── */
+    footer {
+      background: var(--bg-dark);
+      border-top: 1px solid rgba(201, 162, 39, 0.15);
+      padding: 48px 5% 24px;
+      position: relative;
+      z-index: 1;
+    }
+    .footer-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr;
+      gap: 40px;
+      margin-bottom: 40px;
+    }
+    .footer-brand .nav-logo { display: block; margin-bottom: 12px; }
+    .footer-brand p { color: var(--text-muted); font-size: 0.9rem; }
+    .footer-col h4 {
+      font-weight: 700;
+      color: var(--gold);
+      margin-bottom: 16px;
+      font-size: 0.95rem;
+    }
+    .footer-col a {
+      display: block;
+      color: var(--text-muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin-bottom: 8px;
+      transition: color 0.2s;
+    }
+    .footer-col a:hover { color: var(--text-light); }
+    .footer-bottom {
+      border-top: 1px solid rgba(255,255,255,0.08);
+      padding-top: 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    /* ── Floating LINE button ── */
+    .float-line {
+      position: fixed;
+      bottom: 28px;
+      right: 28px;
+      z-index: 99;
+      background: #00b900;
+      color: white;
+      border: none;
+      border-radius: 50%;
+      width: 58px; height: 58px;
+      font-size: 1.8rem;
+      cursor: pointer;
+      box-shadow: 0 4px 20px rgba(0, 185, 0, 0.5);
+      display: flex; align-items: center; justify-content: center;
+      text-decoration: none;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .float-line:hover {
+      transform: translateY(-4px) scale(1.08);
+      box-shadow: 0 8px 28px rgba(0, 185, 0, 0.65);
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .nav-links { display: none; }
+      .howto-methods { grid-template-columns: 1fr; }
+      .line-container { grid-template-columns: 1fr; }
+      .line-qr-card { display: none; }
+      .footer-grid { grid-template-columns: 1fr 1fr; }
+      .pricing-card.popular { margin: 0; }
+      .payment-methods { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 480px) {
+      .footer-grid { grid-template-columns: 1fr; }
+      .hero-stats { gap: 32px; }
+      .payment-methods { grid-template-columns: repeat(2, 1fr); }
+    }
+
+    /* ── Animations ── */
+    .fade-in {
+      opacity: 0;
+      transform: translateY(30px);
+      transition: opacity 0.6s ease, transform 0.6s ease;
+    }
+    .fade-in.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* ── Divider ── */
+    .divider {
+      width: 80px;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--gold), transparent);
+      margin: 20px auto 0;
+    }
+
+    /* Copy toast */
+    #copy-toast {
+      position: fixed;
+      bottom: 100px;
+      right: 28px;
+      background: rgba(39, 174, 96, 0.9);
+      color: white;
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      z-index: 200;
+      opacity: 0;
+      transition: opacity 0.3s;
+      pointer-events: none;
+    }
+    #copy-toast.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<!-- Stars canvas -->
+<canvas id="stars-canvas"></canvas>
+
+<!-- Copy toast -->
+<div id="copy-toast">✓ 已複製 LINE ID！</div>
+
+<!-- Floating LINE button -->
+<a href="#line-bot" class="float-line" title="加入 LINE 好友">💬</a>
+
+<!-- Navigation -->
+<nav>
+  <div class="nav-logo">紫微<span>AI</span>算命</div>
+  <ul class="nav-links">
+    <li><a href="#features">特色功能</a></li>
+    <li><a href="#howto">使用說明</a></li>
+    <li><a href="#line-bot">LINE 機器人</a></li>
+    <li><a href="#pricing">方案定價</a></li>
+    <li><a href="#faq">常見問題</a></li>
+    <li><a href="/chat" class="nav-cta">立即算命 →</a></li>
+  </ul>
+</nav>
+
+<!-- ── Hero ── -->
+<section id="hero">
+  <div class="hero-badge">
+    <span class="badge-dot"></span>
+    千年智慧 × AI 科技　線上算命新體驗
+  </div>
+  <h1 class="hero-title">
+    <span class="gold">紫微斗數</span><br>AI 算命大師
+  </h1>
+  <p class="hero-sub">— 探索命盤，洞見人生 —</p>
+  <p class="hero-desc">
+    結合傳統紫微斗數命理與最新 AI 技術，只需告知出生年月日時辰，
+    即刻生成專屬命盤，解析感情、事業、財運、健康全方位人生藍圖。
+  </p>
+  <div class="hero-cta-group">
+    <a href="/chat" class="btn-primary">✨ 立即免費算命</a>
+    <a href="#howto" class="btn-secondary">如何使用 →</a>
+  </div>
+  <div class="hero-stats">
+    <div class="stat-item">
+      <span class="stat-num">10,000+</span>
+      <span class="stat-label">已服務命盤</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-num">98%</span>
+      <span class="stat-label">用戶滿意度</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-num">24/7</span>
+      <span class="stat-label">全天候在線</span>
+    </div>
+    <div class="stat-item">
+      <span class="stat-num">AI+</span>
+      <span class="stat-label">智能解盤</span>
+    </div>
+  </div>
+</section>
+
+<!-- ── Features ── -->
+<section id="features">
+  <div class="container">
+    <div class="section-header fade-in">
+      <div class="section-label">核心優勢</div>
+      <h2 class="section-title">為何選擇<span class="gold">紫微AI</span>算命？</h2>
+      <div class="divider"></div>
+      <p class="section-desc">融合千年命理智慧與人工智慧，帶來前所未有的準確解析體驗</p>
+    </div>
+    <div class="features-grid">
+      <div class="feature-card fade-in">
+        <span class="feature-icon">🔯</span>
+        <div class="feature-title">精準命盤排盤</div>
+        <p class="feature-desc">依據出生年月日時辰自動計算紫微斗數命盤，精準定位十二宮位，完整呈現主星配置。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">🤖</span>
+        <div class="feature-title">AI 智能解盤</div>
+        <p class="feature-desc">結合大型語言模型，深度理解每顆星曜意涵，提供個人化、情境化的命盤詮釋。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">💬</span>
+        <div class="feature-title">對話式諮詢</div>
+        <p class="feature-desc">如同與資深命理師面對面，可自由提問感情、事業、財運等各類人生疑問，獲得深度回應。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">📱</span>
+        <div class="feature-title">LINE 即時互動</div>
+        <p class="feature-desc">無需安裝任何 APP，直接透過 LINE 即可對話算命，隨時隨地輕鬆諮詢。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">🔒</span>
+        <div class="feature-title">隱私資料保護</div>
+        <p class="feature-desc">個人出生資料僅用於命盤計算，不做任何儲存或商業用途，完全保護您的隱私。</p>
+      </div>
+      <div class="feature-card fade-in">
+        <span class="feature-icon">⚡</span>
+        <div class="feature-title">秒速解盤回覆</div>
+        <p class="feature-desc">AI 即時運算，無需等待，10 秒內取得完整命盤解析報告。</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── How to Use ── -->
+<section id="howto">
+  <div class="container">
+    <div class="section-header fade-in">
+      <div class="section-label">使用說明</div>
+      <h2 class="section-title">三步驟<span class="gold">開始算命</span></h2>
+      <div class="divider"></div>
+      <p class="section-desc">操作超簡單，無需任何命理知識，AI 幫你全自動解析</p>
+    </div>
+
+    <div class="steps-grid fade-in">
+      <div class="step-card">
+        <div class="step-num">一</div>
+        <div class="step-title">選擇算命方式</div>
+        <p class="step-desc">透過 LINE 機器人或網頁聊天，選擇最方便的方式與 AI 大師對話。</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">二</div>
+        <div class="step-title">提供出生資料</div>
+        <p class="step-desc">告知 AI 您的西元出生年月日、出生時辰（地支或24小時制）及性別。</p>
+      </div>
+      <div class="step-card">
+        <div class="step-num">三</div>
+        <div class="step-title">獲得命盤解析</div>
+        <p class="step-desc">AI 自動排盤，逐宮解析，並可繼續追問感情、事業等各方面問題。</p>
+      </div>
+    </div>
+
+    <div class="howto-methods fade-in">
+      <div class="method-card">
+        <div class="method-badge">🟢 LINE 機器人模式</div>
+        <h3 class="method-title">LINE 機器人算命</h3>
+        <ul class="method-steps">
+          <li>搜尋 LINE ID「<strong>{{ line_id }}</strong>」或掃描 QR Code 加好友</li>
+          <li>直接傳訊息，告訴 AI 你的出生年月日時辰與性別</li>
+          <li>AI 大師自動排盤，完成後可繼續追問各類問題</li>
+          <li>傳送「<strong>/reset</strong>」可重置對話，重新算命</li>
+          <li>支援隨時隨地對話，全天候 24 小時服務</li>
+        </ul>
+        <a href="#line-bot" class="method-cta">加入 LINE 好友 →</a>
+      </div>
+      <div class="method-card">
+        <div class="method-badge">✨ 網頁便利模式</div>
+        <h3 class="method-title">網頁即時算命</h3>
+        <ul class="method-steps">
+          <li>點擊「立即算命」進入網頁聊天介面</li>
+          <li>輸入出生年月日、時辰（例如：子時、丑時）及性別</li>
+          <li>AI 立即生成命盤 Markdown 表格及逐宮解析</li>
+          <li>可持續對話，深入了解感情、事業、財運等面向</li>
+          <li>支援快速填入按鈕，操作更加便利快速</li>
+        </ul>
+        <a href="/chat" class="method-cta">前往網頁算命 →</a>
+      </div>
+    </div>
+
+    <!-- 出生時辰對照表 -->
+    <div class="payment-section fade-in" style="margin-top: 48px;">
+      <div class="payment-title">🕐 出生時辰對照表</div>
+      <div class="payment-subtitle">不清楚時辰？請參考以下對照，輸入地支或 24 小時制皆可</div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px;">
+        {% for item in time_table %}
+        <div style="background: rgba(201,162,39,0.07); border: 1px solid rgba(201,162,39,0.15); border-radius: 8px; padding: 10px 12px; text-align: center;">
+          <div style="color: var(--gold); font-weight: 700; font-family: 'Noto Serif TC', serif;">{{ item.zhi }}時</div>
+          <div style="color: var(--text-muted); font-size: 0.82rem;">{{ item.range }}</div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── LINE Bot ── -->
+<section id="line-bot">
+  <div class="container">
+    <div class="line-container">
+      <div class="line-info fade-in">
+        <div class="section-label" style="text-align:left;">LINE 機器人</div>
+        <h2>加入 LINE 好友<br><span style="color: #2ecc71;">隨時隨地算命</span></h2>
+        <p>無需下載 APP，打開 LINE 即可與紫微 AI 大師對話。支援多輪對話記憶，精準解析您的命盤。</p>
+
+        <div class="line-id-box" onclick="copyLineId()">
+          <span class="line-icon">💬</span>
+          <div>
+            <div class="line-id-label">LINE 官方帳號 ID</div>
+            <div class="line-id-value">{{ line_id }}</div>
+            <div class="copy-hint">點擊複製 ID</div>
+          </div>
+        </div>
+
+        <ul class="line-features">
+          <li>免費試用，立即體驗完整命盤排盤</li>
+          <li>全天候 24 小時即時回覆</li>
+          <li>多輪對話記憶，深度諮詢無障礙</li>
+          <li>傳送 /reset 隨時重新開始</li>
+          <li>支援一般人、商業帳號皆可使用</li>
+        </ul>
+
+        <a href="/chat" class="btn-primary" style="display: inline-block; margin-top: 8px;">
+          或使用網頁版算命 →
+        </a>
+      </div>
+
+      <div class="line-qr-card fade-in">
+        <div class="qr-placeholder">
+          <img id="qr-img" src="{{ qr_url }}" alt="LINE QR Code"
+               style="width:100%;height:100%;object-fit:contain;border-radius:8px;"
+               onerror="this.style.display='none'; document.getElementById('qr-fallback').style.display='flex';">
+          <div id="qr-fallback" style="display:none; flex-direction:column; align-items:center; justify-content:center; width:100%; height:100%;">
+            <div style="font-size:3rem;">📱</div>
+            <div style="font-size:0.7rem; color:#999; margin-top:4px;">掃碼加好友</div>
+          </div>
+        </div>
+        <div class="qr-label" style="color: #00b900;">掃碼加 LINE 好友</div>
+        <div style="font-size:0.78rem; color:#999; margin-top:4px;">{{ line_id }}</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Pricing ── -->
+<section id="pricing">
+  <div class="container">
+    <div class="section-header fade-in">
+      <div class="section-label">方案定價</div>
+      <h2 class="section-title">選擇適合你的<span class="gold">算命方案</span></h2>
+      <div class="divider"></div>
+      <p class="section-desc">從免費體驗到進階完整服務，滿足不同需求</p>
+    </div>
+
+    <div class="pricing-grid fade-in">
+      <!-- Free -->
+      <div class="pricing-card">
+        <div class="plan-name">✨ 免費體驗版</div>
+        <p class="plan-desc">初次使用、感受 AI 算命威力</p>
+        <div class="plan-price">
+          <div class="price-free">免費</div>
+          <div class="price-period">永久免費功能</div>
+        </div>
+        <ul class="plan-features">
+          <li class="included">完整命盤排盤（1次）</li>
+          <li class="included">基礎十二宮解析</li>
+          <li class="included">LINE 機器人使用</li>
+          <li class="included">網頁版使用</li>
+          <li class="excluded">無限次命盤查詢</li>
+          <li class="excluded">深度流年運勢分析</li>
+          <li class="excluded">感情合盤分析</li>
+          <li class="excluded">優先客服支援</li>
+        </ul>
+        <button class="btn-plan btn-plan-outline" onclick="window.location='/chat'">免費開始 →</button>
+      </div>
+
+      <!-- Basic -->
+      <div class="pricing-card popular">
+        <div class="popular-badge">🔥 最多人選擇</div>
+        <div class="plan-name">💫 標準版</div>
+        <p class="plan-desc">深度命盤解析，全方位人生諮詢</p>
+        <div class="plan-price">
+          <div class="price-amount"><span class="currency">NT$</span>299</div>
+          <div class="price-period">/ 月，可隨時取消</div>
+        </div>
+        <ul class="plan-features">
+          <li class="included">無限次命盤查詢</li>
+          <li class="included">完整十二宮深度解析</li>
+          <li class="included">流年大限運勢分析</li>
+          <li class="included">感情、事業、財運全面諮詢</li>
+          <li class="included">LINE 機器人 + 網頁版</li>
+          <li class="included">命盤報告 PDF 輸出</li>
+          <li class="excluded">感情合盤分析</li>
+          <li class="excluded">專屬命理顧問服務</li>
+        </ul>
+        <button class="btn-plan btn-plan-primary" onclick="showPayment('standard')">立即升級 →</button>
+      </div>
+
+      <!-- Pro -->
+      <div class="pricing-card">
+        <div class="plan-name">👑 尊享版</div>
+        <p class="plan-desc">極致命理服務，尊享個人諮詢</p>
+        <div class="plan-price">
+          <div class="price-amount"><span class="currency">NT$</span>799</div>
+          <div class="price-period">/ 月，包含一對一諮詢</div>
+        </div>
+        <ul class="plan-features">
+          <li class="included">標準版所有功能</li>
+          <li class="included">感情合盤分析（無限次）</li>
+          <li class="included">每月一次人工命理顧問（30分鐘）</li>
+          <li class="included">個人化流年提醒推播</li>
+          <li class="included">歷史命盤比對分析</li>
+          <li class="included">優先客服 24 小時回覆</li>
+          <li class="included">命盤完整報告書（精裝PDF）</li>
+          <li class="included">贈送 3 次親友命盤</li>
+        </ul>
+        <button class="btn-plan btn-plan-outline" onclick="showPayment('pro')">立即訂閱 →</button>
+      </div>
+    </div>
+
+    <!-- Payment Methods -->
+    <div class="payment-section fade-in">
+      <div class="payment-title">💳 支援付款方式</div>
+      <div class="payment-subtitle">多種付款選擇，安全便利一站搞定</div>
+      <div class="payment-methods">
+        <div class="payment-method">
+          <span class="pm-icon">💚</span>
+          <div class="pm-name">LINE Pay</div>
+          <div class="pm-detail">LINE 帳戶直接付款</div>
+        </div>
+        <div class="payment-method">
+          <span class="pm-icon">💳</span>
+          <div class="pm-name">信用卡</div>
+          <div class="pm-detail">Visa / Master / JCB</div>
+        </div>
+        <div class="payment-method">
+          <span class="pm-icon">🏦</span>
+          <div class="pm-name">ATM 轉帳</div>
+          <div class="pm-detail">虛擬帳號 24hr 到帳</div>
+        </div>
+        <div class="payment-method">
+          <span class="pm-icon">📱</span>
+          <div class="pm-name">街口支付</div>
+          <div class="pm-detail">JKO Pay 掃碼付款</div>
+        </div>
+        <div class="payment-method">
+          <span class="pm-icon">🟣</span>
+          <div class="pm-name">台灣 Pay</div>
+          <div class="pm-detail">行動支付整合平台</div>
+        </div>
+        <div class="payment-method">
+          <span class="pm-icon">🧧</span>
+          <div class="pm-name">超商代碼</div>
+          <div class="pm-detail">7-11 / 全家繳費</div>
+        </div>
+      </div>
+      <div class="payment-note">
+        🔒 所有付款資料均採用 SSL 加密傳輸，個人資料安全有保障。訂閱方案可隨時取消，不另收取費用。
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Testimonials ── -->
+<section id="testimonials">
+  <div class="container">
+    <div class="section-header fade-in">
+      <div class="section-label">用戶評價</div>
+      <h2 class="section-title">他們都說<span class="gold">超準的</span>！</h2>
+      <div class="divider"></div>
+    </div>
+    <div class="testimonials-grid">
+      <div class="testimonial-card fade-in">
+        <div class="stars">★★★★★</div>
+        <p class="testimonial-text">「原本只是好奇試試，沒想到解析感情宮的部分超級準確！AI 說我夫妻宮有化忌，近年感情容易有阻礙，結果真的剛分手不久…很不思議。」</p>
+        <div class="testimonial-author">
+          <div class="author-avatar">小</div>
+          <div>
+            <div class="author-name">小玲 / 28歲</div>
+            <div class="author-meta">LINE 機器人用戶</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card fade-in">
+        <div class="stars">★★★★★</div>
+        <p class="testimonial-text">「使用非常方便，在 LINE 上直接輸入生日就能算，不到一分鐘就有完整命盤和解析，比去找老師便宜多了，而且可以一直追問，很厲害。」</p>
+        <div class="testimonial-author">
+          <div class="author-avatar">阿</div>
+          <div>
+            <div class="author-name">阿明 / 35歲</div>
+            <div class="author-meta">標準版訂閱者</div>
+          </div>
+        </div>
+      </div>
+      <div class="testimonial-card fade-in">
+        <div class="stars">★★★★☆</div>
+        <p class="testimonial-text">「事業宮的分析真的幫到我，AI 說我適合自由接案而非朝九晚五，最近真的考慮出來自己做了。解盤說明很詳細，不像以前看一堆看不懂的文字。」</p>
+        <div class="testimonial-author">
+          <div class="author-avatar">婷</div>
+          <div>
+            <div class="author-name">婷婷 / 32歲</div>
+            <div class="author-meta">網頁版用戶</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── FAQ ── -->
+<section id="faq">
+  <div class="container">
+    <div class="section-header fade-in">
+      <div class="section-label">常見問題</div>
+      <h2 class="section-title">解答你的<span class="gold">疑惑</span></h2>
+      <div class="divider"></div>
+    </div>
+    <div class="faq-list fade-in">
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          不知道出生時辰，還可以算命嗎？
+          <span class="faq-toggle">+</span>
+        </div>
+        <div class="faq-answer">
+          可以的！若不知道確切時辰，可以輸入大概的時間範圍（例如早上 6 點到 8 點之間），AI 會以卯時（06:00-07:59）計算，並在解析時說明可能的誤差。建議詢問家長或查看出生醫院記錄獲得準確時辰，命盤會更精準。
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          紫微斗數 AI 準確度如何？
+          <span class="faq-toggle">+</span>
+        </div>
+        <div class="faq-answer">
+          紫微斗數命盤排盤部分完全依照傳統命理規則計算，精準度 100%。AI 解盤部分融合了大量命理典籍知識，能提供貼近傳統命理師的解析。每個人的命盤都是唯一的，建議將解析作為參考，結合自身實際情況判斷。
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          我的個人資料會被儲存嗎？
+          <span class="faq-toggle">+</span>
+        </div>
+        <div class="faq-answer">
+          您的出生資料（年月日時辰）僅用於當次命盤計算，不會被永久儲存於我們的資料庫中。LINE 機器人的對話記錄遵循 LINE 官方平台政策。我們承諾不將個人資料用於任何商業目的。
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          如何在 LINE 上使用？需要下載什麼嗎？
+          <span class="faq-toggle">+</span>
+        </div>
+        <div class="faq-answer">
+          完全不需要下載任何額外 APP！只需在 LINE 中搜尋我們的官方帳號 ID「{{ line_id }}」，或掃描頁面上的 QR Code 加為好友，即可直接開始對話算命。操作方式與一般 LINE 聊天完全相同。
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          付費方案如何取消訂閱？
+          <span class="faq-toggle">+</span>
+        </div>
+        <div class="faq-answer">
+          您可以隨時取消訂閱，取消後可繼續使用至本期結束，不會額外扣款。取消方式：登入帳號後前往「方案管理」→「取消訂閱」，或聯繫客服處理。我們承諾無隱藏費用，絕不強制綁約。
+        </div>
+      </div>
+      <div class="faq-item">
+        <div class="faq-question" onclick="toggleFaq(this)">
+          可以算別人的命盤嗎？
+          <span class="faq-toggle">+</span>
+        </div>
+        <div class="faq-answer">
+          當然可以！您可以輸入親友的出生資料來查詢他們的命盤。在 LINE 機器人上，傳送「/reset」即可重置對話，輸入新的出生資料算另一個人的命盤。尊享版方案另包含合盤分析功能，可查看兩人緣分與相配程度。
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── CTA ── -->
+<section id="cta-section">
+  <div class="container">
+    <h2>準備好探索<span class="gold">你的命盤</span>了嗎？</h2>
+    <p>現在免費開始，讓千年智慧與 AI 科技為你解開人生謎題</p>
+    <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;">
+      <a href="/chat" class="btn-primary">✨ 立即免費算命</a>
+      <a href="#line-bot" class="btn-secondary">加 LINE 機器人</a>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ── -->
+<footer>
+  <div class="footer-grid">
+    <div class="footer-brand">
+      <span class="nav-logo">紫微<span style="color:var(--text-light)">AI</span>算命</span>
+      <p>結合千年紫微斗數命理與最新 AI 技術，<br>提供精準、即時、個人化的命盤解析服務。</p>
+    </div>
+    <div class="footer-col">
+      <h4>服務功能</h4>
+      <a href="/chat">網頁算命</a>
+      <a href="#line-bot">LINE 機器人</a>
+      <a href="#pricing">訂閱方案</a>
+      <a href="#features">功能特色</a>
+    </div>
+    <div class="footer-col">
+      <h4>說明資訊</h4>
+      <a href="#howto">使用說明</a>
+      <a href="#faq">常見問題</a>
+      <a href="#testimonials">用戶評價</a>
+      <a href="#">隱私政策</a>
+    </div>
+    <div class="footer-col">
+      <h4>聯絡我們</h4>
+      <a href="#">客服信箱</a>
+      <a href="#line-bot">LINE 客服</a>
+      <a href="#">合作洽談</a>
+    </div>
+  </div>
+  <div class="footer-bottom">
+    <span>© 2026 紫微AI算命大師｜All Rights Reserved</span>
+    <span>隱私政策｜服務條款｜聯絡我們</span>
+  </div>
+</footer>
+
+<script>
+// ── Stars ──
+(function() {
+  const canvas = document.getElementById('stars-canvas');
+  const ctx = canvas.getContext('2d');
+  let W, H, stars = [];
+  function resize() {
+    W = canvas.width = window.innerWidth;
+    H = canvas.height = window.innerHeight;
+  }
+  function makeStars(n) {
+    stars = [];
+    for (let i = 0; i < n; i++) {
+      stars.push({
+        x: Math.random() * W, y: Math.random() * H,
+        r: Math.random() * 1.5 + 0.3,
+        a: Math.random(),
+        speed: Math.random() * 0.005 + 0.002
+      });
+    }
+  }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    stars.forEach(s => {
+      s.a += s.speed;
+      const alpha = (Math.sin(s.a) + 1) / 2 * 0.8 + 0.2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(232, 200, 74, ${alpha})`;
+      ctx.fill();
+    });
+    requestAnimationFrame(draw);
+  }
+  resize();
+  makeStars(180);
+  draw();
+  window.addEventListener('resize', () => { resize(); makeStars(180); });
+})();
+
+// ── Scroll fade ──
+const observer = new IntersectionObserver(entries => {
+  entries.forEach(e => {
+    if (e.isIntersecting) { e.target.classList.add('visible'); }
+  });
+}, { threshold: 0.12 });
+document.querySelectorAll('.fade-in').forEach(el => observer.observe(el));
+
+// ── FAQ ──
+function toggleFaq(el) {
+  const item = el.closest('.faq-item');
+  const allItems = document.querySelectorAll('.faq-item');
+  allItems.forEach(i => { if (i !== item) i.classList.remove('open'); });
+  item.classList.toggle('open');
+}
+
+// ── Copy LINE ID ──
+function copyLineId() {
+  // Fix #9：從 DOM 讀取 LINE ID，避免 Jinja2 字串注入破壞 JS
+  const id = document.querySelector('.line-id-value')?.textContent?.trim() || '{{ line_id }}';
+  navigator.clipboard.writeText(id).catch(() => {
+    const t = document.createElement('textarea');
+    t.value = id;
+    document.body.appendChild(t);
+    t.select();
+    document.execCommand('copy');
+    document.body.removeChild(t);
+  });
+  const toast = document.getElementById('copy-toast');
+  toast.classList.add('show');
+  setTimeout(() => toast.classList.remove('show'), 2500);
+}
+
+// ── Show payment modal ──
+function showPayment(plan) {
+  const names = { standard: '標準版 NT$299/月', pro: '尊享版 NT$799/月' };
+  alert(`即將進入付款頁面：${names[plan]}\n\n支援付款方式：LINE Pay、信用卡、ATM 轉帳、街口支付、台灣Pay、超商代碼\n\n（此為示範提示，正式上線後將跳轉至金流頁面）`);
+}
+
+// ── Smooth scroll for nav links ──
+document.querySelectorAll('a[href^="#"]').forEach(a => {
+  a.addEventListener('click', e => {
+    const id = a.getAttribute('href').slice(1);
+    const target = document.getElementById(id);
+    if (target) {
+      e.preventDefault();
+      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  });
+});
+</script>
+</body>
+</html>
