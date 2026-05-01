@@ -24,8 +24,19 @@ _rag_processor = None
 def _get_rag_processor():
     global _rag_processor
     if _rag_processor is None:
-        from ..utils.rag_utils import RagProcessor
-        _rag_processor = RagProcessor()
+        mode = GlobalConfig.RAG_MODE
+        if mode == "rag":
+            from ..utils.rag_utils import RagProcessor
+            _rag_processor = RagProcessor()
+            logger.info("RAG mode: rag (ModernBERT semantic search)")
+        elif mode == "agent_skill":
+            from ..utils.md_rag_utils import AgentSkillRagProcessor
+            _rag_processor = AgentSkillRagProcessor()
+            logger.info("RAG mode: agent_skill (LLM-guided lookup)")
+        else:  # default: matching
+            from ..utils.md_rag_utils import MdRagProcessor
+            _rag_processor = MdRagProcessor()
+            logger.info("RAG mode: matching (keyword lookup)")
     return _rag_processor
 
 

@@ -1,3 +1,7 @@
-
 __pycache__
 *.pyc
+*.pyo
+.env
+modern_bert_model/
+*.ipynb_checkpoints
+.claude/

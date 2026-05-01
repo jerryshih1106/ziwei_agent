@@ -10,6 +10,11 @@ class GlobalConfig:
     LOCAL_RAG_MODEL_PATH: str = "modern_bert_model"
     RAG_MODEL = None
     RAG_SIMILARITY_THRESHOLD: float = 0.7  # 語意搜尋最低相似度門檻
+    # RAG 模式：matching | rag | agent_skill
+    #   matching    — keyword 直查 knowledge/*.md（預設，輕量，無需 ML 模型）
+    #   rag         — ModernBERT 語意搜尋（需載入大模型）
+    #   agent_skill — 先給 LLM 看可用條目清單，LLM 自選後再查詳細內容
+    RAG_MODE: str = os.environ.get("RAG_MODE", "matching")
     USE_AGENT_SKILL: bool = False  # True: ReAct agent + skill 模式 / False: 固定 LangGraph 流程
 
     # Fix #9：這些 os.environ.get() 在 main.py 呼叫 load_dotenv() 後才被求值（Fix #1 確保順序）
