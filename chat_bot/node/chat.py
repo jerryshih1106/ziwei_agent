@@ -1,59 +1,120 @@
-from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
-from typing import Callable
-from langchain_core.messages import AIMessage
+import time
 import tiktoken
+from typing import Callable, Generator
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
+
 from .chat_state import ChatState
-from ..utils.utils import sleep_for_tpm
 from ..global_config import GlobalConfig
 from ..prompt import CHAT_PROMPT, MEMORY_PROMPT
 
+# Bug #6 Fix: 用於識別命盤展示訊息（此訊息很長且與 state.horoscope 重複，應從 history 中排除）
+_CHART_MESSAGE_MARKER = "我已經排好你的命盤了"
+
+# Bug #7 Fix: 保留最近 N 則訊息原文，更早的才壓縮
+_RECENT_KEEP = 8
+
+
 def get_token_count(text_list, model="gpt-3.5-turbo"):
+    # Bug #4 Fix: non-OpenAI model names (e.g. "gemini-2.5-flash-lite") are not in tiktoken.
+    # Always fall back to cl100k_base so we get a real token estimate instead of a character count.
     try:
         enc = tiktoken.encoding_for_model(model)
     except KeyError:
-        # Gemini / unknown models — use cl100k_base as a reasonable approximation
         enc = tiktoken.get_encoding("cl100k_base")
     try:
-        res = sum(len(enc.encode(item)) for item in text_list)
+        return sum(len(enc.encode(item)) for item in text_list)
     except Exception:
-        res = sum(len(item) for item in text_list)
-    return res
+        # Last-resort: rough estimate (average ~3 chars/token for CJK text)
+        return sum(max(1, len(item) // 3) for item in text_list)
 
-def process_hist_chat(hist_chat:list, llm: Callable):
-    # Fix #3：移除 @sleep_for_tpm，只在實際呼叫 LLM 時才延遲
-    review_list = [text.content for text in hist_chat]
-    hist_chat_string = "".join(review_list)
-    if get_token_count(review_list, model=GlobalConfig.MODEL) > GlobalConfig.MAX_TOKENS:
-        import time; time.sleep(GlobalConfig.TPM_TIME)  # 只在壓縮時才等待
-        current_prompt = PromptTemplate.from_template(MEMORY_PROMPT)
-        chain = current_prompt | llm
-        hist_chat_string = chain.invoke({"hist_chat": ''.join(review_list)}).content
-        hist_chat = [AIMessage(content=hist_chat_string)]
+
+def _is_chart_message(msg) -> bool:
+    """判斷是否為命盤展示訊息（內容很長且已透過 state.horoscope 傳遞，不需重複放入 history）。"""
+    content = getattr(msg, "content", "") or ""
+    return _CHART_MESSAGE_MARKER in str(content)
+
+
+def _format_history_string(messages: list) -> str:
+    """Format messages with role labels so LLM can distinguish who said what."""
+    role_map = {
+        HumanMessage: "用戶",
+        AIMessage:    "助手",
+        SystemMessage: "系統",
+    }
+    parts = []
+    for msg in messages:
+        role = role_map.get(type(msg), "未知")
+        parts.append(f"{role}: {msg.content}")
+    return "\n".join(parts)
+
+
+def process_hist_chat(hist_chat: list, llm: Callable):
+    # Bug #6 Fix: 過濾掉命盤展示訊息（horoscope 已由 state.horoscope 傳遞，不需重複）
+    filtered = [m for m in hist_chat if not _is_chart_message(m)]
+
+    # Bug #7 Fix: 近期訊息保留原文，更早的訊息才壓縮成摘要
+    if len(filtered) > _RECENT_KEEP:
+        older = filtered[:-_RECENT_KEEP]
+        recent = filtered[-_RECENT_KEEP:]
+
+        older_texts = [m.content for m in older]
+        if get_token_count(older_texts, model=GlobalConfig.MODEL) > 300:
+            older_string = _format_history_string(older)
+            prompt = PromptTemplate.from_template(MEMORY_PROMPT)
+            time.sleep(GlobalConfig.TPM_TIME)  # 僅在真正呼叫 LLM 前才 sleep，避免每次串流都阻塞
+            summary = (prompt | llm).invoke({"hist_chat": older_string}).content
+            combined = [AIMessage(content=f"【早期對話摘要】\n{summary}")] + recent
+        else:
+            combined = filtered
+    else:
+        combined = filtered
+
+    hist_chat_string = _format_history_string(combined)
+
     if GlobalConfig.IS_DEBUG:
         print("-" * 50)
         print(hist_chat_string)
         print("-" * 50)
-    return hist_chat, hist_chat_string
 
-@sleep_for_tpm
+    return combined, hist_chat_string
+
+
 def chat(state: ChatState, llm: Callable):
-    """Chat node，使用 LLM 產生回應"""
-    # Fix #6：messages 為空時直接返回，避免 IndexError
+    """Chat node — full response (used by LangGraph pipeline)."""
     if not state.messages:
         return state
-    hist_chat, hist_chat_string = process_hist_chat(state.messages[:-1], llm)
-    current_prompt = ChatPromptTemplate.from_messages([
-    ("system", CHAT_PROMPT),
-    ("user", state.messages[-1].content)
-    ])
 
-    chain = current_prompt | llm
-    answer = chain.invoke({"memory": hist_chat_string, "horoscope": state.horoscope})
+    hist_chat, hist_chat_string = process_hist_chat(state.messages[:-1], llm)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", CHAT_PROMPT),
+        ("user", state.messages[-1].content),
+    ])
+    answer = (prompt | llm).invoke({"memory": hist_chat_string, "horoscope": state.horoscope})
     hist_chat.append(state.messages[-1])
     hist_chat.append(answer)
     state.messages = hist_chat
+
     if GlobalConfig.IS_DEBUG:
         print("@" * 50)
         print(state.messages)
         print("@" * 50)
+
     return state
+
+
+def chat_stream(messages: list, horoscope: str, llm) -> Generator[str, None, None]:
+    """
+    Streaming version of chat.
+    Yields text tokens one by one using LangChain's chain.stream().
+    Used by the /api/chat/stream SSE endpoint.
+    """
+    hist_chat, hist_chat_string = process_hist_chat(messages[:-1], llm)
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", CHAT_PROMPT),
+        ("user", messages[-1].content),
+    ])
+    for chunk in (prompt | llm).stream({"memory": hist_chat_string, "horoscope": horoscope}):
+        if hasattr(chunk, "content") and chunk.content:
+            yield chunk.content

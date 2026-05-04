@@ -42,7 +42,7 @@ class AgentProcessor:
     回傳一個可呼叫 .invoke({"messages": [...]}, config=...) 的 compiled graph。
     """
 
-    def __init__(self, model: str = "gemini-2"):
+    def __init__(self, model: str = "gemini-2.5-flash-lite"):
         self.llm = build_llm(model)
         # MemorySaver 在 __init__ 建立，跨 request 持續存活（LINE Bot 需要）
         self.memory = MemorySaver()

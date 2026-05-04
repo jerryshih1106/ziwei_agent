@@ -2,9 +2,10 @@ import os
 
 
 class GlobalConfig:
-    MODEL: str = os.environ.get("LLM_MODEL", "gemini-2")  # gemini-2, gpt-4o, gpt-3.5
+    MODEL: str = os.environ.get("LLM_MODEL", "gemini-2.5-flash-lite")  # gemini-2, gpt-4o, gpt-3.5
     IS_DEBUG: bool = os.environ.get("IS_DEBUG", "").lower() in ("1", "true", "yes")  # Fix #3：預設 False
-    IS_ONLYCHAT: bool = False
+    # Bug R4#9 Fix: 改由環境變數控制，原先硬編碼 False 導致此模式完全無法在部署時啟用
+    IS_ONLYCHAT: bool = os.environ.get("IS_ONLYCHAT", "").lower() in ("1", "true", "yes")
     MAX_TOKENS: int = 4096
     TPM_TIME: int = int(os.environ.get("TPM_TIME", "3"))  # Fix #9：可透過環境變數調整
     LOCAL_RAG_MODEL_PATH: str = "modern_bert_model"

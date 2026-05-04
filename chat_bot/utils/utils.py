@@ -6,7 +6,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel as BaseLLM
 from ..global_config import GlobalConfig
 
-def build_llm(model_name: str = "gemini-2", temperature: float = 0.7) -> BaseLLM:
+def build_llm(model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.7) -> BaseLLM:
     """
     根據 model_name 回傳對應的 LLM 物件
 
@@ -20,12 +20,11 @@ def build_llm(model_name: str = "gemini-2", temperature: float = 0.7) -> BaseLLM
 
     elif model_name == "gpt-4o":
         llm: BaseLLM = ChatOpenAI(model="gpt-4o", temperature=temperature)
-
-    elif model_name == "gemini-2":
-        llm: BaseLLM = ChatGoogleGenerativeAI(model="gemini-2.0-flash-001", temperature=temperature)
-
     else:
-        raise ValueError(f"Unsupported model_name: {model_name}")
+        try:
+            llm: BaseLLM = ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
+        except Exception as e:
+            raise ValueError(f"Unsupported model_name: {model_name}, {e}")
 
     return llm
 

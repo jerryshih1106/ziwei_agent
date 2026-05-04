@@ -1,6 +1,7 @@
 import os
 import logging
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 from langchain_core.messages import AIMessage
 from langchain_core.prompts import PromptTemplate
 
@@ -11,14 +12,16 @@ from ..utils.utils import build_llm, process_llm_output, sleep_for_tpm
 from ..prompt import KEYWORD_PROMPT, ZIWEI_PROMPT
 from ..global_config import GlobalConfig
 
-# Fix #6：_PROJECT_ROOT 放在所有 import 之後
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-_DOMAIN_DF_CACHE: pd.DataFrame | None = None  # Fix #4：CSV module-level 快取
+_DOMAIN_DF_CACHE: pd.DataFrame | None = None
 
 logger = logging.getLogger(__name__)
 
-# Fix #8：module-level singleton，避免每次 get_palace_information 重新建立（含模型載入）
 _rag_processor = None
+
+# Max parallel workers for palace analysis.
+# Keeps concurrent API calls low enough to avoid rate-limit errors.
+_PALACE_WORKERS = 3
 
 
 def _get_rag_processor():
@@ -33,7 +36,7 @@ def _get_rag_processor():
             from ..utils.md_rag_utils import AgentSkillRagProcessor
             _rag_processor = AgentSkillRagProcessor()
             logger.info("RAG mode: agent_skill (LLM-guided lookup)")
-        else:  # default: matching
+        else:
             from ..utils.md_rag_utils import MdRagProcessor
             _rag_processor = MdRagProcessor()
             logger.info("RAG mode: matching (keyword lookup)")
@@ -41,7 +44,6 @@ def _get_rag_processor():
 
 
 def _get_domain_df() -> pd.DataFrame:
-    """Fix #4：首次使用時載入 CSV，之後直接回傳快取。"""
     global _DOMAIN_DF_CACHE
     if _DOMAIN_DF_CACHE is None:
         _DOMAIN_DF_CACHE = pd.read_csv(
@@ -51,7 +53,6 @@ def _get_domain_df() -> pd.DataFrame:
 
 
 def generate_ziwei(state: ChatState):
-    """Fix #5：包裝 try/except，無效生日不 crash 整個 graph。"""
     try:
         birth_info = state.birth_info
         config = ZiWeiConfig(
@@ -67,42 +68,46 @@ def generate_ziwei(state: ChatState):
         state.messages.append(
             AIMessage(content=f"我已經排好你的命盤了: \n{chart_text}\n\n\n 有什麼需要提問的嗎?")
         )
-    except Exception:
-        logger.exception("generate_ziwei 發生錯誤")
+    except ValueError:
+        # Bug #10 Fix: ValueError 通常是出生資料本身問題（例如月份/日期無效）
+        logger.exception("generate_ziwei 資料錯誤")
         state.messages.append(
-            AIMessage(content="⚠️ 排盤時發生錯誤，請確認出生年月日時辰是否正確，或稍後再試。")
+            AIMessage(content="⚠️ 出生資料有誤，請確認年月日時辰是否正確（例如是否有閏月、日期是否存在）。")
+        )
+    except Exception:
+        # 其他錯誤（API 超時、網路問題）不應怪罪使用者
+        logger.exception("generate_ziwei 系統錯誤")
+        state.messages.append(
+            AIMessage(content="⚠️ 系統發生錯誤，請稍後再試。如問題持續請聯絡客服。")
         )
     return state
 
 
-@sleep_for_tpm
-def transformed_llm_visualize(context: str, model: str = GlobalConfig.MODEL) -> str:
-    llm = build_llm(model)
-    prompt = PromptTemplate.from_template("請排版好並顯示這個 dataframe: {df}")
-    chain = prompt | llm
-    return chain.invoke({"df": context}).content
+def transformed_llm_visualize(context: str, model: str | None = None) -> str:
+    # Bug #8 Fix: 移除不必要的 LLM 呼叫（只為排版表格）。pandas to_markdown() 已是合法 Markdown，
+    # 直接回傳即可，省一次 API call 與延遲。
+    return context
 
 
 @sleep_for_tpm
-def split_keywords(context: str, model: str = GlobalConfig.MODEL) -> list:
-    llm = build_llm(model)
-    keyword_prompt = PromptTemplate.from_template(KEYWORD_PROMPT)
-    chain = keyword_prompt | llm
-    raw = process_llm_output(chain.invoke({"sentence": context}).content)
-    # Fix #7：過濾空字串，避免空 keyword 浪費 RAG embedding 計算
+def split_keywords(context: str, model: str | None = None) -> list:
+    # Bug #2 Fix: use None sentinel instead of GlobalConfig.MODEL as default so the value
+    # is read at call time (not frozen at import time when .env may not yet be loaded).
+    llm = build_llm(model or GlobalConfig.MODEL)
+    prompt = PromptTemplate.from_template(KEYWORD_PROMPT)
+    raw = process_llm_output((prompt | llm).invoke({"sentence": context}).content)
     return [kw.strip() for kw in raw.split(",") if kw.strip()]
 
 
 @sleep_for_tpm
-def analysis_ziwei(context: str, rag_document: str, model: str = GlobalConfig.MODEL) -> str:
-    llm = build_llm(model)
-    ziwei_prompt = PromptTemplate.from_template(ZIWEI_PROMPT)
-    chain = ziwei_prompt | llm
-    return process_llm_output(chain.invoke({"sentence": context, "rag_report": rag_document}).content)
+def analysis_ziwei(context: str, rag_document: str, model: str | None = None) -> str:
+    # Bug #2 Fix: use None sentinel instead of GlobalConfig.MODEL as default.
+    llm = build_llm(model or GlobalConfig.MODEL)
+    prompt = PromptTemplate.from_template(ZIWEI_PROMPT)
+    return process_llm_output((prompt | llm).invoke({"sentence": context, "rag_report": rag_document}).content)
 
 
 def format_row(row) -> str:
-    # Fix #4：NaN 值在 bool 判斷時拋 ValueError，改用 pd.notna
     star_val = row["星"]
     if pd.notna(star_val) and star_val:
         stars = [f"{s.strip()}星" for s in str(star_val).split(",")]
@@ -127,15 +132,51 @@ def format_row(row) -> str:
     return sentence
 
 
-def get_palace_information(df: pd.DataFrame, ziwei_domain_df: pd.DataFrame) -> str:
-    analyses = []
-    rag_inst = _get_rag_processor()  # Fix #8：使用 module-level singleton
-    for _, row in df.iterrows():
-        sentence = format_row(row)
+def _extract_keywords_from_row(row) -> list[str]:
+    """
+    For RAG_MODE=matching: extract star and palace names directly from the
+    row data without an LLM call, saving one API round-trip per palace.
+    """
+    keywords = []
+    star_val = row["星"]
+    if pd.notna(star_val) and star_val:
+        for s in str(star_val).split(","):
+            s = s.strip()
+            if s:
+                keywords.append(s)  # e.g. "紫薇"
+    palace = row["宮"]
+    if pd.notna(palace) and palace:
+        keywords.append(str(palace).strip())  # e.g. "命宮"
+    return keywords
+
+
+def _analyze_row(row, rag_inst, ziwei_domain_df: pd.DataFrame) -> str:
+    """Analyze a single palace row — called in parallel across all palaces."""
+    sentence = format_row(row)
+    if GlobalConfig.RAG_MODE == "matching":
+        keyword_list = _extract_keywords_from_row(row)
+    else:
         keyword_list = split_keywords(sentence)
-        rag_document = rag_inst.retrieve_definitions(ziwei_domain_df, keyword_list)
-        result = analysis_ziwei(sentence, rag_document)
-        if result:
-            analyses.append(result)
-    # Fix #8：各宮解析之間加雙換行，報告結構清晰
-    return "\n\n".join(analyses)
+    rag_document = rag_inst.retrieve_definitions(ziwei_domain_df, keyword_list)
+    return analysis_ziwei(sentence, rag_document)
+
+
+def get_palace_information(df: pd.DataFrame, ziwei_domain_df: pd.DataFrame) -> str:
+    """
+    Analyze every palace in parallel using a thread pool.
+    For RAG_MODE=matching, keyword extraction is done locally (no LLM call),
+    so each palace only needs one LLM call (analysis_ziwei).
+    """
+    rag_inst = _get_rag_processor()
+    rows = [row for _, row in df.iterrows()]
+
+    logger.info(f"Analyzing {len(rows)} palaces with {_PALACE_WORKERS} workers "
+                f"(RAG_MODE={GlobalConfig.RAG_MODE})")
+
+    with ThreadPoolExecutor(max_workers=_PALACE_WORKERS) as executor:
+        analyses = list(executor.map(
+            lambda row: _analyze_row(row, rag_inst, ziwei_domain_df),
+            rows,
+        ))
+
+    return "\n\n".join(a for a in analyses if a)

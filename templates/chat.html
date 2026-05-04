@@ -409,8 +409,10 @@
       .quick-questions { gap: 6px; }
     }
   </style>
-  <!-- Marked.js for markdown rendering -->
-  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <!-- Bug #9 Fix: 鎖定版本號，避免 breaking change -->
+  <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
+  <!-- Bug #5 Fix: DOMPurify 防止 AI 回應中的 XSS -->
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.3/dist/purify.min.js"></script>
 </head>
 <body>
 
@@ -519,24 +521,34 @@
 
 <script>
   // Fix #4：使用 sessionStorage 持久化 SESSION_ID，頁面重整後對話不中斷
+  // Bug #3 Fix: 用 crypto.randomUUID() 取代 Date.now()，避免同毫秒開啟多頁籤時 ID 碰撞
+  function _newSessionId() {
+    return (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : 'web_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+  }
   let SESSION_ID = sessionStorage.getItem('ziwei_session_id');
   if (!SESSION_ID) {
-    SESSION_ID = 'web_' + Date.now();
+    SESSION_ID = _newSessionId();
     sessionStorage.setItem('ziwei_session_id', SESSION_ID);
   }
   let chatStarted = false;
   let isLoading = false;
+  // Bug #9 Fix: 持久化 AbortController，重置時可取消進行中的 fetch
+  let _currentController = null;
 
   // Configure marked
   if (typeof marked !== 'undefined') {
-    marked.setOptions({ breaks: true, gfm: true });
+    marked.use({ breaks: true, gfm: true });
   }
 
   function renderMarkdown(text) {
     if (typeof marked !== 'undefined') {
-      return marked.parse(text);
+      const raw = marked.parse(text);
+      // Bug #5 Fix: DOMPurify sanitize 防止 AI 回應中潛在的 XSS 攻擊
+      return (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(raw) : raw;
     }
-    return text.replace(/\n/g, '<br>');
+    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
   }
 
   function getTime() {
@@ -545,7 +557,8 @@
   }
 
   function startChat() {
-    document.getElementById('welcome-screen').remove();
+    // Bug R4#8 Fix: 用 ?.remove() 避免 welcome-screen 已被 resetChat() 清除時拋 TypeError
+    document.getElementById('welcome-screen')?.remove();
     chatStarted = true;
     appendAIMessage('HIHI～ 你好！我是紫微AI算命大師 🔯\n\n請告訴我你的**出生年月日、時辰和性別**，我就能為你排出完整的紫微斗數命盤！\n\n例如：「我是1990年3月15日卯時出生的女生」');
     document.getElementById('user-input').focus();
@@ -590,6 +603,56 @@
     `;
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  // Creates an empty AI bubble for streaming; returns the bubble element for live updates.
+  function createStreamingBubble() {
+    const msgs = document.getElementById('messages');
+    const div = document.createElement('div');
+    div.className = 'msg ai';
+    div.innerHTML = `
+      <div class="msg-avatar">🔯</div>
+      <div>
+        <div class="msg-bubble streaming-bubble"></div>
+        <div class="msg-time">${getTime()}</div>
+      </div>
+    `;
+    msgs.appendChild(div);
+    msgs.scrollTop = msgs.scrollHeight;
+    return div.querySelector('.streaming-bubble');
+  }
+
+  // Bug #7 Fix: debounce markdown rendering during streaming to avoid massive DOM churn.
+  // We render at most every RENDER_INTERVAL_MS milliseconds while tokens arrive,
+  // and always do a final authoritative render when the stream ends (Bug #9 Fix).
+  const RENDER_INTERVAL_MS = 80;
+  let _renderTimer = null;
+  let _pendingBubble = null;
+  let _pendingText = '';
+
+  function scheduleRender(bubble, text) {
+    _pendingBubble = bubble;
+    _pendingText = text;
+    if (_renderTimer) return;  // already scheduled
+    _renderTimer = setTimeout(() => {
+      _renderTimer = null;
+      if (_pendingBubble) {
+        _pendingBubble.innerHTML = renderMarkdown(_pendingText);
+        document.getElementById('messages').scrollTop =
+          document.getElementById('messages').scrollHeight;
+      }
+    }, RENDER_INTERVAL_MS);
+  }
+
+  function flushRender(bubble, text) {
+    // Bug #9 Fix: cancel any pending debounce and do a final synchronous render.
+    if (_renderTimer) { clearTimeout(_renderTimer); _renderTimer = null; }
+    _pendingBubble = null;
+    if (bubble) {
+      bubble.innerHTML = renderMarkdown(text);
+      document.getElementById('messages').scrollTop =
+        document.getElementById('messages').scrollHeight;
+    }
   }
 
   function showTyping() {
@@ -637,18 +700,65 @@
     showTyping();
 
     try {
-      const res = await fetch('/api/chat', {
+      const controller = new AbortController();
+      _currentController = controller;  // Bug #9 Fix: 記錄讓 resetChat() 能取消
+      const timer = setTimeout(() => controller.abort(), 120000);
+
+      const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: SESSION_ID })
+        body: JSON.stringify({ message: text, session_id: SESSION_ID }),
+        signal: controller.signal,
       });
-      const data = await res.json();
-      removeTyping();
-      appendAIMessage(data.reply || '抱歉，發生了一些問題，請稍後再試。');
+      clearTimeout(timer);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let bubble = null;
+      let accumulated = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const lines = decoder.decode(value, { stream: true }).split('\n');
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let evt;
+          try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (evt.token !== undefined) {
+            // First token — swap typing indicator for a real bubble
+            if (!bubble) {
+              removeTyping();
+              bubble = createStreamingBubble();
+            }
+            accumulated += evt.token;
+            // Bug #7 Fix: debounce render to avoid DOM churn on every token
+            scheduleRender(bubble, accumulated);
+          }
+
+          if (evt.done) {
+            // Bug #9 Fix: always do a final synchronous render so partial markdown is resolved
+            if (bubble) {
+              flushRender(bubble, accumulated);
+            } else {
+              // No tokens arrived (e.g. pipeline returned full text at once)
+              removeTyping();
+              appendAIMessage(accumulated || '抱歉，發生了一些問題，請稍後再試。');
+            }
+            break;
+          }
+        }
+      }
     } catch (err) {
       removeTyping();
-      appendAIMessage('⚠️ 連線發生問題，請檢查網路後重試。');
+      // Bug R4#3 Fix: AbortError 是 resetChat() 主動取消，不應顯示錯誤訊息
+      if (err.name !== 'AbortError') {
+        appendAIMessage('⚠️ 連線發生問題，請檢查網路後重試。');
+      }
     } finally {
+      _currentController = null;
       isLoading = false;
       document.getElementById('send-btn').disabled = false;
     }
@@ -670,9 +780,11 @@
 
   function appendTime(zhi) {
     const input = document.getElementById('user-input');
-    if (!input.value.includes(zhi)) {
+    // Bug R4#10 Fix: 檢查 zhi+'時' 而非 zhi，避免「卯年」等含地支的文字誤擋時辰填入
+    if (!input.value.includes(zhi + '時')) {
       input.value = input.value + (input.value ? '，' : '') + zhi + '時';
     }
+    autoResize(input);  // Bug #2 Fix: 填入時辰後需更新 textarea 高度
     input.focus();
   }
 
@@ -690,6 +802,13 @@
 
   async function resetChat() {
     if (!confirm('確定要重置對話嗎？所有命盤記錄將清除。')) return;
+    // Bug #9 Fix: 取消任何進行中的 fetch，避免舊回應附加到重置後的聊天
+    if (_currentController) {
+      _currentController.abort();
+      _currentController = null;
+    }
+    isLoading = false;
+    document.getElementById('send-btn').disabled = false;
     try {
       await fetch('/api/reset', {
         method: 'POST',
@@ -697,8 +816,8 @@
         body: JSON.stringify({ session_id: SESSION_ID })
       });
     } catch(e) {}
-    // Fix #4：重置時產生新 SESSION_ID 並存入 sessionStorage
-    SESSION_ID = 'web_' + Date.now();
+    // Fix #4 + Bug #3 Fix：重置時產生新 SESSION_ID（用 UUID 取代 Date.now()）
+    SESSION_ID = _newSessionId();
     sessionStorage.setItem('ziwei_session_id', SESSION_ID);
     const msgs = document.getElementById('messages');
     msgs.innerHTML = '';
