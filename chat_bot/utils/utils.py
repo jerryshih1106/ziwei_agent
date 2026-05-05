@@ -44,8 +44,17 @@ def process_llm_output(text):
     return text
 
 def sleep_for_tpm(func):
+    """Rate-limit decorator: sleeps GlobalConfig.TPM_TIME seconds before each call.
+
+    TPM_TIME defaults to 0 (no sleep). Set the TPM_TIME env-var only when you are
+    hitting Gemini / OpenAI TPM limits (e.g. TPM_TIME=2 for free-tier quotas).
+    Sleeping unconditionally on every LLM call adds 3 s × 12 palaces = 36 s of
+    pure waiting to every chart generation even when no rate-limit occurs.
+    """
     @wraps(func)
     def wrapper(*args, **kwargs):
-        time.sleep(GlobalConfig.TPM_TIME)
+        delay = GlobalConfig.TPM_TIME
+        if delay > 0:
+            time.sleep(delay)
         return func(*args, **kwargs)
     return wrapper

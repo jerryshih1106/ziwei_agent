@@ -7,7 +7,7 @@ class GlobalConfig:
     # Bug R4#9 Fix: 改由環境變數控制，原先硬編碼 False 導致此模式完全無法在部署時啟用
     IS_ONLYCHAT: bool = os.environ.get("IS_ONLYCHAT", "").lower() in ("1", "true", "yes")
     MAX_TOKENS: int = 4096
-    TPM_TIME: int = int(os.environ.get("TPM_TIME", "3"))  # Fix #9：可透過環境變數調整
+    TPM_TIME: int = int(os.environ.get("TPM_TIME", "0"))  # 預設 0（不 sleep）；遇 TPM 限流時設為 2~3
     LOCAL_RAG_MODEL_PATH: str = "modern_bert_model"
     RAG_MODEL = None
     RAG_SIMILARITY_THRESHOLD: float = 0.7  # 語意搜尋最低相似度門檻

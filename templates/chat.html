@@ -408,6 +408,79 @@
       .msg-bubble { max-width: 85%; }
       .quick-questions { gap: 6px; }
     }
+
+    /* ── Chart Modal ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.7);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--bg-card);
+      border: 1px solid rgba(201,162,39,0.3);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 860px;
+      max-height: 85vh;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+    .modal-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(201,162,39,0.2);
+      flex-shrink: 0;
+    }
+    .modal-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+    .modal-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.4rem;
+      cursor: pointer;
+      line-height: 1;
+      padding: 2px 6px;
+      border-radius: 6px;
+      transition: color 0.2s, background 0.2s;
+    }
+    .modal-close:hover { color: var(--gold); background: rgba(201,162,39,0.1); }
+    .modal-body {
+      padding: 20px;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-body table {
+      border-collapse: collapse;
+      width: 100%;
+      font-size: 0.85rem;
+    }
+    .modal-body table th {
+      background: rgba(201,162,39,0.2);
+      color: var(--gold);
+      padding: 7px 12px;
+      border: 1px solid rgba(201,162,39,0.3);
+      font-weight: 600;
+    }
+    .modal-body table td {
+      padding: 6px 12px;
+      border: 1px solid rgba(201,162,39,0.15);
+      color: var(--text-muted);
+      vertical-align: top;
+    }
   </style>
   <!-- Bug #9 Fix: 鎖定版本號，避免 breaking change -->
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
@@ -427,6 +500,7 @@
     </div>
   </div>
   <div class="topbar-actions">
+    <button class="topbar-btn" id="chart-btn" onclick="showChart()" style="display:none">📊 查看命盤</button>
     <button class="topbar-btn" onclick="resetChat()">🔄 重置</button>
   </div>
 </div>
@@ -516,6 +590,17 @@
       </div>
       <div class="input-hint">Enter 送出 ／ Shift+Enter 換行</div>
     </div>
+  </div>
+</div>
+
+<!-- Chart Modal -->
+<div class="modal-overlay" id="chart-modal" onclick="closeChartOnOverlay(event)">
+  <div class="modal-box">
+    <div class="modal-header">
+      <span class="modal-title">📊 紫微斗數命盤</span>
+      <button class="modal-close" onclick="closeChart()" title="關閉">✕</button>
+    </div>
+    <div class="modal-body" id="chart-modal-body"></div>
   </div>
 </div>
 
@@ -699,10 +784,11 @@
     document.getElementById('send-btn').disabled = true;
     showTyping();
 
+    let _timedOut = false;
     try {
       const controller = new AbortController();
       _currentController = controller;  // Bug #9 Fix: 記錄讓 resetChat() 能取消
-      const timer = setTimeout(() => controller.abort(), 120000);
+      const timer = setTimeout(() => { _timedOut = true; controller.abort(); }, 120000);
 
       const res = await fetch('/api/chat/stream', {
         method: 'POST',
@@ -717,6 +803,9 @@
       let bubble = null;
       let accumulated = '';
 
+      // Fix: 用 streamDone 旗標讓 done event 能跳出外層 while 迴圈，
+      // 避免 break 只跳出內層 for 迴圈後繼續多餘的 reader.read()
+      let streamDone = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -726,6 +815,10 @@
           if (!line.startsWith('data: ')) continue;
           let evt;
           try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (evt.chart !== undefined) {
+            _storeChart(evt.chart);
+          }
 
           if (evt.token !== undefined) {
             // First token — swap typing indicator for a real bubble
@@ -747,14 +840,32 @@
               removeTyping();
               appendAIMessage(accumulated || '抱歉，發生了一些問題，請稍後再試。');
             }
-            break;
+            streamDone = true;
+            break;  // 跳出 for 迴圈
           }
+        }
+        if (streamDone) break;  // Fix: 同時跳出外層 while 迴圈
+      }
+
+      // 防禦性清理：若串流非正常結束（server 未送 done event），確保 UI 恢復正常
+      if (!streamDone) {
+        removeTyping();
+        if (bubble && accumulated) {
+          flushRender(bubble, accumulated);
+        } else if (!bubble) {
+          // 完全沒有收到任何 token（可能 server 靜默斷線）
+          if (accumulated) appendAIMessage(accumulated);
         }
       }
     } catch (err) {
       removeTyping();
-      // Bug R4#3 Fix: AbortError 是 resetChat() 主動取消，不應顯示錯誤訊息
-      if (err.name !== 'AbortError') {
+      if (err.name === 'AbortError') {
+        // 區分「使用者主動重置（resetChat）」和「120 秒超時」
+        if (_timedOut) {
+          appendAIMessage('⚠️ 回應超時（超過 2 分鐘），請稍後再試。排盤期間請耐心等待，通常需 30～60 秒。');
+        }
+        // 使用者主動重置：不顯示任何訊息（resetChat 自己會加重置訊息）
+      } else {
         appendAIMessage('⚠️ 連線發生問題，請檢查網路後重試。');
       }
     } finally {
@@ -800,6 +911,38 @@
     el.style.height = Math.min(el.scrollHeight, 120) + 'px';
   }
 
+  // ── Chart modal ──────────────────────────────────────────────
+  function _storeChart(md) {
+    if (!md) return;
+    sessionStorage.setItem('ziwei_chart', md);
+    document.getElementById('chart-btn').style.display = '';
+  }
+
+  function showChart() {
+    const md = sessionStorage.getItem('ziwei_chart') || '';
+    if (!md) return;
+    document.getElementById('chart-modal-body').innerHTML =
+      (typeof DOMPurify !== 'undefined')
+        ? DOMPurify.sanitize(marked.parse(md))
+        : marked.parse(md);
+    document.getElementById('chart-modal').classList.add('open');
+  }
+
+  function closeChart() {
+    document.getElementById('chart-modal').classList.remove('open');
+  }
+
+  function closeChartOnOverlay(e) {
+    if (e.target === document.getElementById('chart-modal')) closeChart();
+  }
+
+  // Restore chart button if chart was previously stored
+  (function () {
+    if (sessionStorage.getItem('ziwei_chart')) {
+      document.getElementById('chart-btn').style.display = '';
+    }
+  })();
+
   async function resetChat() {
     if (!confirm('確定要重置對話嗎？所有命盤記錄將清除。')) return;
     // Bug #9 Fix: 取消任何進行中的 fetch，避免舊回應附加到重置後的聊天
@@ -819,6 +962,8 @@
     // Fix #4 + Bug #3 Fix：重置時產生新 SESSION_ID（用 UUID 取代 Date.now()）
     SESSION_ID = _newSessionId();
     sessionStorage.setItem('ziwei_session_id', SESSION_ID);
+    sessionStorage.removeItem('ziwei_chart');
+    document.getElementById('chart-btn').style.display = 'none';
     const msgs = document.getElementById('messages');
     msgs.innerHTML = '';
     chatStarted = true;

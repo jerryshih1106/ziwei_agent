@@ -15,3 +15,4 @@ class ChatState(BaseModel):
         "is_male": None
     })
     horoscope: str = ""
+    chart_table: str = ""

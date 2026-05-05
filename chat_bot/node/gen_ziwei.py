@@ -65,18 +65,29 @@ def generate_ziwei(state: ChatState):
         ziwei_report = get_palace_information(df, _get_domain_df())
         state.horoscope = ziwei_report
         chart_text = transformed_llm_visualize(df.to_markdown())
+        state.chart_table = chart_text
         state.messages.append(
             AIMessage(content=f"我已經排好你的命盤了: \n{chart_text}\n\n\n 有什麼需要提問的嗎?")
         )
     except ValueError:
-        # Bug #10 Fix: ValueError 通常是出生資料本身問題（例如月份/日期無效）
+        # ValueError 通常是出生資料本身問題（例如月份/日期無效）
+        # 清空 birth_info 讓使用者重新輸入，避免下一輪自動再次嘗試同樣的錯誤資料
         logger.exception("generate_ziwei 資料錯誤")
+        state.birth_info = {
+            "year": None, "month": None, "day": None, "hour": None, "is_male": None
+        }
+        state.is_fortune = False
         state.messages.append(
-            AIMessage(content="⚠️ 出生資料有誤，請確認年月日時辰是否正確（例如是否有閏月、日期是否存在）。")
+            AIMessage(content="⚠️ 出生資料有誤，請確認年月日時辰是否正確（例如是否有閏月、日期是否存在）。請重新告訴我你的出生資訊。")
         )
     except Exception:
         # 其他錯誤（API 超時、網路問題）不應怪罪使用者
+        # 同樣清空 birth_info，避免自動重試造成無限錯誤循環
         logger.exception("generate_ziwei 系統錯誤")
+        state.birth_info = {
+            "year": None, "month": None, "day": None, "hour": None, "is_male": None
+        }
+        state.is_fortune = False
         state.messages.append(
             AIMessage(content="⚠️ 系統發生錯誤，請稍後再試。如問題持續請聯絡客服。")
         )

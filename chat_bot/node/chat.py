@@ -81,17 +81,49 @@ def process_hist_chat(hist_chat: list, llm: Callable):
     return combined, hist_chat_string
 
 
+def _build_prompt(
+    hist_chat: list,
+    current_message: str,
+    horoscope: str,
+    chart_table: str = "",
+    current_year: int = 0,
+) -> ChatPromptTemplate:
+    """Build a ChatPromptTemplate with history as real message turns.
+
+    IMPORTANT: history messages and the current message are passed as
+    LangChain Message objects (not (role, str) tuples) so that LangChain
+    does NOT try to format them as templates. User messages can contain
+    curly braces (e.g. JSON, math) which would cause a KeyError if treated
+    as template variables.
+    """
+    history_turns = []
+    for msg in hist_chat:
+        if isinstance(msg, HumanMessage):
+            history_turns.append(HumanMessage(content=msg.content))
+        elif isinstance(msg, AIMessage):
+            history_turns.append(AIMessage(content=msg.content))
+
+    return ChatPromptTemplate.from_messages([
+        ("system", CHAT_PROMPT),
+        *history_turns,
+        HumanMessage(content=current_message),
+    ])
+
+
 def chat(state: ChatState, llm: Callable):
     """Chat node — full response (used by LangGraph pipeline)."""
+    import datetime
     if not state.messages:
         return state
 
-    hist_chat, hist_chat_string = process_hist_chat(state.messages[:-1], llm)
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", CHAT_PROMPT),
-        ("user", state.messages[-1].content),
-    ])
-    answer = (prompt | llm).invoke({"memory": hist_chat_string, "horoscope": state.horoscope})
+    hist_chat, _ = process_hist_chat(state.messages[:-1], llm)
+    current_year = datetime.datetime.now().year
+    prompt = _build_prompt(hist_chat, state.messages[-1].content, state.horoscope, state.chart_table, current_year)
+    answer = (prompt | llm).invoke({
+        "horoscope": state.horoscope,
+        "chart_table": state.chart_table,
+        "current_year": current_year,
+    })
     hist_chat.append(state.messages[-1])
     hist_chat.append(answer)
     state.messages = hist_chat
@@ -104,17 +136,17 @@ def chat(state: ChatState, llm: Callable):
     return state
 
 
-def chat_stream(messages: list, horoscope: str, llm) -> Generator[str, None, None]:
+def chat_stream(messages: list, horoscope: str, llm, chart_table: str = "", current_year: int = 0) -> Generator[str, None, None]:
     """
     Streaming version of chat.
     Yields text tokens one by one using LangChain's chain.stream().
     Used by the /api/chat/stream SSE endpoint.
     """
-    hist_chat, hist_chat_string = process_hist_chat(messages[:-1], llm)
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", CHAT_PROMPT),
-        ("user", messages[-1].content),
-    ])
-    for chunk in (prompt | llm).stream({"memory": hist_chat_string, "horoscope": horoscope}):
+    if not messages:
+        yield "⚠️ 沒有收到訊息，請重新輸入。"
+        return
+    hist_chat, _ = process_hist_chat(messages[:-1], llm)
+    prompt = _build_prompt(hist_chat, messages[-1].content, horoscope, chart_table, current_year)
+    for chunk in (prompt | llm).stream({"horoscope": horoscope, "chart_table": chart_table, "current_year": current_year}):
         if hasattr(chunk, "content") and chunk.content:
             yield chunk.content
