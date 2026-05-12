@@ -16,6 +16,9 @@ _DOMAIN_CSV = os.path.join(_PROJECT_ROOT, "basic_document", "star_palace_meaning
 _cache_lock = threading.Lock()
 _domain_df_cache = None  # Fix #4：CSV module-level 快取
 
+# Fix: 限制快取最大筆數，防止 Render ephemeral disk 被耗盡
+_CACHE_MAX_ENTRIES = 500
+
 
 def _load_cache() -> dict:
     if os.path.exists(_CACHE_PATH):
@@ -28,8 +31,19 @@ def _load_cache() -> dict:
 
 
 def _save_cache(cache: dict) -> None:
-    with open(_CACHE_PATH, "w", encoding="utf-8") as f:
-        json.dump(cache, f, ensure_ascii=False, indent=2)
+    # Fix: 超過上限時移除最舊的項目（dict 在 Python 3.7+ 保持插入順序）
+    if len(cache) > _CACHE_MAX_ENTRIES:
+        excess = len(cache) - _CACHE_MAX_ENTRIES
+        for old_key in list(cache.keys())[:excess]:
+            del cache[old_key]
+        logger.info("generate_ziwei_chart: cache evicted %d old entries", excess)
+    try:
+        with open(_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+    except OSError:
+        # Non-fatal: cache write failure (disk full / read-only FS on Render ephemeral).
+        # Log and continue — the tool result is already computed and will be returned.
+        logger.warning("generate_ziwei_chart: failed to write cache to %s", _CACHE_PATH, exc_info=True)
 
 
 def _cache_key(year: int, month: int, day: int, hour: int, is_male: bool) -> str:

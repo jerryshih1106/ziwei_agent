@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ziwei-agent
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: RAG_MODE
+        value: matching
+      - key: LLM_MODEL
+        value: gemini-2
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: LINE_ACCESS_KEY
+        sync: false
+      - key: LINE_SECRET
+        sync: false
+      - key: LINE_BOT_ID
+        sync: false

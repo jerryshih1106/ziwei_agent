@@ -1,10 +1,16 @@
+import asyncio
 import json
 import logging
+import queue as _queue
+import threading
 import time
-import traceback
 import uuid
 from contextlib import asynccontextmanager
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 # Fix #1：load_dotenv 必須在所有 chat_bot 模組 import 前呼叫，
@@ -14,12 +20,13 @@ load_dotenv()
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from langchain_core.messages import HumanMessage, AIMessage
 from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
 from linebot.models import TextSendMessage
 from pydantic import BaseModel
 
@@ -44,12 +51,34 @@ TIME_TABLE = [
 
 # ── 應用程式狀態 ──────────────────────────────────────────────
 _pipeline = None
+_llm = None  # Bug #5 Fix: singleton LLM reused across streaming requests (avoid rebuilding per request)
 _line_bot_api: "LineBotApi | None" = None   # Fix #9：lazy singleton
 _line_handler: "WebhookHandler | None" = None  # Fix #9：lazy singleton
 SESSION_STATS: dict = {}
 HOROSCOPE: dict = {}
+CHART_TABLE: dict = {}
 AGENT_THREAD: dict = {}
+NON_AGENT_THREAD: dict = {}    # Bug #1 Fix: non-agent 模式的 LangGraph thread_id，重置時換新 UUID
 _SESSION_LAST_SEEN: dict = {}  # Fix #5: session 最後活躍時間戳
+# Per-session asyncio.Lock — prevents concurrent requests for the same session_id from
+# running the pipeline simultaneously and causing TOCTOU races on HOROSCOPE/SESSION_STATS.
+# NOTE: asyncio.Lock must be created lazily inside the running event loop.
+# We use a plain dict protected by an asyncio.Lock for the dict itself.
+# _SESSION_LOCKS_META_LOCK is initialised once inside the lifespan (event-loop context).
+_SESSION_LOCKS: dict = {}
+_SESSION_LOCKS_META_LOCK: "asyncio.Lock | None" = None  # set in lifespan
+
+
+async def _get_session_lock(session_id: str) -> asyncio.Lock:
+    """Return (or create) the asyncio.Lock for this session_id (coroutine-safe)."""
+    global _SESSION_LOCKS_META_LOCK
+    if _SESSION_LOCKS_META_LOCK is None:
+        # Should not happen after lifespan runs, but guard anyway.
+        _SESSION_LOCKS_META_LOCK = asyncio.Lock()
+    async with _SESSION_LOCKS_META_LOCK:
+        if session_id not in _SESSION_LOCKS:
+            _SESSION_LOCKS[session_id] = asyncio.Lock()
+        return _SESSION_LOCKS[session_id]
 
 # 每個 session 最多保留的訊息輪數（fix #9：防止無限成長）
 _MAX_HISTORY = 20
@@ -59,8 +88,13 @@ _SESSION_TTL_SECS = 7200
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _pipeline
+    global _pipeline, _llm, _SESSION_LOCKS_META_LOCK
+    from chat_bot.utils.utils import build_llm
+    # Initialise the meta-lock inside the event loop so all asyncio.Lock objects
+    # created later are bound to the same loop.
+    _SESSION_LOCKS_META_LOCK = asyncio.Lock()
     _pipeline = LLMProcessor().set_pipeline()
+    _llm = build_llm(GlobalConfig.MODEL)  # Bug #5 Fix: build once, reuse in _stream_worker
     yield
 
 
@@ -105,10 +139,21 @@ def _extract_last_message(output: dict) -> str:
 
 
 def _trim_history(session_id: str) -> None:
-    """Fix #9：超過上限時，保留最新的 _MAX_HISTORY 條訊息。"""
+    """超過上限時，保留最新的 _MAX_HISTORY 條訊息。"""
     msgs = SESSION_STATS.get(session_id, [])
     if len(msgs) > _MAX_HISTORY:
         SESSION_STATS[session_id] = msgs[-_MAX_HISTORY:]
+
+
+def _pipeline_messages(session_id: str) -> list:
+    """Bug #10 Fix: 當命盤已存在時，只傳最近 12 則訊息給 pipeline。
+    命盤初期收集資料的訊息（出生資料問答）對後續對話無用，且命盤已透過 horoscope 傳遞，
+    只保留近期對話即可，減少 context 浪費。"""
+    msgs = SESSION_STATS.get(session_id, [])
+    if HOROSCOPE.get(session_id):
+        # 命盤已生成：只取最近 12 則，節省 context
+        return msgs[-12:] if len(msgs) > 12 else msgs
+    return msgs
 
 
 def _touch_session(session_id: str) -> None:
@@ -119,12 +164,17 @@ def _touch_session(session_id: str) -> None:
 def _evict_stale_sessions() -> None:
     """Fix #5：清除超過 TTL 的閒置 sessions，防止記憶體無限成長。"""
     now = time.time()
-    stale = [sid for sid, ts in _SESSION_LAST_SEEN.items() if now - ts > _SESSION_TTL_SECS]
+    # Bug R4#1 Fix: 先 list() 快照，避免另一個 coroutine 在迭代過程中修改 dict 造成 RuntimeError
+    stale = [sid for sid, ts in list(_SESSION_LAST_SEEN.items()) if now - ts > _SESSION_TTL_SECS]
     for sid in stale:
         SESSION_STATS.pop(sid, None)
         HOROSCOPE.pop(sid, None)
+        CHART_TABLE.pop(sid, None)
         AGENT_THREAD.pop(sid, None)
+        NON_AGENT_THREAD.pop(sid, None)
         _SESSION_LAST_SEEN.pop(sid, None)
+        # Fix: 同步清除 asyncio.Lock，避免 _SESSION_LOCKS 無限增長（記憶體洩漏）
+        _SESSION_LOCKS.pop(sid, None)
 
 
 # ── 行銷首頁 ──────────────────────────────────────────────────
@@ -133,6 +183,7 @@ def index(request: Request):
     line_id = GlobalConfig.LINE_BOT_ID or "@ziwei_ai"
     qr_url = f"https://qr-official.line.me/gs/M_{line_id.lstrip('@')}_BW.png"
     return templates.TemplateResponse(
+        request,
         "index.html",
         {"request": request, "line_id": line_id, "qr_url": qr_url, "time_table": TIME_TABLE},
     )
@@ -142,6 +193,7 @@ def index(request: Request):
 @app.get("/chat", response_class=HTMLResponse)
 def chat_page(request: Request):
     return templates.TemplateResponse(
+        request,
         "chat.html",
         {"request": request, "time_table": TIME_TABLE},
     )
@@ -149,65 +201,80 @@ def chat_page(request: Request):
 
 # ── 網頁聊天 API ───────────────────────────────────────────────
 @app.post("/api/chat", dependencies=[Depends(verify_api_key)])
-def api_chat(body: ChatRequest):
+async def api_chat(body: ChatRequest):
     """
     網頁版聊天 API。需在 Header 帶 `X-API-Key`（若伺服器有設定 API_KEY）。
     Request body: { "message": "...", "session_id": "..." }
     Response:     { "reply": "..." }
+    Bug #2 Fix: 改為 async def，pipeline.invoke 用 run_in_threadpool 避免阻塞 event loop
     """
     # Fix #2：pipeline 尚未就緒時提早返回
     if _pipeline is None:
         return JSONResponse(status_code=503, content={"reply": "⚠️ 服務啟動中，請稍後再試。"})
 
+    t0 = time.time()
     try:
         msg = body.message.strip()
-        session_id = body.session_id or "web_default"
+        # Bug #10 Fix: strip whitespace before fallback so "   " doesn't become a phantom session
+        session_id = (body.session_id or "").strip() or "web_default"
+        logger.info(f"[api/chat] session={session_id} msg={msg[:40]!r}")
 
         if not msg:
             return {"reply": "請輸入訊息。"}
 
-        is_reset = "/reset" in msg
+        # Bug #3 Fix: 精確匹配，避免包含 "/reset" 的一般訊息（如「什麼是 /reset？」）誤觸重置
+        is_reset = msg.strip() == "/reset"
 
-        _evict_stale_sessions()  # Fix #5：每次請求順帶清理過期 sessions
-        _touch_session(session_id)  # Fix #5
+        _evict_stale_sessions()
+        _touch_session(session_id)
 
-        if GlobalConfig.USE_AGENT_SKILL:
-            if is_reset or session_id not in AGENT_THREAD:
-                AGENT_THREAD[session_id] = str(uuid.uuid4())
-                if is_reset:
-                    return {"reply": "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"}
+        # Fix: 取得 per-session lock，防止同一 session 並發請求造成 race condition
+        session_lock = await _get_session_lock(session_id)
+        async with session_lock:
+            if GlobalConfig.USE_AGENT_SKILL:
+                if is_reset or session_id not in AGENT_THREAD:
+                    AGENT_THREAD[session_id] = str(uuid.uuid4())
+                    if is_reset:
+                        return {"reply": "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"}
 
-            config = {"configurable": {"thread_id": AGENT_THREAD[session_id]}}
-            output = _pipeline.invoke({"messages": [HumanMessage(content=msg)]}, config=config)
-            reply = _extract_last_message(output)
+                config = {"configurable": {"thread_id": AGENT_THREAD[session_id]}}
+                output = await run_in_threadpool(
+                    _pipeline.invoke, {"messages": [HumanMessage(content=msg)]}, config
+                )
+                reply = _extract_last_message(output)
 
-        else:
-            config = {"configurable": {"thread_id": session_id, "session_id": session_id}}
-            # Fix #3：移除多餘的 setdefault（下方 if 判斷已涵蓋初始化）
-            if session_id not in HOROSCOPE or is_reset:
-                HOROSCOPE[session_id] = ""
-                SESSION_STATS[session_id] = []
-                if is_reset:
-                    return {"reply": "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"}
+            else:
+                # Bug #1 Fix: 重置時換新 thread_id，LangGraph MemorySaver 不再恢復舊 birth_info
+                if session_id not in HOROSCOPE or is_reset:
+                    NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
+                    HOROSCOPE[session_id] = ""
+                    SESSION_STATS[session_id] = []
+                    if is_reset:
+                        return {"reply": "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"}
 
-            SESSION_STATS[session_id].append(HumanMessage(content=msg))
-            _trim_history(session_id)  # Fix #9
+                thread_id = NON_AGENT_THREAD.setdefault(session_id, str(uuid.uuid4()))
+                config = {"configurable": {"thread_id": thread_id, "session_id": session_id}}
 
-            output = _pipeline.invoke(
-                {"messages": SESSION_STATS[session_id], "horoscope": HOROSCOPE[session_id]},
-                config=config,
-            )
-            if not HOROSCOPE[session_id]:
-                HOROSCOPE[session_id] = output.get("horoscope", "")
+                SESSION_STATS[session_id].append(HumanMessage(content=msg))
+                _trim_history(session_id)
 
-            reply = _extract_last_message(output)
-            SESSION_STATS[session_id].append(AIMessage(content=reply))
+                output = await run_in_threadpool(
+                    _pipeline.invoke,
+                    {"messages": _pipeline_messages(session_id), "horoscope": HOROSCOPE[session_id]},
+                    config,
+                )
+                if not HOROSCOPE[session_id]:
+                    HOROSCOPE[session_id] = output.get("horoscope", "")
+                    CHART_TABLE[session_id] = output.get("chart_table", "")
 
+                reply = _extract_last_message(output)
+                SESSION_STATS[session_id].append(AIMessage(content=reply))
+
+        logger.info(f"[api/chat] done in {time.time()-t0:.1f}s")
         return {"reply": reply}
 
     except Exception as e:
-        tb = traceback.format_exc()
-        print(tb)
+        logger.exception("[api/chat] error")
         if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
             return JSONResponse(status_code=429, content={"reply": "⚠️ AI 服務目前請求過多，請稍後再試。"})
         return JSONResponse(status_code=500, content={"reply": "⚠️ 發生錯誤，請稍後再試。"})
@@ -215,14 +282,197 @@ def api_chat(body: ChatRequest):
 
 # ── 重置 API ──────────────────────────────────────────────────
 @app.post("/api/reset", dependencies=[Depends(verify_api_key)])
-def api_reset(body: ResetRequest):
+async def api_reset(body: ResetRequest):
     """清除指定 session 的對話記憶"""
-    session_id = body.session_id or "web_default"
+    # Bug #11 Fix: strip whitespace before fallback so "   " doesn't create a phantom session
+    session_id = (body.session_id or "").strip() or "web_default"
     SESSION_STATS.pop(session_id, None)
     HOROSCOPE.pop(session_id, None)
+    CHART_TABLE.pop(session_id, None)
     AGENT_THREAD.pop(session_id, None)
-    _SESSION_LAST_SEEN.pop(session_id, None)  # Fix #3：重置時一併清除 TTL 記錄
+    NON_AGENT_THREAD.pop(session_id, None)  # Bug #1 Fix: 清除 non-agent thread_id
+    _SESSION_LAST_SEEN.pop(session_id, None)
+    # Fix: 清除對應的 asyncio.Lock，避免記憶體洩漏
+    _SESSION_LOCKS.pop(session_id, None)
     return {"status": "ok"}
+
+
+# ── 命盤表格 API ──────────────────────────────────────────────
+@app.get("/api/chart", dependencies=[Depends(verify_api_key)])
+async def api_chart(session_id: str = "web_default"):
+    """回傳指定 session 的命盤 Markdown 表格。"""
+    session_id = (session_id or "").strip() or "web_default"
+    chart = CHART_TABLE.get(session_id, "")
+    return {"chart": chart}
+
+
+# ── 串流聊天 API ───────────────────────────────────────────────
+@app.post("/api/chat/stream", dependencies=[Depends(verify_api_key)])
+async def api_chat_stream(body: ChatRequest):
+    """
+    SSE 串流版聊天 API。
+    - 已有命盤的 session：逐 token 串流回傳 LLM 回應
+    - 尚未排盤的 session：一次性回傳（等待排盤完成）
+    Response format: text/event-stream
+      data: {"token": "..."}\n\n   — 每個 token
+      data: {"done": true}\n\n     — 結束
+    """
+    if _pipeline is None:
+        async def _not_ready():
+            yield f'data: {json.dumps({"token": "⚠️ 服務啟動中，請稍後再試。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+        return StreamingResponse(_not_ready(), media_type="text/event-stream")
+
+    # Bug #10 Fix: strip whitespace before fallback so "   " doesn't become a phantom session
+    session_id = (body.session_id or "").strip() or "web_default"
+    msg = body.message.strip()
+
+    if not msg:
+        async def _empty():
+            yield f'data: {json.dumps({"token": "請輸入訊息。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+        return StreamingResponse(_empty(), media_type="text/event-stream")
+
+    _evict_stale_sessions()
+    _touch_session(session_id)
+    # Bug #3 Fix: 精確匹配避免一般訊息含 "/reset" 誤觸重置
+    is_reset = msg.strip() == "/reset"
+
+    # Fix: 取得 per-session lock，防止同一 session 並發請求造成 race condition
+    session_lock = await _get_session_lock(session_id)
+
+    # ── 若尚未有命盤 or 需要重置，走一般 pipeline（非串流）─────────
+    # horoscope_ready 判斷須在 lock 外預先評估（lock 內才是 definitive check）
+    async with session_lock:
+        horoscope_ready = (
+            session_id in HOROSCOPE
+            and bool(HOROSCOPE[session_id])
+            and not is_reset
+            and not GlobalConfig.USE_AGENT_SKILL
+        )
+
+        if not horoscope_ready:
+            # Run the full pipeline synchronously in a thread
+            def _run():
+                # Bug R4#5 Fix: agent 模式使用 AGENT_THREAD，與 api_chat 邏輯一致
+                if GlobalConfig.USE_AGENT_SKILL:
+                    if is_reset or session_id not in AGENT_THREAD:
+                        AGENT_THREAD[session_id] = str(uuid.uuid4())
+                        if is_reset:
+                            return "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"
+                    config = {"configurable": {"thread_id": AGENT_THREAD[session_id]}}
+                    output = _pipeline.invoke({"messages": [HumanMessage(content=msg)]}, config)
+                    return _extract_last_message(output)
+
+                if is_reset or session_id not in HOROSCOPE:
+                    # Bug #1 Fix: 重置時換新 thread_id，清除 MemorySaver 的舊 birth_info
+                    NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
+                    HOROSCOPE[session_id] = ""
+                    CHART_TABLE[session_id] = ""
+                    SESSION_STATS[session_id] = []
+                    if is_reset:
+                        return "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"
+                SESSION_STATS.setdefault(session_id, [])
+                SESSION_STATS[session_id].append(HumanMessage(content=msg))
+                _trim_history(session_id)
+                thread_id = NON_AGENT_THREAD.setdefault(session_id, str(uuid.uuid4()))
+                config = {"configurable": {"thread_id": thread_id, "session_id": session_id}}
+                output = _pipeline.invoke(
+                    {"messages": _pipeline_messages(session_id), "horoscope": HOROSCOPE[session_id]},
+                    config=config,
+                )
+                if not HOROSCOPE[session_id]:
+                    HOROSCOPE[session_id] = output.get("horoscope", "")
+                    CHART_TABLE[session_id] = output.get("chart_table", "")
+                reply = _extract_last_message(output)
+                SESSION_STATS[session_id].append(AIMessage(content=reply))
+                return reply
+
+            try:
+                reply = await run_in_threadpool(_run)
+            except Exception as e:
+                # Bug #8 Fix: surface rate-limit errors distinctly, same as non-stream endpoint
+                if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+                    reply = "⚠️ AI 服務目前請求過多，請稍後再試。"
+                else:
+                    reply = "⚠️ 發生錯誤，請稍後再試。"
+                logger.exception("[stream] pipeline error")
+
+            chart_md = CHART_TABLE.get(session_id, "")
+
+            async def _single(r, chart=""):
+                yield f'data: {json.dumps({"token": r})}\n\n'
+                if chart:
+                    yield f'data: {json.dumps({"chart": chart})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+            return StreamingResponse(_single(reply, chart_md), media_type="text/event-stream")
+
+        # ── 已有命盤，串流 chat 回應 ──────────────────────────────────
+        from chat_bot.node.chat import chat_stream
+
+        SESSION_STATS.setdefault(session_id, []).append(HumanMessage(content=msg))
+        _trim_history(session_id)
+
+        import datetime as _dt_now
+        messages_snapshot = list(SESSION_STATS[session_id])
+        horoscope_snapshot = HOROSCOPE[session_id]
+        chart_table_snapshot = CHART_TABLE.get(session_id, "")
+        current_year_snapshot = _dt_now.datetime.now().year
+
+    # lock 釋放後才開串流，避免 lock 被長時間持有（串流期間可接受下一個請求排隊）
+    token_q: _queue.Queue = _queue.Queue()
+    # Fix: cancel_event 讓 _stream_worker 在用戶斷線後提早退出，避免繼續消耗 API quota
+    cancel_event = threading.Event()
+
+    def _stream_worker():
+        try:
+            # Bug R4#6 Fix: guard against _llm being None (e.g. lifespan startup failed)
+            if _llm is None:
+                token_q.put("⚠️ 服務尚未就緒，請稍後再試。")
+                return
+            for token in chat_stream(messages_snapshot, horoscope_snapshot, _llm, chart_table_snapshot, current_year_snapshot):  # Bug #5 Fix: reuse singleton
+                if cancel_event.is_set():
+                    break
+                token_q.put(token)
+        except Exception:
+            logger.exception("[stream] chat_stream error")
+            # Bug #8 Fix: 將錯誤訊息送入 queue，前端可顯示而非留空白 bubble
+            if not cancel_event.is_set():
+                token_q.put("⚠️ 回應時發生錯誤，請稍後再試。")
+        finally:
+            token_q.put(None)  # sentinel
+
+    t = threading.Thread(target=_stream_worker, daemon=True)
+    t.start()
+
+    async def _token_generator():
+        full_reply: list[str] = []
+        loop = asyncio.get_running_loop()
+        try:
+            while True:
+                token = await loop.run_in_executor(None, token_q.get)
+                if token is None:
+                    break
+                full_reply.append(token)
+                yield f'data: {json.dumps({"token": token})}\n\n'
+
+            yield f'data: {json.dumps({"done": True})}\n\n'
+        finally:
+            # Fix: 通知 _stream_worker 停止（用戶斷線或串流正常結束）
+            cancel_event.set()
+            # Bug R4#2 Fix: 無論是否中途斷線都要清理 SESSION_STATS，
+            # 避免 HumanMessage 孤立在歷史中破壞下一輪對話 context
+            if full_reply:
+                complete = "".join(full_reply)
+                SESSION_STATS[session_id].append(AIMessage(content=complete))
+                _trim_history(session_id)
+            elif SESSION_STATS.get(session_id) and isinstance(
+                SESSION_STATS[session_id][-1], HumanMessage
+            ):
+                # 沒有收到任何 token（斷線前 LLM 未回應）→ 移除懸空的 HumanMessage
+                SESSION_STATS[session_id].pop()
+
+    return StreamingResponse(_token_generator(), media_type="text/event-stream")
 
 
 # ── LINE Bot Webhook ───────────────────────────────────────────
@@ -240,15 +490,24 @@ async def linebot(request: Request):
         # Fix #9：lazy singleton，避免每次請求重新建立 client 物件
         # Fix #10：若 LINE 金鑰未設定，提早返回避免後續 AttributeError
         global _line_bot_api, _line_handler
-        if _line_bot_api is None:
+        if _line_bot_api is None or _line_handler is None:
             if not GlobalConfig.LINE_ACCESS_KEY or not GlobalConfig.LINE_SECRET:
                 logger.warning("LINE_ACCESS_KEY 或 LINE_SECRET 未設定，略過 webhook 處理")
                 return "OK"
-            _line_bot_api = LineBotApi(GlobalConfig.LINE_ACCESS_KEY)
-            _line_handler = WebhookHandler(GlobalConfig.LINE_SECRET)
+            # 同時初始化兩個物件：若任一失敗都不保留半初始化狀態
+            new_api = LineBotApi(GlobalConfig.LINE_ACCESS_KEY)
+            new_handler = WebhookHandler(GlobalConfig.LINE_SECRET)
+            _line_bot_api = new_api
+            _line_handler = new_handler
         line_bot_api = _line_bot_api
         handler = _line_handler
-        handler.handle(body_text, request.headers.get("X-Line-Signature", ""))
+        try:
+            handler.handle(body_text, request.headers.get("X-Line-Signature", ""))
+        except InvalidSignatureError:
+            # LINE platform requires 400 on bad signature; returning OK would cause
+            # LINE to keep retrying (infinite retry loop).
+            logger.warning("[linebot] invalid signature — rejecting request")
+            raise HTTPException(status_code=400, detail="Invalid signature")
 
         _evict_stale_sessions()  # Fix #5：每次請求順帶清理過期 sessions
 
@@ -264,10 +523,15 @@ async def linebot(request: Request):
                         line_bot_api.reply_message(tk, TextSendMessage("我是算命機器人, 看不到文字以外的訊息喔!"))
                     continue
 
-                tk = event["replyToken"]
+                # Bug R4#7 Fix: 用 .get() 避免 KeyError 讓 tk 保持 unbound 進而引發 NameError
+                tk = event.get("replyToken", "")
+                if not tk:
+                    logger.warning("[linebot] event missing replyToken, skipping")
+                    continue
                 msg = event["message"]["text"]
                 user_id = event["source"]["userId"]
-                is_reset = "/reset" in msg
+                # Bug #3 Fix: 精確匹配避免一般訊息誤觸重置
+                is_reset = msg.strip() == "/reset"
 
                 if _pipeline is None:
                     line_bot_api.reply_message(tk, TextSendMessage("服務啟動中，請稍後再試。"))
@@ -289,20 +553,23 @@ async def linebot(request: Request):
                     reply = _extract_last_message(output)
 
                 else:
-                    config = {"configurable": {"thread_id": user_id, "session_id": user_id}}
+                    # Bug #1 Fix: 重置時換新 thread_id，清除 MemorySaver 的舊 birth_info
                     if user_id not in HOROSCOPE or is_reset:
+                        NON_AGENT_THREAD[user_id] = str(uuid.uuid4())
                         HOROSCOPE[user_id] = ""
                         SESSION_STATS[user_id] = []
                         if is_reset:
                             line_bot_api.reply_message(tk, TextSendMessage("已重置對話！請重新告訴我你的出生資料。"))
                             continue
 
+                    thread_id = NON_AGENT_THREAD.setdefault(user_id, str(uuid.uuid4()))
+                    config = {"configurable": {"thread_id": thread_id, "session_id": user_id}}
                     SESSION_STATS[user_id].append(HumanMessage(content=msg))
                     _trim_history(user_id)
 
                     output = await run_in_threadpool(
                         _pipeline.invoke,
-                        {"messages": SESSION_STATS[user_id], "horoscope": HOROSCOPE[user_id]},
+                        {"messages": _pipeline_messages(user_id), "horoscope": HOROSCOPE[user_id]},
                         config,
                     )
                     if not HOROSCOPE[user_id]:
@@ -310,16 +577,23 @@ async def linebot(request: Request):
 
                     reply = _extract_last_message(output)
                     SESSION_STATS[user_id].append(AIMessage(content=reply))
-                    print("cur_state:", SESSION_STATS[user_id])
+                    logger.debug("[linebot] cur_state: %s", SESSION_STATS[user_id])
 
-                print(reply)
+                logger.debug("[linebot] reply: %.100s", reply)
                 line_bot_api.reply_message(tk, TextSendMessage(reply))
 
             except Exception:
-                print(traceback.format_exc())
+                # Bug #1 Fix: 內層例外也要回覆用戶，否則 LINE 用戶等不到回應
+                # Bug R4#7 Fix: tk 現在保證已設定（上方已過濾空值並 continue）
+                logger.exception("[linebot] error handling event")
+                try:
+                    if tk:
+                        line_bot_api.reply_message(tk, TextSendMessage("⚠️ 處理訊息時發生錯誤，請稍後再試。"))
+                except Exception:
+                    pass
 
     except Exception:
-        print(traceback.format_exc())
+        logger.exception("[linebot] outer error")
 
     return "OK"
 
