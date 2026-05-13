@@ -67,7 +67,7 @@ def generate_ziwei(state: ChatState):
         chart_text = transformed_llm_visualize(df.to_markdown())
         state.chart_table = chart_text
         state.messages.append(
-            AIMessage(content=f"我已經排好你的命盤了: \n{chart_text}\n\n\n 有什麼需要提問的嗎?")
+            AIMessage(content=f'我已經排好你的命盤了: \n 生日: {birth_info["year"]}年{birth_info["month"]}月{birth_info["day"]}日, {birth_info["hour"]}時\n\n\n {chart_text}\n\n\n 有什麼需要提問的嗎?')
         )
     except ValueError:
         # ValueError 通常是出生資料本身問題（例如月份/日期無效）

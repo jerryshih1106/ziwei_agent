@@ -16,3 +16,4 @@ class ChatState(BaseModel):
     })
     horoscope: str = ""
     chart_table: str = ""
+    user_profile: str = ""

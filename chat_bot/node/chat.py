@@ -81,12 +81,19 @@ def process_hist_chat(hist_chat: list, llm: Callable):
     return combined, hist_chat_string
 
 
+def _format_user_profile(user_profile: str) -> str:
+    if not user_profile:
+        return ""
+    return f"\n【顧客個人資料】\n{user_profile}\n"
+
+
 def _build_prompt(
     hist_chat: list,
     current_message: str,
     horoscope: str,
     chart_table: str = "",
     current_year: int = 0,
+    user_profile: str = "",
 ) -> ChatPromptTemplate:
     """Build a ChatPromptTemplate with history as real message turns.
 
@@ -118,11 +125,13 @@ def chat(state: ChatState, llm: Callable):
 
     hist_chat, _ = process_hist_chat(state.messages[:-1], llm)
     current_year = datetime.datetime.now().year
-    prompt = _build_prompt(hist_chat, state.messages[-1].content, state.horoscope, state.chart_table, current_year)
+    user_profile_section = _format_user_profile(state.user_profile)
+    prompt = _build_prompt(hist_chat, state.messages[-1].content, state.horoscope, state.chart_table, current_year, state.user_profile)
     answer = (prompt | llm).invoke({
         "horoscope": state.horoscope,
         "chart_table": state.chart_table,
         "current_year": current_year,
+        "user_profile": user_profile_section,
     })
     hist_chat.append(state.messages[-1])
     hist_chat.append(answer)
@@ -136,7 +145,7 @@ def chat(state: ChatState, llm: Callable):
     return state
 
 
-def chat_stream(messages: list, horoscope: str, llm, chart_table: str = "", current_year: int = 0) -> Generator[str, None, None]:
+def chat_stream(messages: list, horoscope: str, llm, chart_table: str = "", current_year: int = 0, user_profile: str = "") -> Generator[str, None, None]:
     """
     Streaming version of chat.
     Yields text tokens one by one using LangChain's chain.stream().
@@ -146,7 +155,8 @@ def chat_stream(messages: list, horoscope: str, llm, chart_table: str = "", curr
         yield "⚠️ 沒有收到訊息，請重新輸入。"
         return
     hist_chat, _ = process_hist_chat(messages[:-1], llm)
-    prompt = _build_prompt(hist_chat, messages[-1].content, horoscope, chart_table, current_year)
-    for chunk in (prompt | llm).stream({"horoscope": horoscope, "chart_table": chart_table, "current_year": current_year}):
+    user_profile_section = _format_user_profile(user_profile)
+    prompt = _build_prompt(hist_chat, messages[-1].content, horoscope, chart_table, current_year, user_profile)
+    for chunk in (prompt | llm).stream({"horoscope": horoscope, "chart_table": chart_table, "current_year": current_year, "user_profile": user_profile_section}):
         if hasattr(chunk, "content") and chunk.content:
             yield chunk.content

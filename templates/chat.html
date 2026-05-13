@@ -481,11 +481,111 @@
       color: var(--text-muted);
       vertical-align: top;
     }
+
+    /* ── Auth Modal ── */
+    .auth-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.85);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 1000;
+    }
+    .auth-overlay.hidden { display: none; }
+    .auth-card {
+      background: var(--bg-card);
+      border: 1px solid rgba(201,162,39,0.35);
+      border-radius: 16px;
+      padding: 36px 40px;
+      width: 360px;
+      max-width: calc(100vw - 32px);
+      box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+    }
+    .auth-logo {
+      text-align: center;
+      font-size: 2.8rem;
+      margin-bottom: 8px;
+    }
+    .auth-title {
+      text-align: center;
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.2rem;
+      color: var(--gold);
+      margin-bottom: 24px;
+    }
+    .auth-tabs {
+      display: flex;
+      border-bottom: 1px solid rgba(201,162,39,0.2);
+      margin-bottom: 24px;
+    }
+    .auth-tab {
+      flex: 1; padding: 8px 0; text-align: center;
+      cursor: pointer; font-size: 0.95rem;
+      color: var(--text-muted);
+      border-bottom: 2px solid transparent;
+      transition: all 0.2s;
+    }
+    .auth-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+    .auth-form { display: none; }
+    .auth-form.active { display: block; }
+    .auth-label {
+      display: block; font-size: 0.82rem;
+      color: var(--text-muted); margin-bottom: 6px;
+    }
+    .auth-input {
+      width: 100%; padding: 10px 14px;
+      background: rgba(45,27,84,0.6);
+      border: 1px solid rgba(201,162,39,0.25);
+      border-radius: 8px; color: var(--text-light);
+      font-size: 0.95rem; margin-bottom: 16px;
+      outline: none; transition: border-color 0.2s;
+    }
+    .auth-input:focus { border-color: var(--gold); }
+    .auth-submit {
+      width: 100%; padding: 12px;
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border: none; border-radius: 8px;
+      color: #1a0e00; font-weight: 700;
+      font-size: 1rem; cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .auth-submit:hover { opacity: 0.88; }
+    .auth-error {
+      font-size: 0.82rem; color: #e74c3c;
+      text-align: center; margin-bottom: 12px;
+      min-height: 1.2em;
+    }
+
+    /* ── User info in topbar ── */
+    .topbar-user {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.82rem; color: var(--text-muted);
+    }
+    .topbar-username {
+      color: var(--gold);
+      font-weight: 600;
+      max-width: 100px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .topbar-logout {
+      background: rgba(201,162,39,0.08);
+      border: 1px solid rgba(201,162,39,0.2);
+      color: var(--text-muted);
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .topbar-logout:hover { color: var(--gold); border-color: var(--gold); }
   </style>
   <!-- Bug #9 Fix: 鎖定版本號，避免 breaking change -->
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
   <!-- Bug #5 Fix: DOMPurify 防止 AI 回應中的 XSS -->
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.3/dist/purify.min.js"></script>
+  <!-- KaTeX 數學公式渲染 -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+    onload="window._katexReady = true"></script>
 </head>
 <body>
 
@@ -498,6 +598,10 @@
       <div class="bot-name">紫微AI算命大師</div>
       <div class="bot-status"><span class="status-dot"></span> 線上服務中</div>
     </div>
+  </div>
+  <div class="topbar-user" id="topbar-user" style="display:none">
+    <span id="topbar-username" class="topbar-username"></span>
+    <button class="topbar-logout" onclick="logout()">登出</button>
   </div>
   <div class="topbar-actions">
     <button class="topbar-btn" id="chart-btn" onclick="showChart()" style="display:none">📊 查看命盤</button>
@@ -593,6 +697,38 @@
   </div>
 </div>
 
+<!-- Auth Modal -->
+<div class="auth-overlay" id="auth-modal">
+  <div class="auth-card">
+    <div class="auth-logo">🔯</div>
+    <div class="auth-title">紫微AI算命大師</div>
+    <div class="auth-tabs">
+      <div class="auth-tab active" id="tab-login" onclick="switchAuthTab('login')">登入</div>
+      <div class="auth-tab" id="tab-register" onclick="switchAuthTab('register')">註冊</div>
+    </div>
+    <!-- Login Form -->
+    <div class="auth-form active" id="form-login">
+      <div class="auth-error" id="login-error"></div>
+      <label class="auth-label">帳號</label>
+      <input class="auth-input" id="login-username" type="text" placeholder="請輸入帳號" autocomplete="username">
+      <label class="auth-label">密碼</label>
+      <input class="auth-input" id="login-password" type="password" placeholder="請輸入密碼" autocomplete="current-password">
+      <button class="auth-submit" onclick="doLogin()">登入</button>
+    </div>
+    <!-- Register Form -->
+    <div class="auth-form" id="form-register">
+      <div class="auth-error" id="register-error"></div>
+      <label class="auth-label">帳號（3-20 字元）</label>
+      <input class="auth-input" id="reg-username" type="text" placeholder="請輸入帳號" autocomplete="username">
+      <label class="auth-label">密碼（至少 6 字元）</label>
+      <input class="auth-input" id="reg-password" type="password" placeholder="請輸入密碼" autocomplete="new-password">
+      <label class="auth-label">確認密碼</label>
+      <input class="auth-input" id="reg-confirm" type="password" placeholder="再次輸入密碼" autocomplete="new-password">
+      <button class="auth-submit" onclick="doRegister()">建立帳號</button>
+    </div>
+  </div>
+</div>
+
 <!-- Chart Modal -->
 <div class="modal-overlay" id="chart-modal" onclick="closeChartOnOverlay(event)">
   <div class="modal-box">
@@ -605,32 +741,181 @@
 </div>
 
 <script>
-  // Fix #4：使用 sessionStorage 持久化 SESSION_ID，頁面重整後對話不中斷
-  // Bug #3 Fix: 用 crypto.randomUUID() 取代 Date.now()，避免同毫秒開啟多頁籤時 ID 碰撞
-  function _newSessionId() {
-    return (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : 'web_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+  // ── Auth ──────────────────────────────────────────────────────
+  function _parseJwtPayload(token) {
+    try {
+      return JSON.parse(atob(token.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')));
+    } catch { return null; }
   }
-  let SESSION_ID = sessionStorage.getItem('ziwei_session_id');
-  if (!SESSION_ID) {
-    SESSION_ID = _newSessionId();
-    sessionStorage.setItem('ziwei_session_id', SESSION_ID);
+
+  function _getStoredToken() { return localStorage.getItem('ziwei_token'); }
+  function _getStoredUser() { return localStorage.getItem('ziwei_username'); }
+
+  function _saveAuth(token, username, sessionId) {
+    localStorage.setItem('ziwei_token', token);
+    localStorage.setItem('ziwei_username', username);
+    localStorage.setItem('ziwei_session_id', sessionId);
   }
+
+  function _clearAuth() {
+    localStorage.removeItem('ziwei_token');
+    localStorage.removeItem('ziwei_username');
+    localStorage.removeItem('ziwei_session_id');
+  }
+
+  function _isTokenValid(token) {
+    const payload = _parseJwtPayload(token);
+    if (!payload) return false;
+    return payload.exp > Math.floor(Date.now() / 1000);
+  }
+
+  function switchAuthTab(tab) {
+    document.getElementById('tab-login').classList.toggle('active', tab === 'login');
+    document.getElementById('tab-register').classList.toggle('active', tab === 'register');
+    document.getElementById('form-login').classList.toggle('active', tab === 'login');
+    document.getElementById('form-register').classList.toggle('active', tab === 'register');
+    document.getElementById('login-error').textContent = '';
+    document.getElementById('register-error').textContent = '';
+  }
+
+  async function doLogin() {
+    const username = document.getElementById('login-username').value.trim();
+    const password = document.getElementById('login-password').value;
+    const errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    if (!username || !password) { errEl.textContent = '請填入帳號和密碼'; return; }
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.detail || '登入失敗'; return; }
+      _saveAuth(data.token, data.username, data.session_id);
+      _onAuthSuccess(data.username, data.session_id);
+    } catch { errEl.textContent = '網路錯誤，請稍後再試'; }
+  }
+
+  async function doRegister() {
+    const username = document.getElementById('reg-username').value.trim();
+    const password = document.getElementById('reg-password').value;
+    const confirm  = document.getElementById('reg-confirm').value;
+    const errEl = document.getElementById('register-error');
+    errEl.textContent = '';
+    if (!username || !password) { errEl.textContent = '請填入帳號和密碼'; return; }
+    if (password !== confirm) { errEl.textContent = '兩次密碼輸入不一致'; return; }
+    try {
+      const res = await fetch('/api/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) { errEl.textContent = data.detail || '註冊失敗'; return; }
+      _saveAuth(data.token, data.username, data.session_id);
+      _onAuthSuccess(data.username, data.session_id);
+    } catch { errEl.textContent = '網路錯誤，請稍後再試'; }
+  }
+
+  async function _onAuthSuccess(username, sessionId) {
+    SESSION_ID = sessionId;
+    document.getElementById('auth-modal').classList.add('hidden');
+    document.getElementById('topbar-user').style.display = 'flex';
+    document.getElementById('topbar-username').textContent = username;
+
+    // 確保 welcome screen 移除，chatStarted 正確
+    document.getElementById('welcome-screen')?.remove();
+    chatStarted = true;
+
+    // 查詢是否已有命盤
+    let hasChart = false;
+    try {
+      const res = await fetch(`/api/chart?session_id=${encodeURIComponent(sessionId)}`);
+      const data = await res.json();
+      if (data.chart) {
+        sessionStorage.setItem('ziwei_chart', data.chart);
+        document.getElementById('chart-btn').style.display = '';
+        hasChart = true;
+      }
+    } catch {}
+
+    if (hasChart) {
+      appendAIMessage(`歡迎回來，**${username}**！\n\n你的紫微斗數命盤已就緒 📊，可以直接向我提問，例如感情、事業、財運等方向。`);
+    } else {
+      appendAIMessage(`你好，**${username}**！我是紫微AI算命大師 🔯\n\n請告訴我你的**出生年月日、時辰和性別**，我就能為你排出完整的紫微斗數命盤！\n\n例如：「我是1990年3月15日卯時出生的女生」`);
+    }
+    document.getElementById('user-input').focus();
+  }
+
+  async function logout() {
+    _clearAuth();
+    SESSION_ID = null;
+    document.getElementById('topbar-user').style.display = 'none';
+    document.getElementById('topbar-username').textContent = '';
+    // Reset chat state (skip confirm) and show auth modal
+    await resetChat(true);
+    document.getElementById('auth-modal').classList.remove('hidden');
+    switchAuthTab('login');
+  }
+
+  // ── Session ID initialisation (auth-based) ────────────────────
+  let SESSION_ID = null;
+  (function initAuth() {
+    const token = _getStoredToken();
+    if (token && _isTokenValid(token)) {
+      const payload = _parseJwtPayload(token);
+      SESSION_ID = payload.session_id || localStorage.getItem('ziwei_session_id');
+      const username = _getStoredUser() || payload.sub;
+      document.getElementById('auth-modal').classList.add('hidden');
+      // Defer so current script stack finishes before modifying messages
+      setTimeout(() => _onAuthSuccess(username, SESSION_ID), 0);
+    }
+    // If no valid token, auth modal stays visible (default state in HTML)
+  })();
+
   let chatStarted = false;
   let isLoading = false;
   // Bug #9 Fix: 持久化 AbortController，重置時可取消進行中的 fetch
   let _currentController = null;
+  let _loadingMsgTimer = null;
 
   // Configure marked
   if (typeof marked !== 'undefined') {
     marked.use({ breaks: true, gfm: true });
   }
 
+  // ── 數學公式保護 (避免 marked.js 破壞 LaTeX) ───────────────────
+  function _extractMath(text) {
+    const segs = [];
+    // 先取出 $$...$$（display），再取 $...$（inline）
+    text = text.replace(/\$\$([\s\S]*?)\$\$/g, m => `\x02MATH${segs.push(m) - 1}\x03`);
+    text = text.replace(/\$([^\n$\\]*(?:\\.[^\n$\\]*)*)\$/g, m => `\x02MATH${segs.push(m) - 1}\x03`);
+    return { text, segs };
+  }
+  function _restoreMath(html, segs) {
+    return html.replace(/\x02MATH(\d+)\x03/g, (_, i) =>
+      segs[+i].replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    );
+  }
+  function _renderMath(el) {
+    if (!el || !window._katexReady) return;
+    try {
+      renderMathInElement(el, {
+        delimiters: [
+          { left: '$$', right: '$$', display: true },
+          { left: '$',  right: '$',  display: false },
+        ],
+        throwOnError: false,
+      });
+    } catch {}
+  }
+
   function renderMarkdown(text) {
     if (typeof marked !== 'undefined') {
-      const raw = marked.parse(text);
-      // Bug #5 Fix: DOMPurify sanitize 防止 AI 回應中潛在的 XSS 攻擊
+      const { text: safe, segs } = _extractMath(text);
+      let raw = marked.parse(safe);
+      raw = _restoreMath(raw, segs);
       return (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(raw) : raw;
     }
     return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
@@ -687,6 +972,7 @@
       </div>
     `;
     msgs.appendChild(div);
+    _renderMath(div.querySelector('.msg-bubble'));
     msgs.scrollTop = msgs.scrollHeight;
   }
 
@@ -735,6 +1021,7 @@
     _pendingBubble = null;
     if (bubble) {
       bubble.innerHTML = renderMarkdown(text);
+      _renderMath(bubble);
       document.getElementById('messages').scrollTop =
         document.getElementById('messages').scrollHeight;
     }
@@ -757,9 +1044,11 @@
     `;
     msgs.appendChild(div);
     msgs.scrollTop = msgs.scrollHeight;
+    // 排盤提示由後端 SSE 立即推送，不需 client-side fallback timeout
   }
 
   function removeTyping() {
+    if (_loadingMsgTimer) { clearTimeout(_loadingMsgTimer); _loadingMsgTimer = null; }
     const el = document.getElementById('typing-indicator');
     if (el) el.remove();
   }
@@ -818,6 +1107,12 @@
 
           if (evt.chart !== undefined) {
             _storeChart(evt.chart);
+          }
+
+          if (evt.clear) {
+            // 後端排盤完成，清除 loading 訊息，準備顯示實際回應
+            accumulated = '';
+            if (bubble) bubble.innerHTML = '';
           }
 
           if (evt.token !== undefined) {
@@ -943,32 +1238,51 @@
     }
   })();
 
-  async function resetChat() {
-    if (!confirm('確定要重置對話嗎？所有命盤記錄將清除。')) return;
+  async function resetChat(skipConfirm) {
+    if (!skipConfirm && !confirm('確定要重置對話嗎？所有命盤記錄將清除。')) return;
     // Bug #9 Fix: 取消任何進行中的 fetch，避免舊回應附加到重置後的聊天
     if (_currentController) {
       _currentController.abort();
       _currentController = null;
     }
     isLoading = false;
-    document.getElementById('send-btn').disabled = false;
-    try {
-      await fetch('/api/reset', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: SESSION_ID })
-      });
-    } catch(e) {}
-    // Fix #4 + Bug #3 Fix：重置時產生新 SESSION_ID（用 UUID 取代 Date.now()）
-    SESSION_ID = _newSessionId();
-    sessionStorage.setItem('ziwei_session_id', SESSION_ID);
-    sessionStorage.removeItem('ziwei_chart');
-    document.getElementById('chart-btn').style.display = 'none';
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn) sendBtn.disabled = false;
+    if (SESSION_ID) {
+      try {
+        await fetch('/api/reset', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: SESSION_ID })
+        });
+      } catch(e) {}
+    }
+    // 命盤資料持久化 — 重置只清對話記憶，不清命盤
+    const hadChart = !!sessionStorage.getItem('ziwei_chart');
     const msgs = document.getElementById('messages');
-    msgs.innerHTML = '';
-    chatStarted = true;
-    appendAIMessage('✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你重新排盤。');
+    if (msgs) { msgs.innerHTML = ''; chatStarted = true; }
+    if (!skipConfirm) {
+      if (hadChart) {
+        appendAIMessage('✅ 對話記憶已重置！你的命盤資料仍然保留 📊，可以繼續提問。');
+      } else {
+        appendAIMessage('✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你排盤。');
+      }
+    }
   }
+
+  // Support Enter key in auth inputs
+  document.addEventListener('DOMContentLoaded', () => {
+    ['login-username','login-password'].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); doLogin(); }
+      });
+    });
+    ['reg-username','reg-password','reg-confirm'].forEach(id => {
+      document.getElementById(id).addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); doRegister(); }
+      });
+    });
+  });
 </script>
 </body>
 </html>

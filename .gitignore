@@ -5,3 +5,7 @@ __pycache__
 modern_bert_model/
 *.ipynb_checkpoints
 .claude/
+memory/*.md
+horoscope/*.json
+users.db
+whitelist.md

@@ -23,3 +23,4 @@ class GlobalConfig:
     LINE_SECRET: str = os.environ.get("LINE_SECRET", "")
     LINE_BOT_ID: str = os.environ.get("LINE_BOT_ID", "@ziwei_ai")
     API_KEY: str = os.environ.get("API_KEY", "")
+    ALLOW_REGISTER: bool = os.environ.get("ALLOW_REGISTER", "false").lower() in ("1", "true", "yes")

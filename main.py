@@ -60,6 +60,7 @@ CHART_TABLE: dict = {}
 AGENT_THREAD: dict = {}
 NON_AGENT_THREAD: dict = {}    # Bug #1 Fix: non-agent 模式的 LangGraph thread_id，重置時換新 UUID
 _SESSION_LAST_SEEN: dict = {}  # Fix #5: session 最後活躍時間戳
+USER_PROFILES: dict = {}       # 用戶 playbook 快取（key: session_id, value: md 字串）
 # Per-session asyncio.Lock — prevents concurrent requests for the same session_id from
 # running the pipeline simultaneously and causing TOCTOU races on HOROSCOPE/SESSION_STATS.
 # NOTE: asyncio.Lock must be created lazily inside the running event loop.
@@ -90,9 +91,12 @@ _SESSION_TTL_SECS = 7200
 async def lifespan(app: FastAPI):
     global _pipeline, _llm, _SESSION_LOCKS_META_LOCK
     from chat_bot.utils.utils import build_llm
+    from chat_bot.auth.auth import init_db, sync_whitelist
     # Initialise the meta-lock inside the event loop so all asyncio.Lock objects
     # created later are bound to the same loop.
     _SESSION_LOCKS_META_LOCK = asyncio.Lock()
+    init_db()
+    sync_whitelist()
     _pipeline = LLMProcessor().set_pipeline()
     _llm = build_llm(GlobalConfig.MODEL)  # Bug #5 Fix: build once, reuse in _stream_worker
     yield
@@ -126,6 +130,16 @@ class ChatRequest(BaseModel):
 
 class ResetRequest(BaseModel):
     session_id: str = "web_default"
+
+
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
 
 
 # ── 工具函式 ──────────────────────────────────────────────────
@@ -173,8 +187,16 @@ def _evict_stale_sessions() -> None:
         AGENT_THREAD.pop(sid, None)
         NON_AGENT_THREAD.pop(sid, None)
         _SESSION_LAST_SEEN.pop(sid, None)
+        USER_PROFILES.pop(sid, None)
         # Fix: 同步清除 asyncio.Lock，避免 _SESSION_LOCKS 無限增長（記憶體洩漏）
         _SESSION_LOCKS.pop(sid, None)
+
+
+def _playbook_conv(session_id: str, n: int = 5) -> str:
+    """回傳最近 n 則用戶訊息，作為 update_playbook 的對話上下文。"""
+    msgs = SESSION_STATS.get(session_id, [])
+    user_texts = [m.content for m in msgs if isinstance(m, HumanMessage)][-n:]
+    return "\n".join(f"用戶: {t}" for t in user_texts)
 
 
 # ── 行銷首頁 ──────────────────────────────────────────────────
@@ -197,6 +219,48 @@ def chat_page(request: Request):
         "chat.html",
         {"request": request, "time_table": TIME_TABLE},
     )
+
+
+# ── 帳戶驗證 API ──────────────────────────────────────────────
+@app.post("/api/auth/register")
+async def api_register(body: RegisterRequest):
+    if not GlobalConfig.ALLOW_REGISTER:
+        raise HTTPException(status_code=403, detail="目前不開放自行註冊")
+    from chat_bot.auth.auth import create_user, create_token
+    username = body.username.strip()
+    password = body.password
+    if len(username) < 3 or len(username) > 20:
+        raise HTTPException(status_code=400, detail="帳號長度需為 3-20 字元")
+    if len(password) < 6:
+        raise HTTPException(status_code=400, detail="密碼至少需要 6 個字元")
+    user = create_user(username, password)
+    if user is None:
+        raise HTTPException(status_code=409, detail="帳號已被使用")
+    token = create_token(user["username"], user["session_id"])
+    return {"token": token, "username": user["username"], "session_id": user["session_id"]}
+
+
+@app.post("/api/auth/login")
+async def api_login(body: LoginRequest):
+    from chat_bot.auth.auth import authenticate_user, create_token
+    user = authenticate_user(body.username.strip(), body.password)
+    if user is None:
+        raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
+    token = create_token(user["username"], user["session_id"])
+    return {"token": token, "username": user["username"], "session_id": user["session_id"]}
+
+
+@app.get("/api/auth/me")
+async def api_me(request: Request):
+    from chat_bot.auth.auth import verify_token
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="未登入")
+    user = verify_token(token)
+    if user is None:
+        raise HTTPException(status_code=401, detail="Token 已過期或無效")
+    return {"username": user["username"], "session_id": user["session_id"]}
 
 
 # ── 網頁聊天 API ───────────────────────────────────────────────
@@ -228,14 +292,26 @@ async def api_chat(body: ChatRequest):
         _evict_stale_sessions()
         _touch_session(session_id)
 
+        from chat_bot.utils.user_playbook import load_playbook, update_playbook
+        user_profile = USER_PROFILES.get(session_id) or load_playbook(session_id)
+        USER_PROFILES[session_id] = user_profile
+
         # Fix: 取得 per-session lock，防止同一 session 並發請求造成 race condition
         session_lock = await _get_session_lock(session_id)
         async with session_lock:
+            # 記憶體沒有命盤時從 DB 補載
+            if not HOROSCOPE.get(session_id) and not is_reset and not GlobalConfig.USE_AGENT_SKILL:
+                from chat_bot.auth.auth import load_horoscope
+                _h, _ct = await run_in_threadpool(load_horoscope, session_id)
+                if _h:
+                    HOROSCOPE[session_id] = _h
+                    CHART_TABLE[session_id] = _ct or ""
+
             if GlobalConfig.USE_AGENT_SKILL:
                 if is_reset or session_id not in AGENT_THREAD:
                     AGENT_THREAD[session_id] = str(uuid.uuid4())
                     if is_reset:
-                        return {"reply": "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"}
+                        return {"reply": "✅ 對話記憶已重置！" if HOROSCOPE.get(session_id) else "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"}
 
                 config = {"configurable": {"thread_id": AGENT_THREAD[session_id]}}
                 output = await run_in_threadpool(
@@ -244,13 +320,14 @@ async def api_chat(body: ChatRequest):
                 reply = _extract_last_message(output)
 
             else:
-                # Bug #1 Fix: 重置時換新 thread_id，LangGraph MemorySaver 不再恢復舊 birth_info
-                if session_id not in HOROSCOPE or is_reset:
+                if is_reset:
+                    NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
+                    SESSION_STATS[session_id] = []
+                    return {"reply": "✅ 對話記憶已重置！你的命盤資料仍然保留，可以繼續發問。" if HOROSCOPE.get(session_id) else "✅ 對話已重置！請告訴我你的出生年月日、時辰和性別，我來幫你排盤。"}
+                elif session_id not in HOROSCOPE:
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
                     HOROSCOPE[session_id] = ""
                     SESSION_STATS[session_id] = []
-                    if is_reset:
-                        return {"reply": "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"}
 
                 thread_id = NON_AGENT_THREAD.setdefault(session_id, str(uuid.uuid4()))
                 config = {"configurable": {"thread_id": thread_id, "session_id": session_id}}
@@ -260,15 +337,35 @@ async def api_chat(body: ChatRequest):
 
                 output = await run_in_threadpool(
                     _pipeline.invoke,
-                    {"messages": _pipeline_messages(session_id), "horoscope": HOROSCOPE[session_id]},
+                    {"messages": _pipeline_messages(session_id), "horoscope": HOROSCOPE[session_id], "user_profile": user_profile},
                     config,
                 )
                 if not HOROSCOPE[session_id]:
                     HOROSCOPE[session_id] = output.get("horoscope", "")
                     CHART_TABLE[session_id] = output.get("chart_table", "")
+                    if HOROSCOPE[session_id]:
+                        from chat_bot.auth.auth import save_horoscope
+                        threading.Thread(
+                            target=save_horoscope,
+                            args=(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, "")),
+                            daemon=True,
+                        ).start()
 
                 reply = _extract_last_message(output)
                 SESSION_STATS[session_id].append(AIMessage(content=reply))
+
+        # 背景更新 user playbook（不阻塞回應）
+        if not is_reset and _llm is not None:
+            _llm_ref = _llm
+            _sid = session_id
+            _conv = _playbook_conv(session_id)
+            import threading
+            threading.Thread(
+                target=update_playbook,
+                args=(_sid, _conv, _llm_ref),
+                daemon=True,
+            ).start()
+            USER_PROFILES.pop(session_id, None)  # 下次請求時從磁碟重新載入最新資料
 
         logger.info(f"[api/chat] done in {time.time()-t0:.1f}s")
         return {"reply": reply}
@@ -283,16 +380,14 @@ async def api_chat(body: ChatRequest):
 # ── 重置 API ──────────────────────────────────────────────────
 @app.post("/api/reset", dependencies=[Depends(verify_api_key)])
 async def api_reset(body: ResetRequest):
-    """清除指定 session 的對話記憶"""
-    # Bug #11 Fix: strip whitespace before fallback so "   " doesn't create a phantom session
+    """清除指定 session 的對話記憶（保留命盤資料）"""
     session_id = (body.session_id or "").strip() or "web_default"
     SESSION_STATS.pop(session_id, None)
-    HOROSCOPE.pop(session_id, None)
-    CHART_TABLE.pop(session_id, None)
+    # HOROSCOPE/CHART_TABLE 保留 — 命盤資料依帳號持久化，重置只清對話記憶
     AGENT_THREAD.pop(session_id, None)
-    NON_AGENT_THREAD.pop(session_id, None)  # Bug #1 Fix: 清除 non-agent thread_id
+    NON_AGENT_THREAD.pop(session_id, None)
     _SESSION_LAST_SEEN.pop(session_id, None)
-    # Fix: 清除對應的 asyncio.Lock，避免記憶體洩漏
+    USER_PROFILES.pop(session_id, None)
     _SESSION_LOCKS.pop(session_id, None)
     return {"status": "ok"}
 
@@ -300,9 +395,13 @@ async def api_reset(body: ResetRequest):
 # ── 命盤表格 API ──────────────────────────────────────────────
 @app.get("/api/chart", dependencies=[Depends(verify_api_key)])
 async def api_chart(session_id: str = "web_default"):
-    """回傳指定 session 的命盤 Markdown 表格。"""
+    """回傳指定 session 的命盤 Markdown 表格（先查記憶體，再查 DB）。"""
     session_id = (session_id or "").strip() or "web_default"
     chart = CHART_TABLE.get(session_id, "")
+    if not chart:
+        from chat_bot.auth.auth import load_horoscope
+        _, ct = await run_in_threadpool(load_horoscope, session_id)
+        chart = ct or ""
     return {"chart": chart}
 
 
@@ -338,12 +437,23 @@ async def api_chat_stream(body: ChatRequest):
     # Bug #3 Fix: 精確匹配避免一般訊息含 "/reset" 誤觸重置
     is_reset = msg.strip() == "/reset"
 
+    from chat_bot.utils.user_playbook import load_playbook, update_playbook
+    user_profile = USER_PROFILES.get(session_id) or load_playbook(session_id)
+    USER_PROFILES[session_id] = user_profile
+
     # Fix: 取得 per-session lock，防止同一 session 並發請求造成 race condition
     session_lock = await _get_session_lock(session_id)
 
     # ── 若尚未有命盤 or 需要重置，走一般 pipeline（非串流）─────────
-    # horoscope_ready 判斷須在 lock 外預先評估（lock 內才是 definitive check）
     async with session_lock:
+        # 記憶體沒有命盤時從 DB 補載（伺服器重啟後不需重新排盤）
+        if not HOROSCOPE.get(session_id) and not is_reset:
+            from chat_bot.auth.auth import load_horoscope
+            _h, _ct = await run_in_threadpool(load_horoscope, session_id)
+            if _h:
+                HOROSCOPE[session_id] = _h
+                CHART_TABLE[session_id] = _ct or ""
+
         horoscope_ready = (
             session_id in HOROSCOPE
             and bool(HOROSCOPE[session_id])
@@ -352,60 +462,92 @@ async def api_chat_stream(body: ChatRequest):
         )
 
         if not horoscope_ready:
-            # Run the full pipeline synchronously in a thread
-            def _run():
-                # Bug R4#5 Fix: agent 模式使用 AGENT_THREAD，與 api_chat 邏輯一致
-                if GlobalConfig.USE_AGENT_SKILL:
-                    if is_reset or session_id not in AGENT_THREAD:
-                        AGENT_THREAD[session_id] = str(uuid.uuid4())
-                        if is_reset:
-                            return "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"
-                    config = {"configurable": {"thread_id": AGENT_THREAD[session_id]}}
-                    output = _pipeline.invoke({"messages": [HumanMessage(content=msg)]}, config)
-                    return _extract_last_message(output)
+            # ── 在 lock 內完成所有狀態設定，定義 _run closure ────────────
+            _reset_msg = None
 
-                if is_reset or session_id not in HOROSCOPE:
-                    # Bug #1 Fix: 重置時換新 thread_id，清除 MemorySaver 的舊 birth_info
+            if GlobalConfig.USE_AGENT_SKILL:
+                if is_reset or session_id not in AGENT_THREAD:
+                    AGENT_THREAD[session_id] = str(uuid.uuid4())
+                    if is_reset:
+                        _reset_msg = "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"
+                if not _reset_msg:
+                    _ag_config = {"configurable": {"thread_id": AGENT_THREAD[session_id]}}
+                    def _run():
+                        output = _pipeline.invoke({"messages": [HumanMessage(content=msg)]}, _ag_config)
+                        return _extract_last_message(output)
+            else:
+                if is_reset:
+                    # 重置只清對話記憶，命盤資料保留
+                    NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
+                    SESSION_STATS[session_id] = []
+                    _reset_msg = "✅ 對話記憶已重置！你的命盤資料仍然保留，可以繼續發問。" if HOROSCOPE.get(session_id) else "✅ 對話已重置！請告訴我你的出生年月日、時辰和性別，我來幫你排盤。"
+                elif session_id not in HOROSCOPE:
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
                     HOROSCOPE[session_id] = ""
                     CHART_TABLE[session_id] = ""
                     SESSION_STATS[session_id] = []
-                    if is_reset:
-                        return "✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別。"
-                SESSION_STATS.setdefault(session_id, [])
-                SESSION_STATS[session_id].append(HumanMessage(content=msg))
-                _trim_history(session_id)
-                thread_id = NON_AGENT_THREAD.setdefault(session_id, str(uuid.uuid4()))
-                config = {"configurable": {"thread_id": thread_id, "session_id": session_id}}
-                output = _pipeline.invoke(
-                    {"messages": _pipeline_messages(session_id), "horoscope": HOROSCOPE[session_id]},
-                    config=config,
-                )
-                if not HOROSCOPE[session_id]:
-                    HOROSCOPE[session_id] = output.get("horoscope", "")
-                    CHART_TABLE[session_id] = output.get("chart_table", "")
-                reply = _extract_last_message(output)
-                SESSION_STATS[session_id].append(AIMessage(content=reply))
-                return reply
+                if not _reset_msg:
+                    SESSION_STATS.setdefault(session_id, [])
+                    SESSION_STATS[session_id].append(HumanMessage(content=msg))
+                    _trim_history(session_id)
+                    _tid = NON_AGENT_THREAD.setdefault(session_id, str(uuid.uuid4()))
+                    _cfg = {"configurable": {"thread_id": _tid, "session_id": session_id}}
+                    _msgs_snap = _pipeline_messages(session_id)
+                    _horoscope_snap = HOROSCOPE[session_id]
+                    def _run():
+                        output = _pipeline.invoke(
+                            {"messages": _msgs_snap, "horoscope": _horoscope_snap, "user_profile": user_profile},
+                            config=_cfg,
+                        )
+                        if not HOROSCOPE[session_id]:
+                            HOROSCOPE[session_id] = output.get("horoscope", "")
+                            CHART_TABLE[session_id] = output.get("chart_table", "")
+                            # 命盤生成後存入 DB，伺服器重啟後不需重新排盤
+                            if HOROSCOPE[session_id]:
+                                from chat_bot.auth.auth import save_horoscope
+                                save_horoscope(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""))
+                        r = _extract_last_message(output)
+                        SESSION_STATS[session_id].append(AIMessage(content=r))
+                        return r
 
-            try:
-                reply = await run_in_threadpool(_run)
-            except Exception as e:
-                # Bug #8 Fix: surface rate-limit errors distinctly, same as non-stream endpoint
-                if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
-                    reply = "⚠️ AI 服務目前請求過多，請稍後再試。"
-                else:
-                    reply = "⚠️ 發生錯誤，請稍後再試。"
-                logger.exception("[stream] pipeline error")
+            # ── 重置：立即回應 ─────────────────────────────────────────
+            if _reset_msg is not None:
+                async def _rst_gen():
+                    yield f'data: {json.dumps({"token": _reset_msg})}\n\n'
+                    yield f'data: {json.dumps({"done": True})}\n\n'
+                return StreamingResponse(_rst_gen(), media_type="text/event-stream")
 
-            chart_md = CHART_TABLE.get(session_id, "")
-
-            async def _single(r, chart=""):
-                yield f'data: {json.dumps({"token": r})}\n\n'
-                if chart:
-                    yield f'data: {json.dumps({"chart": chart})}\n\n'
+            # ── 非重置：return 會退出 async with，釋放 lock；
+            #   generator 在 FastAPI 迭代時才真正執行（lock 已釋放）────────
+            async def _pipeline_stream():
+                # 立即送出 loading 訊息，瀏覽器馬上顯示
+                yield f'data: {json.dumps({"token": "⏳ 正在排命盤中，大約需要兩到三分鐘，請稍後..."})}\n\n'
+                try:
+                    reply = await run_in_threadpool(_run)
+                except Exception as exc:
+                    if "RESOURCE_EXHAUSTED" in str(exc) or "429" in str(exc):
+                        reply = "⚠️ AI 服務目前請求過多，請稍後再試。"
+                    else:
+                        reply = "⚠️ 發生錯誤，請稍後再試。"
+                    logger.exception("[stream] pipeline error")
+                if _llm is not None:
+                    _lref = _llm
+                    _conv_snap = _playbook_conv(session_id)
+                    threading.Thread(
+                        target=update_playbook,
+                        args=(session_id, _conv_snap, _lref),
+                        daemon=True,
+                    ).start()
+                    USER_PROFILES.pop(session_id, None)
+                chart_md = CHART_TABLE.get(session_id, "")
+                # clear 事件讓前端清除 loading 訊息，再顯示實際回應
+                yield f'data: {json.dumps({"clear": True})}\n\n'
+                yield f'data: {json.dumps({"token": reply})}\n\n'
+                if chart_md:
+                    yield f'data: {json.dumps({"chart": chart_md})}\n\n'
                 yield f'data: {json.dumps({"done": True})}\n\n'
-            return StreamingResponse(_single(reply, chart_md), media_type="text/event-stream")
+
+            return StreamingResponse(_pipeline_stream(), media_type="text/event-stream")
 
         # ── 已有命盤，串流 chat 回應 ──────────────────────────────────
         from chat_bot.node.chat import chat_stream
@@ -418,6 +560,7 @@ async def api_chat_stream(body: ChatRequest):
         horoscope_snapshot = HOROSCOPE[session_id]
         chart_table_snapshot = CHART_TABLE.get(session_id, "")
         current_year_snapshot = _dt_now.datetime.now().year
+        user_profile_snapshot = user_profile
 
     # lock 釋放後才開串流，避免 lock 被長時間持有（串流期間可接受下一個請求排隊）
     token_q: _queue.Queue = _queue.Queue()
@@ -430,7 +573,7 @@ async def api_chat_stream(body: ChatRequest):
             if _llm is None:
                 token_q.put("⚠️ 服務尚未就緒，請稍後再試。")
                 return
-            for token in chat_stream(messages_snapshot, horoscope_snapshot, _llm, chart_table_snapshot, current_year_snapshot):  # Bug #5 Fix: reuse singleton
+            for token in chat_stream(messages_snapshot, horoscope_snapshot, _llm, chart_table_snapshot, current_year_snapshot, user_profile_snapshot):  # Bug #5 Fix: reuse singleton
                 if cancel_event.is_set():
                     break
                 token_q.put(token)
@@ -466,6 +609,16 @@ async def api_chat_stream(body: ChatRequest):
                 complete = "".join(full_reply)
                 SESSION_STATS[session_id].append(AIMessage(content=complete))
                 _trim_history(session_id)
+                # 背景更新 playbook（串流完成後）
+                if _llm is not None:
+                    _lref = _llm
+                    _conv_snap = _playbook_conv(session_id)
+                    threading.Thread(
+                        target=update_playbook,
+                        args=(session_id, _conv_snap, _lref),
+                        daemon=True,
+                    ).start()
+                    USER_PROFILES.pop(session_id, None)
             elif SESSION_STATS.get(session_id) and isinstance(
                 SESSION_STATS[session_id][-1], HumanMessage
             ):
@@ -539,6 +692,10 @@ async def linebot(request: Request):
 
                 _touch_session(user_id)
 
+                from chat_bot.utils.user_playbook import load_playbook, update_playbook
+                line_user_profile = USER_PROFILES.get(user_id) or load_playbook(user_id)
+                USER_PROFILES[user_id] = line_user_profile
+
                 if GlobalConfig.USE_AGENT_SKILL:
                     if is_reset or user_id not in AGENT_THREAD:
                         AGENT_THREAD[user_id] = str(uuid.uuid4())
@@ -569,7 +726,7 @@ async def linebot(request: Request):
 
                     output = await run_in_threadpool(
                         _pipeline.invoke,
-                        {"messages": _pipeline_messages(user_id), "horoscope": HOROSCOPE[user_id]},
+                        {"messages": _pipeline_messages(user_id), "horoscope": HOROSCOPE[user_id], "user_profile": line_user_profile},
                         config,
                     )
                     if not HOROSCOPE[user_id]:
@@ -581,6 +738,17 @@ async def linebot(request: Request):
 
                 logger.debug("[linebot] reply: %.100s", reply)
                 line_bot_api.reply_message(tk, TextSendMessage(reply))
+
+                # 背景更新 playbook
+                if not is_reset and _llm is not None:
+                    _lref = _llm
+                    _conv_snap = _playbook_conv(user_id)
+                    threading.Thread(
+                        target=update_playbook,
+                        args=(user_id, _conv_snap, _lref),
+                        daemon=True,
+                    ).start()
+                    USER_PROFILES.pop(user_id, None)
 
             except Exception:
                 # Bug #1 Fix: 內層例外也要回覆用戶，否則 LINE 用戶等不到回應
