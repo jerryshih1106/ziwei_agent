@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import queue as _queue
 import threading
 import time
@@ -103,6 +104,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="紫微斗數 API", lifespan=lifespan)
+os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
