@@ -58,6 +58,7 @@ _line_handler: "WebhookHandler | None" = None  # Fix #9：lazy singleton
 SESSION_STATS: dict = {}
 HOROSCOPE: dict = {}
 CHART_TABLE: dict = {}
+BIRTH_INFO: dict = {}
 AGENT_THREAD: dict = {}
 NON_AGENT_THREAD: dict = {}    # Bug #1 Fix: non-agent 模式的 LangGraph thread_id，重置時換新 UUID
 _SESSION_LAST_SEEN: dict = {}  # Fix #5: session 最後活躍時間戳
@@ -186,6 +187,7 @@ def _evict_stale_sessions() -> None:
         SESSION_STATS.pop(sid, None)
         HOROSCOPE.pop(sid, None)
         CHART_TABLE.pop(sid, None)
+        BIRTH_INFO.pop(sid, None)
         AGENT_THREAD.pop(sid, None)
         NON_AGENT_THREAD.pop(sid, None)
         _SESSION_LAST_SEEN.pop(sid, None)
@@ -304,10 +306,12 @@ async def api_chat(body: ChatRequest):
             # 記憶體沒有命盤時從 DB 補載
             if not HOROSCOPE.get(session_id) and not is_reset and not GlobalConfig.USE_AGENT_SKILL:
                 from chat_bot.auth.auth import load_horoscope
-                _h, _ct = await run_in_threadpool(load_horoscope, session_id)
+                _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
                 if _h:
                     HOROSCOPE[session_id] = _h
                     CHART_TABLE[session_id] = _ct or ""
+                    if _bi:
+                        BIRTH_INFO[session_id] = _bi
 
             if GlobalConfig.USE_AGENT_SKILL:
                 if is_reset or session_id not in AGENT_THREAD:
@@ -325,7 +329,10 @@ async def api_chat(body: ChatRequest):
                 if is_reset:
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
                     SESSION_STATS[session_id] = []
-                    return {"reply": "✅ 對話記憶已重置！你的命盤資料仍然保留，可以繼續發問。" if HOROSCOPE.get(session_id) else "✅ 對話已重置！請告訴我你的出生年月日、時辰和性別，我來幫你排盤。"}
+                    HOROSCOPE.pop(session_id, None)
+                    CHART_TABLE.pop(session_id, None)
+                    BIRTH_INFO.pop(session_id, None)
+                    return {"reply": "✅ 對話與命盤已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你排盤。"}
                 elif session_id not in HOROSCOPE:
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
                     HOROSCOPE[session_id] = ""
@@ -345,11 +352,14 @@ async def api_chat(body: ChatRequest):
                 if not HOROSCOPE[session_id]:
                     HOROSCOPE[session_id] = output.get("horoscope", "")
                     CHART_TABLE[session_id] = output.get("chart_table", "")
+                    _bi = output.get("birth_info") or {}
+                    if _bi:
+                        BIRTH_INFO[session_id] = _bi
                     if HOROSCOPE[session_id]:
                         from chat_bot.auth.auth import save_horoscope
                         threading.Thread(
                             target=save_horoscope,
-                            args=(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, "")),
+                            args=(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id)),
                             daemon=True,
                         ).start()
 
@@ -382,10 +392,12 @@ async def api_chat(body: ChatRequest):
 # ── 重置 API ──────────────────────────────────────────────────
 @app.post("/api/reset", dependencies=[Depends(verify_api_key)])
 async def api_reset(body: ResetRequest):
-    """清除指定 session 的對話記憶（保留命盤資料）"""
+    """清除指定 session 的對話記憶與命盤，讓使用者可以重新排盤。"""
     session_id = (body.session_id or "").strip() or "web_default"
     SESSION_STATS.pop(session_id, None)
-    # HOROSCOPE/CHART_TABLE 保留 — 命盤資料依帳號持久化，重置只清對話記憶
+    HOROSCOPE.pop(session_id, None)
+    CHART_TABLE.pop(session_id, None)
+    BIRTH_INFO.pop(session_id, None)
     AGENT_THREAD.pop(session_id, None)
     NON_AGENT_THREAD.pop(session_id, None)
     _SESSION_LAST_SEEN.pop(session_id, None)
@@ -394,17 +406,61 @@ async def api_reset(body: ResetRequest):
     return {"status": "ok"}
 
 
+@app.post("/api/clear-chart", dependencies=[Depends(verify_api_key)])
+async def api_clear_chart(body: ResetRequest):
+    """只清除命盤資料（HOROSCOPE / CHART_TABLE / BIRTH_INFO + 磁碟檔案），保留對話記憶。
+    用於「排新命盤」：讓使用者為不同人排盤，不需清除對話歷史。
+    關鍵：必須刪除磁碟上的 horoscope 檔案，否則下次請求會從磁碟重載舊命盤。
+    同時重置 NON_AGENT_THREAD，讓 LangGraph state 回到初始（is_fortune=False）。"""
+    session_id = (body.session_id or "").strip() or "web_default"
+    HOROSCOPE.pop(session_id, None)
+    CHART_TABLE.pop(session_id, None)
+    BIRTH_INFO.pop(session_id, None)
+    SESSION_STATS.pop(session_id, None)
+    USER_PROFILES.pop(session_id, None)
+    # Reset conversation thread so LangGraph starts fresh (birth_info / is_fortune reset)
+    NON_AGENT_THREAD.pop(session_id, None)
+    # Delete horoscope file — without this, the next request would reload the old chart from disk
+    from chat_bot.auth.auth import delete_horoscope
+    await run_in_threadpool(delete_horoscope, session_id)
+    return {"status": "ok"}
+
+
 # ── 命盤表格 API ──────────────────────────────────────────────
 @app.get("/api/chart", dependencies=[Depends(verify_api_key)])
 async def api_chart(session_id: str = "web_default"):
-    """回傳指定 session 的命盤 Markdown 表格（先查記憶體，再查 DB）。"""
+    """回傳指定 session 的命盤 Markdown 表格與出生資料（先查記憶體，再查 DB）。"""
     session_id = (session_id or "").strip() or "web_default"
     chart = CHART_TABLE.get(session_id, "")
+    birth_info = BIRTH_INFO.get(session_id)
     if not chart:
         from chat_bot.auth.auth import load_horoscope
-        _, ct = await run_in_threadpool(load_horoscope, session_id)
+        _, ct, bi = await run_in_threadpool(load_horoscope, session_id)
         chart = ct or ""
-    return {"chart": chart}
+        if bi and not birth_info:
+            birth_info = bi
+            BIRTH_INFO[session_id] = bi
+    return {"chart": chart, "birth_info": birth_info}
+
+
+# ── 對話歷史 API ──────────────────────────────────────────────
+@app.get("/api/history")
+async def api_history(session_id: str = "web_default", limit: int = 30, offset: int = 0):
+    """回傳指定 session 的聊天歷史（最多 limit 筆，依時間升序）。"""
+    session_id = (session_id or "").strip() or "web_default"
+    limit = max(1, min(limit, 100))
+    from chat_bot.auth.auth import load_chat_history
+    messages = await run_in_threadpool(load_chat_history, session_id, limit, offset)
+    return {"messages": messages, "has_more": len(messages) == limit}
+
+
+@app.delete("/api/history")
+async def api_history_delete(session_id: str = "web_default"):
+    """清除指定 session 的聊天歷史。"""
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import clear_chat_history
+    await run_in_threadpool(clear_chat_history, session_id)
+    return {"status": "ok"}
 
 
 # ── 串流聊天 API ───────────────────────────────────────────────
@@ -451,10 +507,12 @@ async def api_chat_stream(body: ChatRequest):
         # 記憶體沒有命盤時從 DB 補載（伺服器重啟後不需重新排盤）
         if not HOROSCOPE.get(session_id) and not is_reset:
             from chat_bot.auth.auth import load_horoscope
-            _h, _ct = await run_in_threadpool(load_horoscope, session_id)
+            _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
             if _h:
                 HOROSCOPE[session_id] = _h
                 CHART_TABLE[session_id] = _ct or ""
+                if _bi:
+                    BIRTH_INFO[session_id] = _bi
 
         horoscope_ready = (
             session_id in HOROSCOPE
@@ -479,10 +537,12 @@ async def api_chat_stream(body: ChatRequest):
                         return _extract_last_message(output)
             else:
                 if is_reset:
-                    # 重置只清對話記憶，命盤資料保留
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
                     SESSION_STATS[session_id] = []
-                    _reset_msg = "✅ 對話記憶已重置！你的命盤資料仍然保留，可以繼續發問。" if HOROSCOPE.get(session_id) else "✅ 對話已重置！請告訴我你的出生年月日、時辰和性別，我來幫你排盤。"
+                    HOROSCOPE.pop(session_id, None)
+                    CHART_TABLE.pop(session_id, None)
+                    BIRTH_INFO.pop(session_id, None)
+                    _reset_msg = "✅ 對話與命盤已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你排盤。"
                 elif session_id not in HOROSCOPE:
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
                     HOROSCOPE[session_id] = ""
@@ -504,10 +564,13 @@ async def api_chat_stream(body: ChatRequest):
                         if not HOROSCOPE[session_id]:
                             HOROSCOPE[session_id] = output.get("horoscope", "")
                             CHART_TABLE[session_id] = output.get("chart_table", "")
+                            _bi = output.get("birth_info") or {}
+                            if _bi:
+                                BIRTH_INFO[session_id] = _bi
                             # 命盤生成後存入 DB，伺服器重啟後不需重新排盤
                             if HOROSCOPE[session_id]:
                                 from chat_bot.auth.auth import save_horoscope
-                                save_horoscope(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""))
+                                save_horoscope(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id))
                         r = _extract_last_message(output)
                         SESSION_STATS[session_id].append(AIMessage(content=r))
                         return r
@@ -546,8 +609,12 @@ async def api_chat_stream(body: ChatRequest):
                 yield f'data: {json.dumps({"clear": True})}\n\n'
                 yield f'data: {json.dumps({"token": reply})}\n\n'
                 if chart_md:
-                    yield f'data: {json.dumps({"chart": chart_md})}\n\n'
+                    yield f'data: {json.dumps({"chart": chart_md, "birth_info": BIRTH_INFO.get(session_id)})}\n\n'
                 yield f'data: {json.dumps({"done": True})}\n\n'
+                # 背景儲存排盤對話到 chat_history DB
+                from chat_bot.auth.auth import save_chat_message as _save_msg
+                threading.Thread(target=_save_msg, args=(session_id, "user", msg), daemon=True).start()
+                threading.Thread(target=_save_msg, args=(session_id, "ai", reply), daemon=True).start()
 
             return StreamingResponse(_pipeline_stream(), media_type="text/event-stream")
 
@@ -611,6 +678,10 @@ async def api_chat_stream(body: ChatRequest):
                 complete = "".join(full_reply)
                 SESSION_STATS[session_id].append(AIMessage(content=complete))
                 _trim_history(session_id)
+                # 背景儲存訊息到 chat_history DB
+                from chat_bot.auth.auth import save_chat_message as _save_msg
+                threading.Thread(target=_save_msg, args=(session_id, "user", msg), daemon=True).start()
+                threading.Thread(target=_save_msg, args=(session_id, "ai", complete), daemon=True).start()
                 # 背景更新 playbook（串流完成後）
                 if _llm is not None:
                     _lref = _llm
@@ -628,6 +699,230 @@ async def api_chat_stream(body: ChatRequest):
                 SESSION_STATS[session_id].pop()
 
     return StreamingResponse(_token_generator(), media_type="text/event-stream")
+
+
+# ── 每日運勢 API ──────────────────────────────────────────────
+_DAILY_FORTUNE_PROMPT = """你是資深紫微斗數命理師。以下是命主的命盤分析資料，請為他/她生成今天（{today}）的運勢分析。
+
+命盤資料摘要：
+{horoscope}
+
+請按以下格式回答（繁體中文，整體精簡有力）：
+
+## 今日整體運勢 {stars}
+
+**今日概述：** （一到兩句點出今日主題）
+
+| 面向 | 運勢 | 提示 |
+|------|------|------|
+| 💕 感情 | ★★★★☆ | 一句話 |
+| 💼 事業 | ★★★☆☆ | 一句話 |
+| 💰 財運 | ★★★★☆ | 一句話 |
+| ❤️ 健康 | ★★★☆☆ | 一句話 |
+
+**今日行動建議：** 具體可執行的一件事。
+
+🎨 **幸運色：** XXX　　🔢 **幸運數字：** X"""
+
+
+@app.get("/api/daily-fortune")
+async def api_daily_fortune(session_id: str = "web_default"):
+    """SSE 串流：回傳今日運勢（同一天同 session 只生成一次，之後從 DB 快取回傳）。"""
+    import datetime as _dt
+    session_id = (session_id or "").strip() or "web_default"
+    today = _dt.date.today().isoformat()   # e.g. "2026-05-17"
+
+    from chat_bot.auth.auth import get_daily_fortune, save_daily_fortune, load_horoscope
+
+    async def _stream():
+        # 先查快取
+        cached = await run_in_threadpool(get_daily_fortune, session_id, today)
+        if cached:
+            yield f'data: {json.dumps({"token": cached})}\n\n'
+            yield f'data: {json.dumps({"done": True, "cached": True})}\n\n'
+            return
+
+        # 確保有命盤資料
+        horoscope = HOROSCOPE.get(session_id, "")
+        if not horoscope:
+            _, _, _bi = await run_in_threadpool(load_horoscope, session_id)
+            horoscope_tuple = await run_in_threadpool(load_horoscope, session_id)
+            horoscope = horoscope_tuple[0] or ""
+        if not horoscope:
+            yield f'data: {json.dumps({"token": "⚠️ 尚未建立命盤，請先輸入出生資料排盤。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        if _llm is None:
+            yield f'data: {json.dumps({"token": "⚠️ AI 服務尚未就緒，請稍後再試。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        from langchain_core.prompts import PromptTemplate
+        import random
+        stars_options = ["★★★★☆", "★★★☆☆", "★★★★★", "★★★☆☆", "★★★★☆"]
+        stars = random.choice(stars_options)
+        prompt = PromptTemplate.from_template(_DAILY_FORTUNE_PROMPT)
+        chain = prompt | _llm
+        accumulated = []
+        try:
+            async for chunk in chain.astream({
+                "today": today,
+                "horoscope": horoscope[:2500],   # 節省 tokens
+                "stars": stars,
+            }):
+                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if token:
+                    accumulated.append(token)
+                    yield f'data: {json.dumps({"token": token})}\n\n'
+        except Exception as exc:
+            logger.exception("[daily-fortune] generate error")
+            yield f'data: {json.dumps({"token": f"⚠️ 生成失敗：{exc}"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        content = "".join(accumulated)
+        threading.Thread(
+            target=save_daily_fortune, args=(session_id, today, content), daemon=True
+        ).start()
+        yield f'data: {json.dumps({"done": True})}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# ── 收藏 API ───────────────────────────────────────────────────
+class BookmarkRequest(BaseModel):
+    session_id: str = "web_default"
+    content: str
+
+
+@app.post("/api/bookmarks")
+async def api_bookmark_add(body: BookmarkRequest):
+    session_id = (body.session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import save_bookmark
+    bm_id = await run_in_threadpool(save_bookmark, session_id, body.content)
+    return {"id": bm_id}
+
+
+@app.get("/api/bookmarks")
+async def api_bookmark_list(session_id: str = "web_default"):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import load_bookmarks
+    items = await run_in_threadpool(load_bookmarks, session_id)
+    return {"bookmarks": items}
+
+
+@app.delete("/api/bookmarks/{bookmark_id}")
+async def api_bookmark_delete(bookmark_id: int, session_id: str = "web_default"):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import delete_bookmark
+    ok = await run_in_threadpool(delete_bookmark, bookmark_id, session_id)
+    return {"status": "ok" if ok else "not_found"}
+
+
+# ── 感情合盤 API ──────────────────────────────────────────────
+class CompatibilityRequest(BaseModel):
+    person_a: dict  # {year, month, day, hour, is_male}
+    person_b: dict
+    session_id: str = "web_default"
+    name_a: str = "甲方"
+    name_b: str = "乙方"
+
+
+@app.post("/api/compatibility")
+async def api_compatibility(body: CompatibilityRequest):
+    """
+    輸入兩人出生資料，回傳合盤分析文字（SSE 串流）。
+    使用 get_palace_information() 生成完整宮位分析，並自動儲存命盤至命盤庫。
+    """
+    from ziweidoushu.kernel import ZiweiChart
+    from ziweidoushu.base import ZiWeiConfig
+    from chat_bot.node.gen_ziwei import get_palace_information, _get_domain_df
+
+    def _gen_full_chart(info: dict) -> tuple[str, str, str]:
+        """Returns (chart_markdown, horoscope_text, header_str)"""
+        cfg = ZiWeiConfig(
+            int(info["year"]), int(info["month"]), int(info["day"]),
+            int(info["hour"]), bool(info.get("is_male", True))
+        )
+        df = ZiweiChart(cfg).gen_chart()
+        chart_md = df.to_markdown()
+        horoscope = get_palace_information(df, _get_domain_df())
+        gender = "男" if info.get("is_male", True) else "女"
+        header = f"{info['year']}年{info['month']}月{info['day']}日 {info['hour']}時 {gender}"
+        chart_text = f"【{header}】\n\n命盤：\n{chart_md}\n\n命盤分析：\n{horoscope}"
+        return chart_md, horoscope, chart_text
+
+    async def _stream():
+        if _llm is None:
+            yield f'data: {json.dumps({"token": "⚠️ AI 服務尚未就緒，請稍後再試。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        # Generate chart A
+        yield f'data: {json.dumps({"progress": f"⏳ 正在為【{body.name_a}】排命盤並分析（約 30-60 秒）…"})}\n\n'
+        try:
+            chart_md_a, horoscope_a, chart_text_a = await run_in_threadpool(_gen_full_chart, body.person_a)
+        except Exception as exc:
+            yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_a}】命盤生成失敗：{exc}"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        # Generate chart B
+        yield f'data: {json.dumps({"progress": f"⏳ 正在為【{body.name_b}】排命盤並分析（約 30-60 秒）…"})}\n\n'
+        try:
+            chart_md_b, horoscope_b, chart_text_b = await run_in_threadpool(_gen_full_chart, body.person_b)
+        except Exception as exc:
+            yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_b}】命盤生成失敗：{exc}"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        # Auto-save both charts to profiles
+        saved_names: list[str] = []
+        session_id = (body.session_id or "").strip() or "web_default"
+        try:
+            from chat_bot.auth.auth import save_profile
+            save_profile(session_id, body.name_a, horoscope_a, chart_md_a, body.person_a)
+            save_profile(session_id, body.name_b, horoscope_b, chart_md_b, body.person_b)
+            saved_names = [body.name_a, body.name_b]
+        except Exception as exc:
+            logger.warning("[compat] 儲存命盤失敗: %s", exc)
+
+        yield f'data: {json.dumps({"progress": "✨ AI 合盤分析中，請稍候…"})}\n\n'
+        yield f'data: {json.dumps({"clear": True})}\n\n'
+        if saved_names:
+            yield f'data: {json.dumps({"saved": saved_names})}\n\n'
+
+        from langchain_core.prompts import PromptTemplate
+        COMPAT_PROMPT = """你是紫微斗數命理師，請根據以下兩份完整命盤分析兩人的感情相性。
+
+甲方（{name_a}）命盤分析：
+{chart_a}
+
+乙方（{name_b}）命盤分析：
+{chart_b}
+
+請從以下角度深入分析：
+1. 兩人的個性特質與互補性
+2. 感情發展的優勢與挑戰
+3. 事業財務上的合作潛力
+4. 整體相性評估與建議
+
+請用繁體中文回答，條理清晰，分段說明，並直接使用對方代稱（{name_a}、{name_b}）。"""
+
+        prompt = PromptTemplate.from_template(COMPAT_PROMPT)
+        chain = prompt | _llm
+        try:
+            async for chunk in chain.astream({"chart_a": chart_text_a, "chart_b": chart_text_b,
+                                               "name_a": body.name_a, "name_b": body.name_b}):
+                token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if token:
+                    yield f'data: {json.dumps({"token": token})}\n\n'
+        except Exception as exc:
+            yield f'data: {json.dumps({"token": f"⚠️ 分析失敗：{exc}"})}\n\n'
+        yield f'data: {json.dumps({"done": True})}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
 # ── LINE Bot Webhook ───────────────────────────────────────────
@@ -766,6 +1061,234 @@ async def linebot(request: Request):
         logger.exception("[linebot] outer error")
 
     return "OK"
+
+
+# ── 多命盤管理 API ──────────────────────────────────────────────
+class ProfileRequest(BaseModel):
+    session_id: str = "web_default"
+    profile_name: str
+
+
+@app.get("/api/profiles")
+async def api_profiles_list(session_id: str = "web_default"):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import load_profiles
+    items = await run_in_threadpool(load_profiles, session_id)
+    return {"profiles": items}
+
+
+@app.post("/api/profiles")
+async def api_profiles_save(body: ProfileRequest):
+    session_id = (body.session_id or "").strip() or "web_default"
+    chart = CHART_TABLE.get(session_id, "")
+    horoscope = HOROSCOPE.get(session_id, "")
+    birth_info = BIRTH_INFO.get(session_id)
+    if not horoscope:
+        from chat_bot.auth.auth import load_horoscope
+        _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
+        horoscope = _h or ""
+        chart = _ct or ""
+        birth_info = _bi
+    if not horoscope:
+        raise HTTPException(status_code=400, detail="尚未建立命盤，請先排盤")
+    from chat_bot.auth.auth import save_profile
+    pid = await run_in_threadpool(save_profile, session_id, body.profile_name, horoscope, chart, birth_info)
+    return {"id": pid}
+
+
+@app.get("/api/profiles/{profile_id}")
+async def api_profiles_get(profile_id: int, session_id: str = "web_default", activate: bool = False):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import get_profile
+    profile = await run_in_threadpool(get_profile, profile_id, session_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="命盤不存在")
+    if activate and profile.get("horoscope"):
+        # 將此命盤載入為當前 session 的工作命盤，讓 Q&A 使用該命盤分析
+        HOROSCOPE[session_id] = profile["horoscope"]
+        CHART_TABLE[session_id] = profile.get("chart_table", "")
+        if profile.get("birth_info"):
+            BIRTH_INFO[session_id] = profile["birth_info"]
+        # 清除舊的對話 context，避免混用
+        SESSION_STATS.pop(session_id, None)
+        NON_AGENT_THREAD.pop(session_id, None)
+    return profile
+
+
+@app.delete("/api/profiles/{profile_id}")
+async def api_profiles_delete(profile_id: int, session_id: str = "web_default"):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import delete_profile
+    await run_in_threadpool(delete_profile, profile_id, session_id)
+    return {"status": "ok"}
+
+
+# ── 運勢日曆 API ───────────────────────────────────────────────
+_MONTHLY_FORTUNE_PROMPT = """你是資深紫微斗數命理師。請根據以下命主的命盤，為{year}年{month}月的每一天生成運勢評分。
+
+命盤摘要：
+{horoscope}
+
+請以嚴格的 JSON 格式回傳，不要包含 markdown 代碼塊或其他文字：
+{{"days":[{{"day":1,"score":4,"note":"一句概述"}},{{"day":2,"score":3,"note":"一句概述"}}...],"month_summary":"本月整體運勢（2-3句）"}}
+
+score 為 1-5 整數（5最佳），共需包含 {days_count} 天。note 控制在 15 字以內。"""
+
+
+@app.get("/api/fortune-calendar")
+async def api_fortune_calendar(session_id: str = "web_default", year: int = None, month: int = None):
+    import datetime as _dt
+    import calendar as _cal
+    import json as _json
+    import re as _re
+    session_id = (session_id or "").strip() or "web_default"
+    now = _dt.date.today()
+    if not year:
+        year = now.year
+    if not month:
+        month = now.month
+    year_month = f"{year:04d}-{month:02d}"
+    days_count = _cal.monthrange(year, month)[1]
+
+    from chat_bot.auth.auth import get_monthly_fortune, save_monthly_fortune, load_horoscope
+
+    cached = await run_in_threadpool(get_monthly_fortune, session_id, year_month)
+    if cached:
+        try:
+            return _json.loads(cached)
+        except Exception:
+            pass
+
+    horoscope = HOROSCOPE.get(session_id, "")
+    if not horoscope:
+        _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
+        horoscope = _h or ""
+    if not horoscope:
+        raise HTTPException(status_code=400, detail="尚未建立命盤，請先排盤")
+
+    if _llm is None:
+        raise HTTPException(status_code=503, detail="AI 服務未就緒")
+
+    from langchain_core.prompts import PromptTemplate
+    prompt = PromptTemplate.from_template(_MONTHLY_FORTUNE_PROMPT)
+    chain = prompt | _llm
+    try:
+        result = await chain.ainvoke({
+            "year": year, "month": month,
+            "days_count": days_count,
+            "horoscope": horoscope[:2000],
+        })
+        content = result.content if hasattr(result, "content") else str(result)
+        match = _re.search(r'\{[\s\S]*\}', content)
+        if not match:
+            raise HTTPException(status_code=500, detail="AI 回傳格式錯誤")
+        data = _json.loads(match.group())
+        cache_str = _json.dumps(data, ensure_ascii=False)
+        threading.Thread(target=save_monthly_fortune, args=(session_id, year_month, cache_str), daemon=True).start()
+        return data
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("[fortune-calendar] error")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ── 個人設定 API ───────────────────────────────────────────────
+class SettingsRequest(BaseModel):
+    session_id: str = "web_default"
+    response_style: str = "balanced"
+
+
+@app.get("/api/settings")
+async def api_settings_get(session_id: str = "web_default"):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import get_user_settings
+    return await run_in_threadpool(get_user_settings, session_id)
+
+
+@app.post("/api/settings")
+async def api_settings_save(body: SettingsRequest):
+    session_id = (body.session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import save_user_settings
+    await run_in_threadpool(save_user_settings, session_id, body.response_style)
+    return {"status": "ok"}
+
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+
+
+@app.post("/api/auth/change-password")
+async def api_change_password(body: ChangePasswordRequest, request: Request):
+    from chat_bot.auth.auth import verify_token, change_password
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="未登入")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Token 無效")
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="新密碼至少需要 6 個字元")
+    ok = await run_in_threadpool(change_password, user["session_id"], body.old_password, body.new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail="舊密碼不正確")
+    return {"status": "ok"}
+
+
+# ── 關鍵人生節點 API ──────────────────────────────────────────
+_LIFE_EVENTS_PROMPT = """你是資深紫微斗數命理師。請根據以下命主的命盤，分析並找出3-5個最重要的人生關鍵節點（大限轉換點或重要流年）。
+
+命盤分析：
+{horoscope}
+
+大限時間軸資料：
+{timeline}
+
+請以嚴格的 JSON 格式回傳，不要包含 markdown 代碼塊或其他文字：
+{{"events":[{{"age_start":12,"age_end":21,"palace":"命宮","title":"學業衝刺","description":"此大限文昌化科入命，學業表現優異，宜積極進修","type":"good"}},...]}}
+
+type 必須是 "good"、"caution" 或 "neutral" 其中之一。title 控制在 8 字以內，description 控制在 40 字以內。"""
+
+
+@app.get("/api/life-events")
+async def api_life_events(session_id: str = "web_default"):
+    import json as _json
+    import re as _re
+    session_id = (session_id or "").strip() or "web_default"
+
+    horoscope = HOROSCOPE.get(session_id, "")
+    chart_table = CHART_TABLE.get(session_id, "")
+    if not horoscope:
+        from chat_bot.auth.auth import load_horoscope
+        _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
+        horoscope = _h or ""
+        chart_table = _ct or ""
+    if not horoscope:
+        raise HTTPException(status_code=400, detail="尚未建立命盤，請先排盤")
+
+    if _llm is None:
+        raise HTTPException(status_code=503, detail="AI 服務未就緒")
+
+    from langchain_core.prompts import PromptTemplate
+    prompt = PromptTemplate.from_template(_LIFE_EVENTS_PROMPT)
+    chain = prompt | _llm
+    try:
+        result = await chain.ainvoke({
+            "horoscope": horoscope[:2000],
+            "timeline": chart_table[:1500],
+        })
+        content = result.content if hasattr(result, "content") else str(result)
+        match = _re.search(r'\{[\s\S]*\}', content)
+        if not match:
+            raise HTTPException(status_code=500, detail="AI 回傳格式錯誤")
+        return _json.loads(match.group())
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("[life-events] error")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 if __name__ == "__main__":

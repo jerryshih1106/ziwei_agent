@@ -3,6 +3,13 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0d0718">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="紫微AI">
+  <link rel="manifest" href="/static/manifest.json">
+  <link rel="apple-touch-icon" href="/static/icon-192.png">
   <title>紫微AI算命｜立即對話</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
@@ -362,6 +369,20 @@
     .send-btn:hover { transform: scale(1.08); }
     .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
 
+    .stop-btn {
+      width: 44px; height: 44px;
+      background: rgba(231,76,60,0.15);
+      border: 1.5px solid rgba(231,76,60,0.5);
+      border-radius: 50%;
+      color: #e74c3c;
+      font-size: 1rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s, transform 0.2s;
+      flex-shrink: 0;
+    }
+    .stop-btn:hover { background: rgba(231,76,60,0.3); transform: scale(1.08); }
+
     .input-hint {
       font-size: 0.72rem;
       color: var(--text-muted);
@@ -405,8 +426,156 @@
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .sidebar { display: none; }
-      .msg-bubble { max-width: 85%; }
-      .quick-questions { gap: 6px; }
+
+      /* Topbar */
+      .topbar { padding: 0 10px; gap: 6px; }
+      .bot-name { font-size: 0.9rem; }
+      .bot-status { font-size: 0.7rem; }
+      .topbar-btn-reset { display: none; }
+      .topbar-username { max-width: 60px; font-size: 0.78rem; }
+      .topbar-logout { font-size: 0.75rem; padding: 4px 8px; }
+      .topbar-actions {
+        overflow-x: auto; flex-wrap: nowrap;
+        scrollbar-width: none; -webkit-overflow-scrolling: touch;
+      }
+      .topbar-actions::-webkit-scrollbar { display: none; }
+      .topbar-btn { flex-shrink: 0; font-size: 0.75rem; padding: 4px 10px; }
+
+      /* Messages */
+      .messages { padding: 14px 10px; }
+      .msg { margin-bottom: 12px; gap: 8px; }
+      .msg-avatar { width: 32px; height: 32px; font-size: 0.88rem; }
+      .msg-bubble { max-width: 88%; font-size: 1rem; padding: 10px 14px; }
+      .msg-time { font-size: 0.72rem; }
+
+      /* Input area */
+      .input-area { padding: 8px 10px; }
+      .input-hint { display: none; }
+      #user-input { font-size: 1rem; } /* >= 16px 避免 iOS 自動縮放 */
+
+      /* Quick-questions 橫向捲動，不換行 */
+      .quick-questions {
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+      }
+      .quick-questions::-webkit-scrollbar { display: none; }
+      .qq-chip {
+        font-size: 0.9rem;
+        padding: 8px 14px;
+        flex-shrink: 0;
+      }
+    }
+
+    /* ── Palace Grid ── */
+    .chart-view-toggle {
+      display: flex;
+      gap: 6px;
+    }
+    .toggle-btn {
+      background: rgba(201,162,39,0.08);
+      border: 1px solid rgba(201,162,39,0.25);
+      color: var(--text-muted);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .toggle-btn.active {
+      background: rgba(201,162,39,0.2);
+      border-color: var(--gold);
+      color: var(--gold);
+    }
+
+    .palace-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      grid-template-rows: repeat(4, 1fr);
+      gap: 3px;
+      background: rgba(201,162,39,0.08);
+      border: 1px solid rgba(201,162,39,0.25);
+      border-radius: 8px;
+      overflow: hidden;
+      min-height: 420px;
+    }
+    .palace-cell {
+      background: rgba(13,7,24,0.95);
+      border: 1px solid rgba(201,162,39,0.15);
+      padding: 8px 7px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .palace-name {
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      color: var(--gold);
+      font-size: 0.85rem;
+    }
+    .palace-ganzhi {
+      color: var(--text-muted);
+      font-size: 0.7rem;
+    }
+    .palace-stars {
+      color: var(--text-light);
+      font-size: 0.75rem;
+      line-height: 1.5;
+      flex: 1;
+    }
+    .palace-hua {
+      color: var(--gold-light);
+      font-size: 0.7rem;
+    }
+    .palace-limits {
+      color: var(--text-muted);
+      font-size: 0.68rem;
+      margin-top: auto;
+      border-top: 1px solid rgba(201,162,39,0.1);
+      padding-top: 2px;
+    }
+    .palace-center {
+      grid-column: 2 / 4;
+      grid-row: 2 / 4;
+      background: rgba(45,27,84,0.7);
+      border: 1px solid rgba(201,162,39,0.3);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 16px;
+      gap: 6px;
+    }
+    .palace-center-icon { font-size: 2rem; }
+    .palace-center-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+    .palace-center-date {
+      font-size: 0.85rem;
+      color: var(--text-light);
+    }
+    .palace-center-sub {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+    }
+
+    @media (max-width: 600px) {
+      .palace-grid { min-height: 280px; gap: 2px; }
+      .palace-cell { padding: 4px 3px; gap: 1px; }
+      .palace-name { font-size: 0.72rem; }
+      .palace-ganzhi { font-size: 0.6rem; }
+      .palace-stars { font-size: 0.62rem; }
+      .palace-hua, .palace-limits { font-size: 0.58rem; }
+      .palace-center-title { font-size: 0.85rem; }
+      .palace-center-date { font-size: 0.72rem; }
+      .palace-center-sub { font-size: 0.68rem; }
     }
 
     /* ── Chart Modal ── */
@@ -446,6 +615,19 @@
       font-weight: 700;
       color: var(--gold);
     }
+    .modal-export-btn {
+      background: rgba(201,162,39,0.1);
+      border: 1px solid rgba(201,162,39,0.25);
+      color: var(--gold);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 0.82rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+    .modal-export-btn:hover { background: rgba(201,162,39,0.2); }
+
     .modal-close {
       background: none;
       border: none;
@@ -481,6 +663,677 @@
       color: var(--text-muted);
       vertical-align: top;
     }
+
+    /* ── History Drawer ── */
+    .history-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 900;
+    }
+    .history-overlay.open { display: block; }
+    .history-drawer {
+      position: fixed;
+      top: 0; right: 0; bottom: 0;
+      width: 340px;
+      max-width: 90vw;
+      background: var(--bg-card);
+      border-left: 1px solid rgba(201,162,39,0.25);
+      display: flex;
+      flex-direction: column;
+      z-index: 901;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+    }
+    .history-overlay.open .history-drawer {
+      transform: translateX(0);
+    }
+    .history-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 16px;
+      border-bottom: 1px solid rgba(201,162,39,0.2);
+      flex-shrink: 0;
+    }
+    .history-title {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+    .history-actions { display: flex; gap: 8px; align-items: center; }
+    .history-clear-btn {
+      background: none;
+      border: 1px solid rgba(201,162,39,0.2);
+      color: var(--text-muted);
+      padding: 3px 8px;
+      border-radius: 8px;
+      font-size: 0.75rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .history-clear-btn:hover { color: #e74c3c; border-color: #e74c3c; }
+    .history-close {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.3rem;
+      cursor: pointer;
+      padding: 2px 6px;
+      border-radius: 6px;
+      transition: color 0.2s;
+    }
+    .history-close:hover { color: var(--gold); }
+    .history-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    .history-body::-webkit-scrollbar { width: 4px; }
+    .history-body::-webkit-scrollbar-thumb { background: rgba(201,162,39,0.3); border-radius: 2px; }
+    .history-empty {
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.88rem;
+      padding: 40px 20px;
+    }
+    .history-load-more {
+      text-align: center;
+      padding: 8px;
+    }
+    .history-load-btn {
+      background: rgba(201,162,39,0.08);
+      border: 1px solid rgba(201,162,39,0.2);
+      color: var(--text-muted);
+      padding: 6px 16px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .history-load-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+    .history-msg {
+      margin-bottom: 10px;
+      animation: slideUp 0.2s ease;
+    }
+    .history-msg-header {
+      font-size: 0.7rem;
+      color: var(--text-muted);
+      margin-bottom: 3px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .history-role-badge {
+      font-size: 0.68rem;
+      padding: 1px 6px;
+      border-radius: 10px;
+    }
+    .history-role-badge.user {
+      background: rgba(90,58,156,0.3);
+      color: #b09adc;
+    }
+    .history-role-badge.ai {
+      background: rgba(201,162,39,0.15);
+      color: var(--gold);
+    }
+    .history-msg-content {
+      background: rgba(45,27,84,0.3);
+      border: 1px solid rgba(201,162,39,0.1);
+      border-radius: 8px;
+      padding: 8px 10px;
+      font-size: 0.82rem;
+      color: var(--text-muted);
+      line-height: 1.5;
+      max-height: 80px;
+      overflow: hidden;
+      position: relative;
+      cursor: pointer;
+      transition: border-color 0.2s;
+    }
+    .history-msg-content:hover { border-color: rgba(201,162,39,0.3); color: var(--text-light); }
+    .history-msg-content.expanded { max-height: none; }
+    .history-msg-content::after {
+      content: '';
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
+      height: 24px;
+      background: linear-gradient(transparent, rgba(45,27,84,0.8));
+      pointer-events: none;
+    }
+    .history-msg-content.expanded::after { display: none; }
+
+    /* ── Da Xian Timeline ── */
+    .timeline-wrap {
+      overflow-x: auto;
+      padding: 8px 4px 16px;
+      -webkit-overflow-scrolling: touch;
+    }
+    .timeline-wrap::-webkit-scrollbar { height: 4px; }
+    .timeline-wrap::-webkit-scrollbar-thumb { background: rgba(201,162,39,0.3); border-radius: 2px; }
+    .timeline-track {
+      display: flex;
+      gap: 0;
+      min-width: max-content;
+      position: relative;
+      padding-top: 28px;
+    }
+    .timeline-axis {
+      position: absolute;
+      top: 48px; left: 0; right: 0;
+      height: 3px;
+      background: linear-gradient(90deg, rgba(201,162,39,0.1), rgba(201,162,39,0.4), rgba(201,162,39,0.1));
+      border-radius: 2px;
+    }
+    .daxian-block {
+      width: 130px;
+      flex-shrink: 0;
+      padding: 8px 8px 10px;
+      border: 1px solid rgba(201,162,39,0.15);
+      border-radius: 8px;
+      margin-right: 6px;
+      background: rgba(13,7,24,0.9);
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      position: relative;
+    }
+    .daxian-block:hover { border-color: rgba(201,162,39,0.4); background: rgba(45,27,84,0.4); }
+
+    /* Daxian detail popup */
+    .daxian-popup {
+      position: absolute;
+      background: #1c1035;
+      border: 1px solid rgba(201,162,39,0.4);
+      border-radius: 12px;
+      padding: 14px 16px;
+      min-width: 220px;
+      z-index: 100;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .daxian-popup-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 10px;
+    }
+    .daxian-popup-header button {
+      background: none; border: none; color: var(--text-muted);
+      cursor: pointer; font-size: 0.85rem; padding: 2px 6px;
+    }
+    .daxian-popup-title {
+      font-family: 'Noto Serif TC', serif; font-weight: 700;
+      color: var(--gold); font-size: 0.95rem;
+    }
+    .daxian-popup-row {
+      display: flex; gap: 10px; font-size: 0.82rem;
+      color: var(--text-light); padding: 4px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .daxian-popup-row:last-child { border-bottom: none; }
+    .daxian-popup-label { color: var(--text-muted); min-width: 40px; }
+    .daxian-block.current {
+      border-color: var(--gold);
+      background: rgba(201,162,39,0.1);
+      box-shadow: 0 0 12px rgba(201,162,39,0.2);
+    }
+    .daxian-block.current::before {
+      content: '▼ 現在';
+      position: absolute;
+      top: -22px; left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.65rem;
+      color: var(--gold);
+      white-space: nowrap;
+      background: rgba(201,162,39,0.15);
+      padding: 1px 6px;
+      border-radius: 8px;
+    }
+    .daxian-palace { font-family: 'Noto Serif TC', serif; font-weight: 700; color: var(--gold); font-size: 0.88rem; }
+    .daxian-age { font-size: 0.72rem; color: var(--gold-light); margin: 2px 0; }
+    .daxian-year { font-size: 0.68rem; color: var(--text-muted); margin-bottom: 4px; }
+    .daxian-stars { font-size: 0.72rem; color: var(--text-muted); line-height: 1.4; }
+    .daxian-ganzhi { font-size: 0.68rem; color: rgba(201,162,39,0.5); }
+
+    .timeline-legend {
+      display: flex; gap: 16px; flex-wrap: wrap;
+      margin-top: 12px; font-size: 0.75rem; color: var(--text-muted);
+    }
+    .legend-item { display: flex; align-items: center; gap: 5px; }
+    .legend-dot {
+      width: 10px; height: 10px; border-radius: 2px;
+      border: 1px solid var(--gold);
+    }
+    .legend-dot.current-dot { background: rgba(201,162,39,0.2); }
+
+    /* ── Daily Fortune Modal ── */
+    .fortune-modal-body { padding: 20px; }
+    .fortune-date-badge {
+      display: inline-block;
+      background: rgba(201,162,39,0.12);
+      border: 1px solid rgba(201,162,39,0.3);
+      border-radius: 20px;
+      padding: 3px 12px;
+      font-size: 0.8rem;
+      color: var(--gold);
+      margin-bottom: 14px;
+    }
+    .fortune-content {
+      font-size: 0.95rem;
+      line-height: 1.85;
+      color: var(--text-light);
+      min-height: 120px;
+    }
+    .fortune-content table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 10px 0;
+      font-size: 0.88rem;
+    }
+    .fortune-content table th {
+      background: rgba(201,162,39,0.15);
+      color: var(--gold);
+      padding: 6px 10px;
+      border: 1px solid rgba(201,162,39,0.25);
+    }
+    .fortune-content table td {
+      padding: 5px 10px;
+      border: 1px solid rgba(201,162,39,0.12);
+      color: var(--text-muted);
+    }
+    .fortune-content h2 {
+      font-family: 'Noto Serif TC', serif;
+      color: var(--gold);
+      font-size: 1.05rem;
+      margin: 8px 0 6px;
+    }
+    .fortune-content strong { color: var(--gold-light); }
+    .fortune-refresh-btn {
+      margin-top: 14px;
+      background: none;
+      border: 1px solid rgba(201,162,39,0.2);
+      color: var(--text-muted);
+      padding: 5px 14px;
+      border-radius: 20px;
+      font-size: 0.8rem;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .fortune-refresh-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+    /* ── Bookmark Drawer ── */
+    .bookmark-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      cursor: pointer;
+      padding: 2px 5px;
+      border-radius: 4px;
+      transition: color 0.2s, transform 0.15s;
+      line-height: 1;
+    }
+    .bookmark-btn:hover { color: var(--gold); transform: scale(1.2); }
+    .bookmark-btn.saved { color: var(--gold); }
+    .msg-footer {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 4px;
+    }
+
+    /* ── Compatibility Modal ── */
+    .compat-form {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+    @media (max-width: 600px) { .compat-form { grid-template-columns: 1fr; } }
+    .compat-person {
+      background: rgba(45,27,84,0.3);
+      border: 1px solid rgba(201,162,39,0.15);
+      border-radius: 10px;
+      padding: 14px;
+    }
+    .compat-person-title {
+      font-family: 'Noto Serif TC', serif;
+      font-weight: 700;
+      color: var(--gold);
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+      text-align: center;
+    }
+    .compat-label {
+      display: block;
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+    }
+    .compat-input {
+      width: 100%;
+      padding: 8px 10px;
+      background: rgba(13,7,24,0.6);
+      border: 1px solid rgba(201,162,39,0.2);
+      border-radius: 6px;
+      color: var(--text-light);
+      font-size: 0.88rem;
+      margin-bottom: 10px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .compat-input:focus { border-color: var(--gold); }
+    .compat-select {
+      width: 100%;
+      padding: 8px 10px;
+      background: rgba(13,7,24,0.6);
+      border: 1px solid rgba(201,162,39,0.2);
+      border-radius: 6px;
+      color: var(--text-light);
+      font-size: 0.88rem;
+      margin-bottom: 10px;
+      outline: none;
+    }
+    .compat-submit {
+      width: 100%;
+      padding: 12px;
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border: none;
+      border-radius: 8px;
+      color: #1a0e00;
+      font-weight: 700;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: opacity 0.2s;
+      margin-bottom: 16px;
+    }
+    .compat-submit:hover { opacity: 0.88; }
+    .compat-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+    .compat-result {
+      background: rgba(13,7,24,0.6);
+      border: 1px solid rgba(201,162,39,0.15);
+      border-radius: 10px;
+      padding: 16px;
+      font-size: 0.92rem;
+      line-height: 1.8;
+      color: var(--text-light);
+      min-height: 80px;
+      display: none;
+    }
+    .compat-result.visible { display: block; }
+
+    /* ── PWA Install Banner ── */
+    .pwa-banner {
+      position: fixed;
+      bottom: 80px; left: 12px; right: 12px;
+      background: var(--bg-card);
+      border: 1px solid rgba(201,162,39,0.35);
+      border-radius: 14px;
+      padding: 12px 14px;
+      display: flex; align-items: center; gap: 12px;
+      z-index: 800;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+      animation: slideUp 0.4s ease;
+      max-width: 480px;
+      margin: 0 auto;
+    }
+    .pwa-banner.hidden { display: none; }
+    .pwa-banner-icon { font-size: 1.8rem; flex-shrink: 0; }
+    .pwa-banner-text { flex: 1; }
+    .pwa-banner-title { font-size: 0.88rem; font-weight: 700; color: var(--gold); }
+    .pwa-banner-sub { font-size: 0.75rem; color: var(--text-muted); margin-top: 2px; }
+    .pwa-install-btn {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border: none; border-radius: 8px;
+      color: #1a0e00; font-weight: 700; font-size: 0.82rem;
+      padding: 7px 14px; cursor: pointer; flex-shrink: 0;
+      transition: opacity 0.2s;
+    }
+    .pwa-install-btn:hover { opacity: 0.88; }
+    .pwa-dismiss-btn {
+      background: none; border: none;
+      color: var(--text-muted); font-size: 1.2rem;
+      cursor: pointer; padding: 2px 4px; flex-shrink: 0;
+    }
+
+    /* ── Hour Guide Modal ── */
+    .guide-step { display: none; }
+    .guide-step.active { display: block; }
+    .guide-q {
+      font-family: 'Noto Serif TC', serif;
+      font-size: 1.05rem;
+      color: var(--text-light);
+      margin-bottom: 16px;
+      line-height: 1.5;
+    }
+    .guide-q-sub { font-size: 0.82rem; color: var(--text-muted); margin-bottom: 16px; }
+    .guide-options { display: flex; flex-direction: column; gap: 8px; }
+    .guide-opt {
+      background: rgba(45,27,84,0.4);
+      border: 1.5px solid rgba(201,162,39,0.18);
+      border-radius: 10px;
+      padding: 11px 14px;
+      cursor: pointer;
+      transition: all 0.18s;
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.92rem; color: var(--text-light);
+    }
+    .guide-opt:hover { border-color: var(--gold); background: rgba(201,162,39,0.08); }
+    .guide-opt.selected { border-color: var(--gold); background: rgba(201,162,39,0.15); color: var(--gold); }
+    .guide-opt-icon { font-size: 1.2rem; flex-shrink: 0; }
+    .guide-progress {
+      display: flex; gap: 6px; margin-bottom: 20px;
+    }
+    .guide-progress-dot {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: rgba(201,162,39,0.2);
+      border: 1px solid rgba(201,162,39,0.3);
+      transition: background 0.2s;
+    }
+    .guide-progress-dot.done { background: var(--gold); }
+    .guide-nav { display: flex; gap: 10px; margin-top: 20px; }
+    .guide-prev-btn {
+      flex: 0 0 auto;
+      background: none; border: 1px solid rgba(201,162,39,0.2);
+      color: var(--text-muted); padding: 10px 20px;
+      border-radius: 8px; cursor: pointer; font-size: 0.9rem;
+      transition: all 0.2s;
+    }
+    .guide-prev-btn:hover { color: var(--gold); border-color: var(--gold); }
+    .guide-next-btn {
+      flex: 1;
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border: none; border-radius: 8px;
+      color: #1a0e00; font-weight: 700; font-size: 0.95rem;
+      padding: 10px; cursor: pointer; transition: opacity 0.2s;
+    }
+    .guide-next-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+    .guide-result { text-align: center; padding: 8px 0; }
+    .guide-result-title {
+      font-family: 'Noto Serif TC', serif;
+      color: var(--gold); font-size: 1.05rem; margin-bottom: 16px;
+    }
+    .hour-cards { display: flex; flex-direction: column; gap: 8px; }
+    .hour-card {
+      background: rgba(45,27,84,0.4);
+      border: 1.5px solid rgba(201,162,39,0.25);
+      border-radius: 10px; padding: 12px 14px;
+      display: flex; align-items: center; gap: 12px;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .hour-card:hover { border-color: var(--gold); background: rgba(201,162,39,0.1); }
+    .hour-card-rank { font-size: 1.1rem; }
+    .hour-card-name { font-family: 'Noto Serif TC', serif; font-size: 1rem; color: var(--gold); font-weight: 700; }
+    .hour-card-range { font-size: 0.78rem; color: var(--text-muted); }
+    .hour-card-desc { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+    .hour-card-apply {
+      margin-left: auto; background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border: none; border-radius: 6px; color: #1a0e00;
+      font-size: 0.8rem; font-weight: 700; padding: 5px 12px;
+      cursor: pointer; flex-shrink: 0;
+    }
+
+    /* ── Profile Manager ── */
+    .profile-list { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
+    .profile-item {
+      background: rgba(45,27,84,0.4);
+      border: 1px solid rgba(201,162,39,0.2);
+      border-radius: 10px; padding: 12px 14px;
+      display: flex; align-items: center; gap: 12px;
+    }
+    .profile-item-info { flex: 1; min-width: 0; }
+    .profile-item-name { font-family: 'Noto Serif TC', serif; font-weight: 700; color: var(--gold); font-size: 0.95rem; }
+    .profile-item-bi { font-size: 0.78rem; color: var(--text-muted); margin-top: 3px; }
+    .profile-load-btn {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border: none; border-radius: 6px;
+      color: #1a0e00; font-size: 0.78rem; font-weight: 700;
+      padding: 5px 12px; cursor: pointer; flex-shrink: 0;
+    }
+    .profile-del-btn {
+      background: none; border: 1px solid rgba(201,162,39,0.2);
+      color: var(--text-muted); border-radius: 6px;
+      font-size: 0.78rem; padding: 5px 8px; cursor: pointer; flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .profile-del-btn:hover { color: #e74c3c; border-color: #e74c3c; }
+    .profile-view-btn {
+      background: none; border: 1px solid rgba(201,162,39,0.3);
+      color: var(--gold); border-radius: 6px;
+      font-size: 0.78rem; padding: 5px 10px; cursor: pointer; flex-shrink: 0;
+      transition: all 0.2s;
+    }
+    .profile-view-btn:hover { background: rgba(201,162,39,0.15); }
+    .profile-save-bar {
+      display: flex; gap: 8px; margin-bottom: 16px;
+      background: rgba(45,27,84,0.3); border: 1px solid rgba(201,162,39,0.15);
+      border-radius: 10px; padding: 12px;
+    }
+    .profile-name-input {
+      flex: 1; background: rgba(13,7,24,0.6);
+      border: 1px solid rgba(201,162,39,0.25); border-radius: 8px;
+      color: var(--text-light); padding: 8px 12px; font-size: 0.88rem;
+      font-family: 'Noto Sans TC', sans-serif; outline: none;
+    }
+    .profile-name-input:focus { border-color: var(--gold); }
+    .profile-save-submit {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border: none; border-radius: 8px; color: #1a0e00; font-weight: 700;
+      padding: 8px 16px; cursor: pointer; font-size: 0.88rem; white-space: nowrap;
+    }
+    .profile-empty { text-align: center; color: var(--text-muted); padding: 24px 0; font-size: 0.88rem; }
+
+    /* ── Fortune Calendar ── */
+    .cal-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    .cal-nav-btn {
+      background: rgba(201,162,39,0.1); border: 1px solid rgba(201,162,39,0.25);
+      color: var(--gold); border-radius: 8px; padding: 6px 14px;
+      cursor: pointer; font-size: 0.9rem; transition: all 0.2s;
+    }
+    .cal-nav-btn:hover { background: rgba(201,162,39,0.2); }
+    .cal-month-label { font-family: 'Noto Serif TC', serif; font-weight: 700; color: var(--gold); font-size: 1.05rem; }
+    .cal-summary {
+      background: rgba(45,27,84,0.4); border: 1px solid rgba(201,162,39,0.15);
+      border-radius: 10px; padding: 12px; margin-bottom: 14px;
+      font-size: 0.85rem; color: var(--text-muted); line-height: 1.6;
+    }
+    .cal-grid {
+      display: grid; grid-template-columns: repeat(7, 1fr);
+      gap: 4px; margin-bottom: 12px;
+    }
+    .cal-day-header {
+      text-align: center; font-size: 0.72rem; color: var(--text-muted);
+      padding: 4px 0;
+    }
+    .cal-day {
+      aspect-ratio: 1; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      border-radius: 8px; cursor: pointer;
+      border: 1px solid transparent; transition: all 0.15s;
+      position: relative;
+    }
+    .cal-day:hover { border-color: var(--gold); transform: scale(1.05); }
+    .cal-day.today { border-color: var(--gold) !important; }
+    .cal-day.empty { background: transparent; cursor: default; }
+    .cal-day.empty:hover { transform: none; border-color: transparent; }
+    .cal-day-num { font-size: 0.85rem; font-weight: 600; line-height: 1; }
+    .cal-day-dots { display: flex; gap: 2px; margin-top: 3px; }
+    .cal-dot { width: 5px; height: 5px; border-radius: 50%; }
+    .cal-score-5 { background: rgba(39,174,96,0.3); }
+    .cal-score-4 { background: rgba(39,174,96,0.18); }
+    .cal-score-3 { background: rgba(201,162,39,0.18); }
+    .cal-score-2 { background: rgba(231,76,60,0.18); }
+    .cal-score-1 { background: rgba(231,76,60,0.3); }
+    .cal-dot-5 { background: #27ae60; }
+    .cal-dot-4 { background: #7dcea0; }
+    .cal-dot-3 { background: var(--gold); }
+    .cal-dot-2 { background: #e59866; }
+    .cal-dot-1 { background: #e74c3c; }
+    .cal-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
+    .cal-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--text-muted); }
+    .cal-day-popup {
+      position: fixed; z-index: 9999;
+      background: rgba(28,16,53,0.97); border: 1px solid rgba(201,162,39,0.4);
+      border-radius: 12px; padding: 14px; min-width: 200px; max-width: 260px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+    .cal-popup-title { font-family: 'Noto Serif TC', serif; color: var(--gold); font-weight: 700; margin-bottom: 6px; }
+    .cal-popup-note { font-size: 0.85rem; color: var(--text-light); line-height: 1.5; }
+    .cal-popup-close { float: right; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; }
+
+    /* ── Settings Modal ── */
+    .settings-section { margin-bottom: 20px; }
+    .settings-label { font-size: 0.8rem; letter-spacing: 2px; color: var(--gold); text-transform: uppercase; margin-bottom: 10px; }
+    .settings-info-card {
+      background: rgba(45,27,84,0.3); border: 1px solid rgba(201,162,39,0.15);
+      border-radius: 10px; padding: 14px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.8;
+    }
+    .settings-style-opts { display: flex; gap: 8px; flex-wrap: wrap; }
+    .settings-style-opt {
+      padding: 8px 16px; border-radius: 20px; cursor: pointer;
+      border: 1.5px solid rgba(201,162,39,0.2);
+      background: rgba(45,27,84,0.3); color: var(--text-muted);
+      font-size: 0.85rem; transition: all 0.2s;
+    }
+    .settings-style-opt.active { border-color: var(--gold); background: rgba(201,162,39,0.12); color: var(--gold); }
+    .settings-style-opt:hover { border-color: rgba(201,162,39,0.5); color: var(--text-light); }
+    .settings-pw-form { display: flex; flex-direction: column; gap: 10px; }
+    .settings-pw-input {
+      background: rgba(13,7,24,0.6); border: 1px solid rgba(201,162,39,0.25);
+      border-radius: 8px; color: var(--text-light); padding: 10px 14px;
+      font-size: 0.88rem; font-family: 'Noto Sans TC', sans-serif; outline: none;
+    }
+    .settings-pw-input:focus { border-color: var(--gold); }
+    .settings-pw-submit {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border: none; border-radius: 8px; color: #1a0e00;
+      font-weight: 700; font-size: 0.9rem; padding: 10px; cursor: pointer;
+    }
+    .settings-msg { font-size: 0.82rem; padding: 6px 0; min-height: 22px; }
+    .settings-msg.ok { color: #27ae60; }
+    .settings-msg.err { color: #e74c3c; }
+
+    /* ── Life Events on Timeline ── */
+    .life-event-badge {
+      position: absolute; top: -10px; right: -6px;
+      background: var(--gold); color: #1a0e00;
+      border-radius: 10px; font-size: 0.62rem; font-weight: 700;
+      padding: 1px 5px; white-space: nowrap;
+    }
+    .life-event-badge.caution { background: #e59866; }
+    .life-event-badge.neutral { background: rgba(160,144,192,0.8); color: var(--text-light); }
+    .life-events-loading { text-align: center; color: var(--text-muted); padding: 32px; font-size: 0.88rem; }
+    .life-event-tooltip {
+      position: fixed; z-index: 9999;
+      background: rgba(28,16,53,0.97); border: 1px solid rgba(201,162,39,0.4);
+      border-radius: 12px; padding: 14px; max-width: 260px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5); pointer-events: none;
+    }
+    .let-title { font-family: 'Noto Serif TC', serif; color: var(--gold); font-weight: 700; margin-bottom: 6px; }
+    .let-desc { font-size: 0.83rem; color: var(--text-light); line-height: 1.5; }
 
     /* ── Auth Modal ── */
     .auth-overlay {
@@ -579,6 +1432,7 @@
   </style>
   <!-- Bug #9 Fix: 鎖定版本號，避免 breaking change -->
   <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- Bug #5 Fix: DOMPurify 防止 AI 回應中的 XSS -->
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.3/dist/purify.min.js"></script>
   <!-- KaTeX 數學公式渲染 -->
@@ -604,8 +1458,15 @@
     <button class="topbar-logout" onclick="logout()">登出</button>
   </div>
   <div class="topbar-actions">
-    <button class="topbar-btn" id="chart-btn" onclick="showChart()" style="display:none">📊 查看命盤</button>
-    <button class="topbar-btn" onclick="resetChat()">🔄 重置</button>
+    <button class="topbar-btn" id="fortune-btn" onclick="openDailyFortune()" style="display:none">☀️ 今日運勢</button>
+    <button class="topbar-btn" id="calendar-btn" onclick="openCalendar()" style="display:none">📅 運勢日曆</button>
+    <button class="topbar-btn" id="bookmark-btn" onclick="openBookmarks()" style="display:none">📌 收藏</button>
+    <button class="topbar-btn" id="history-btn" onclick="openHistory()" style="display:none">📜 歷史</button>
+    <button class="topbar-btn" id="chart-btn" onclick="showChart()" style="display:none">📊 命盤</button>
+    <button class="topbar-btn" id="compat-btn" onclick="openCompat()" style="display:none">💕 合盤</button>
+    <button class="topbar-btn" id="profiles-btn" onclick="openProfiles()" style="display:none">👥 命盤庫</button>
+    <button class="topbar-btn" id="settings-btn" onclick="openSettings()" style="display:none">⚙️ 設定</button>
+    <button class="topbar-btn topbar-btn-reset" onclick="resetChat()">🔄 重置</button>
   </div>
 </div>
 
@@ -615,22 +1476,6 @@
   <!-- Sidebar -->
   <div class="sidebar">
     <div class="sidebar-section">
-      <div class="sidebar-title">快速填入範例</div>
-      <div class="quick-fill" onclick="fillInput('我是1990年3月15日卯時出生的女生，請幫我排命盤')">
-        <div class="qf-label">範例 1 — 女性</div>
-        <div class="qf-text">1990年3月15日，卯時，女生</div>
-      </div>
-      <div class="quick-fill" onclick="fillInput('我是1985年8月22日午時出生的男生，麻煩幫我排紫微斗數命盤')">
-        <div class="qf-label">範例 2 — 男性</div>
-        <div class="qf-text">1985年8月22日，午時，男生</div>
-      </div>
-      <div class="quick-fill" onclick="fillInput('2000年1月1日子時男生')">
-        <div class="qf-label">範例 3 — 簡短格式</div>
-        <div class="qf-text">2000年1月1日，子時，男</div>
-      </div>
-    </div>
-
-    <div class="sidebar-section">
       <div class="sidebar-title">時辰對照表（點擊填入）</div>
       <div class="time-table">
         {% for item in time_table %}
@@ -639,20 +1484,6 @@
           <div class="time-range">{{ item.range }}</div>
         </div>
         {% endfor %}
-      </div>
-    </div>
-
-    <div class="sidebar-section">
-      <div class="info-card">
-        <div class="info-card-title">💡 提示</div>
-        <p>告訴 AI 以下資訊即可排盤：<br>
-        ① 西元出生年月日<br>
-        ② 出生時辰（地支）<br>
-        ③ 性別（男/女）</p>
-      </div>
-      <div class="info-card">
-        <div class="info-card-title">🔄 重置對話</div>
-        <p>點擊右上角「重置」可清除記憶，重新開始排盤。</p>
       </div>
     </div>
   </div>
@@ -680,7 +1511,7 @@
         <div class="qq-chip" onclick="sendQuick('財運方面有什麼建議？')">💰 財運</div>
         <div class="qq-chip" onclick="sendQuick('今年流年運勢如何？')">📅 流年運勢</div>
         <div class="qq-chip" onclick="sendQuick('健康方面需要注意什麼？')">❤️ 健康</div>
-        <div class="qq-chip" onclick="sendQuick('/reset')">🔄 重置</div>
+        <div class="qq-chip" onclick="startNewChart()">💫 排新命盤</div>
       </div>
       <div class="input-row">
         <textarea
@@ -690,11 +1521,23 @@
           onkeydown="handleKey(event)"
           oninput="autoResize(this)"
         ></textarea>
+        <button class="stop-btn" id="stop-btn" onclick="stopGeneration()" title="停止生成" style="display:none">⏹</button>
         <button class="send-btn" id="send-btn" onclick="sendMessage()" title="送出">➤</button>
       </div>
-      <div class="input-hint">Enter 送出 ／ Shift+Enter 換行</div>
+      <div class="input-hint">Enter 送出 ／ Shift+Enter 換行 ／ <a href="#" onclick="openHourGuide();return false;" style="color:var(--gold);text-decoration:none;">不確定時辰？</a></div>
     </div>
   </div>
+</div>
+
+<!-- PWA Install Banner -->
+<div class="pwa-banner hidden" id="pwa-banner">
+  <div class="pwa-banner-icon">🔯</div>
+  <div class="pwa-banner-text">
+    <div class="pwa-banner-title">安裝紫微AI到主畫面</div>
+    <div class="pwa-banner-sub">像 App 一樣快速啟動，隨時查看運勢</div>
+  </div>
+  <button class="pwa-install-btn" id="pwa-install-btn">安裝</button>
+  <button class="pwa-dismiss-btn" onclick="dismissPwaBanner()">✕</button>
 </div>
 
 <!-- Auth Modal -->
@@ -729,11 +1572,221 @@
   </div>
 </div>
 
+<!-- Daily Fortune Modal -->
+<div class="modal-overlay" id="fortune-modal" onclick="closeFortuneOnOverlay(event)">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">☀️ 今日運勢</span>
+      <button class="modal-close" onclick="closeFortune()">✕</button>
+    </div>
+    <div class="fortune-modal-body">
+      <div id="fortune-date-badge" class="fortune-date-badge"></div>
+      <div class="fortune-content" id="fortune-content"></div>
+      <button class="fortune-refresh-btn" id="fortune-refresh-btn" onclick="loadDailyFortune(true)" style="display:none">↺ 重新生成今日運勢</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bookmark Drawer -->
+<div class="history-overlay" id="bookmark-overlay" onclick="closeBookmarkOnOverlay(event)">
+  <div class="history-drawer">
+    <div class="history-header">
+      <span class="history-title">📌 我的收藏</span>
+      <div class="history-actions">
+        <button class="history-close" onclick="closeBookmarks()">✕</button>
+      </div>
+    </div>
+    <div class="history-body" id="bookmark-body">
+      <div class="history-empty">載入中…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Hour Guide Modal -->
+<div class="modal-overlay" id="hour-guide-modal" onclick="closeHourGuideOnOverlay(event)">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">🕐 時辰推算引導</span>
+      <button class="modal-close" onclick="closeHourGuide()">✕</button>
+    </div>
+    <div class="modal-body" id="hour-guide-body"></div>
+  </div>
+</div>
+
+<!-- History Drawer -->
+<div class="history-overlay" id="history-overlay" onclick="closeHistoryOnOverlay(event)">
+  <div class="history-drawer">
+    <div class="history-header">
+      <span class="history-title">📜 對話歷史</span>
+      <div class="history-actions">
+        <button class="history-clear-btn" onclick="clearHistory()">清除歷史</button>
+        <button class="history-close" onclick="closeHistory()">✕</button>
+      </div>
+    </div>
+    <div class="history-body" id="history-body">
+      <div class="history-empty">載入中…</div>
+    </div>
+  </div>
+</div>
+
+<!-- Compatibility Modal -->
+<div class="modal-overlay" id="compat-modal" onclick="closeCompatOnOverlay(event)">
+  <div class="modal-box" style="max-width:680px">
+    <div class="modal-header">
+      <span class="modal-title">💕 感情合盤分析</span>
+      <button class="modal-close" onclick="closeCompat()" title="關閉">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="compat-form">
+        <!-- 甲方 -->
+        <div class="compat-person">
+          <div class="compat-person-title">甲方</div>
+          <label class="compat-label">代稱（儲存用）</label>
+          <input class="compat-input" id="ca-name" type="text" placeholder="例：小明、自己" maxlength="20">
+          <label class="compat-label">出生年</label>
+          <input class="compat-input" id="ca-year" type="number" placeholder="例：1990" min="1900" max="2099">
+          <label class="compat-label">出生月</label>
+          <input class="compat-input" id="ca-month" type="number" placeholder="1-12" min="1" max="12">
+          <label class="compat-label">出生日</label>
+          <input class="compat-input" id="ca-day" type="number" placeholder="1-31" min="1" max="31">
+          <label class="compat-label">出生時辰</label>
+          <select class="compat-select" id="ca-hour">
+            {% for item in time_table %}
+            <option value="{{ item.hour }}">{{ item.zhi }}時（{{ item.range }}）</option>
+            {% endfor %}
+          </select>
+          <label class="compat-label">性別</label>
+          <select class="compat-select" id="ca-gender">
+            <option value="1">男</option>
+            <option value="0">女</option>
+          </select>
+        </div>
+        <!-- 乙方 -->
+        <div class="compat-person">
+          <div class="compat-person-title">乙方</div>
+          <label class="compat-label">代稱（儲存用）</label>
+          <input class="compat-input" id="cb-name" type="text" placeholder="例：小花、對象" maxlength="20">
+          <label class="compat-label">出生年</label>
+          <input class="compat-input" id="cb-year" type="number" placeholder="例：1992" min="1900" max="2099">
+          <label class="compat-label">出生月</label>
+          <input class="compat-input" id="cb-month" type="number" placeholder="1-12" min="1" max="12">
+          <label class="compat-label">出生日</label>
+          <input class="compat-input" id="cb-day" type="number" placeholder="1-31" min="1" max="31">
+          <label class="compat-label">出生時辰</label>
+          <select class="compat-select" id="cb-hour">
+            {% for item in time_table %}
+            <option value="{{ item.hour }}">{{ item.zhi }}時（{{ item.range }}）</option>
+            {% endfor %}
+          </select>
+          <label class="compat-label">性別</label>
+          <select class="compat-select" id="cb-gender">
+            <option value="0">女</option>
+            <option value="1">男</option>
+          </select>
+        </div>
+      </div>
+      <div style="font-size:0.75rem;color:var(--text-muted);margin-bottom:10px;text-align:center">
+        ⏳ 合盤需要為兩人各別排盤，請耐心等候（約 1–2 分鐘）
+      </div>
+      <button class="compat-submit" id="compat-submit-btn" onclick="runCompatibility()">✨ 開始合盤分析</button>
+      <div class="compat-result" id="compat-result"></div>
+      <div id="compat-saved-notice" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(39,174,96,0.1);border:1px solid rgba(39,174,96,0.3);border-radius:8px;font-size:0.8rem;color:#7dcea0;text-align:center"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Profile Manager Modal -->
+<div class="modal-overlay" id="profiles-modal" onclick="closeProfilesOnOverlay(event)">
+  <div class="modal-box" style="max-width:540px">
+    <div class="modal-header">
+      <span class="modal-title">👥 命盤庫</span>
+      <button class="modal-close" onclick="closeProfiles()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="profile-save-bar">
+        <input class="profile-name-input" id="profile-name-input" type="text" placeholder="輸入命盤名稱（例如：媽媽、老公、2024年自己）" maxlength="30">
+        <button class="profile-save-submit" onclick="saveCurrentProfile()">💾 儲存目前命盤</button>
+      </div>
+      <div id="profile-list-body"><div class="profile-empty">載入中…</div></div>
+    </div>
+  </div>
+</div>
+
+<!-- Fortune Calendar Modal -->
+<div class="modal-overlay" id="calendar-modal" onclick="closeCalendarOnOverlay(event)">
+  <div class="modal-box" style="max-width:560px">
+    <div class="modal-header">
+      <span class="modal-title">📅 運勢日曆</span>
+      <button class="modal-close" onclick="closeCalendar()">✕</button>
+    </div>
+    <div class="modal-body" id="calendar-modal-body">
+      <div class="cal-header">
+        <button class="cal-nav-btn" onclick="calNavMonth(-1)">◀</button>
+        <span class="cal-month-label" id="cal-month-label"></span>
+        <button class="cal-nav-btn" onclick="calNavMonth(1)">▶</button>
+      </div>
+      <div id="cal-summary" class="cal-summary" style="display:none"></div>
+      <div id="cal-grid-wrap"></div>
+      <div class="cal-legend">
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-5" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 大吉</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-4" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 吉</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-3" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 平</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-2" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 小凶</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-1" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 凶</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Settings Modal -->
+<div class="modal-overlay" id="settings-modal" onclick="closeSettingsOnOverlay(event)">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">⚙️ 個人設定</span>
+      <button class="modal-close" onclick="closeSettings()">✕</button>
+    </div>
+    <div class="modal-body">
+      <div class="settings-section">
+        <div class="settings-label">命盤資料</div>
+        <div class="settings-info-card" id="settings-birth-info">載入中…</div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">回應風格</div>
+        <div class="settings-style-opts" id="settings-style-opts">
+          <button class="settings-style-opt" data-style="detailed" onclick="setStyle('detailed')">📜 詳細深入</button>
+          <button class="settings-style-opt" data-style="balanced" onclick="setStyle('balanced')">⚖️ 均衡適中</button>
+          <button class="settings-style-opt" data-style="concise" onclick="setStyle('concise')">⚡ 簡潔直接</button>
+          <button class="settings-style-opt" data-style="philosophical" onclick="setStyle('philosophical')">🌙 哲學詩意</button>
+        </div>
+        <div class="settings-msg" id="settings-style-msg"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">更改密碼</div>
+        <div class="settings-pw-form">
+          <input class="settings-pw-input" id="pw-old" type="password" placeholder="目前密碼">
+          <input class="settings-pw-input" id="pw-new" type="password" placeholder="新密碼（至少 6 字元）">
+          <input class="settings-pw-input" id="pw-confirm" type="password" placeholder="確認新密碼">
+          <button class="settings-pw-submit" onclick="changePassword()">更新密碼</button>
+          <div class="settings-msg" id="settings-pw-msg"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Chart Modal -->
 <div class="modal-overlay" id="chart-modal" onclick="closeChartOnOverlay(event)">
   <div class="modal-box">
     <div class="modal-header">
       <span class="modal-title">📊 紫微斗數命盤</span>
+      <div class="chart-view-toggle">
+        <button class="toggle-btn active" id="toggle-grid" onclick="switchChartView('grid')">格局圖</button>
+        <button class="toggle-btn" id="toggle-table" onclick="switchChartView('table')">表格</button>
+        <button class="toggle-btn" id="toggle-timeline" onclick="switchChartView('timeline')">時間軸</button>
+        <button class="toggle-btn" id="toggle-events" onclick="switchChartView('events')">人生節點</button>
+      </div>
+      <button class="modal-export-btn" id="export-btn" onclick="exportChartImage()" title="下載命盤圖片">⬇ 下載</button>
+      <button class="modal-export-btn" id="pdf-btn" onclick="exportChartPDF()" title="匯出完整報告 PDF" style="margin-right:4px">📄 PDF</button>
       <button class="modal-close" onclick="closeChart()" title="關閉">✕</button>
     </div>
     <div class="modal-body" id="chart-modal-body"></div>
@@ -823,6 +1876,13 @@
     document.getElementById('auth-modal').classList.add('hidden');
     document.getElementById('topbar-user').style.display = 'flex';
     document.getElementById('topbar-username').textContent = username;
+    document.getElementById('history-btn').style.display = '';
+    document.getElementById('compat-btn').style.display = '';
+    document.getElementById('bookmark-btn').style.display = '';
+    document.getElementById('fortune-btn').style.display = '';
+    document.getElementById('calendar-btn').style.display = '';
+    document.getElementById('profiles-btn').style.display = '';
+    document.getElementById('settings-btn').style.display = '';
 
     // 確保 welcome screen 移除，chatStarted 正確
     document.getElementById('welcome-screen')?.remove();
@@ -834,14 +1894,18 @@
       const res = await fetch(`/api/chart?session_id=${encodeURIComponent(sessionId)}`);
       const data = await res.json();
       if (data.chart) {
-        sessionStorage.setItem('ziwei_chart', data.chart);
-        document.getElementById('chart-btn').style.display = '';
+        _storeChart(data.chart, data.birth_info || null);
         hasChart = true;
       }
     } catch {}
 
+    // 嘗試載入最近歷史訊息（在歡迎訊息前顯示）
+    await _loadRecentHistoryToChat(sessionId);
+
     if (hasChart) {
-      appendAIMessage(`歡迎回來，**${username}**！\n\n你的紫微斗數命盤已就緒 📊，可以直接向我提問，例如感情、事業、財運等方向。`);
+      const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
+      const biStr = bi ? `（${bi.year}年${bi.month}月${bi.day}日 ${_getHourName(bi.hour)}時 ${bi.is_male ? '男' : '女'}）` : '';
+      appendAIMessage(`歡迎回來，**${username}**！\n\n你的紫微斗數命盤${biStr}已就緒 📊，可以直接向我提問，例如感情、事業、財運等方向。`);
     } else {
       appendAIMessage(`你好，**${username}**！我是紫微AI算命大師 🔯\n\n請告訴我你的**出生年月日、時辰和性別**，我就能為你排出完整的紫微斗數命盤！\n\n例如：「我是1990年3月15日卯時出生的女生」`);
     }
@@ -966,9 +2030,12 @@
     div.className = 'msg ai';
     div.innerHTML = `
       <div class="msg-avatar">🔯</div>
-      <div>
+      <div style="flex:1;min-width:0">
         <div class="msg-bubble">${renderMarkdown(text)}</div>
-        <div class="msg-time">${getTime()}</div>
+        <div class="msg-footer">
+          <div class="msg-time">${getTime()}</div>
+          <button class="bookmark-btn" onclick="bookmarkMessage(this)" title="收藏此回應">🔖</button>
+        </div>
       </div>
     `;
     msgs.appendChild(div);
@@ -983,9 +2050,11 @@
     div.className = 'msg ai';
     div.innerHTML = `
       <div class="msg-avatar">🔯</div>
-      <div>
+      <div style="flex:1;min-width:0">
         <div class="msg-bubble streaming-bubble"></div>
-        <div class="msg-time">${getTime()}</div>
+        <div class="msg-footer">
+          <div class="msg-time">${getTime()}</div>
+        </div>
       </div>
     `;
     msgs.appendChild(div);
@@ -1071,6 +2140,7 @@
 
     isLoading = true;
     document.getElementById('send-btn').disabled = true;
+    document.getElementById('stop-btn').style.display = '';
     showTyping();
 
     let _timedOut = false;
@@ -1095,6 +2165,7 @@
       // Fix: 用 streamDone 旗標讓 done event 能跳出外層 while 迴圈，
       // 避免 break 只跳出內層 for 迴圈後繼續多餘的 reader.read()
       let streamDone = false;
+      let _streamHadChart = false;
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
@@ -1106,7 +2177,8 @@
           try { evt = JSON.parse(line.slice(6)); } catch { continue; }
 
           if (evt.chart !== undefined) {
-            _storeChart(evt.chart);
+            _storeChart(evt.chart, evt.birth_info || null);
+            _streamHadChart = true;
           }
 
           if (evt.clear) {
@@ -1127,9 +2199,26 @@
           }
 
           if (evt.done) {
+            // Save horoscope analysis text for PDF export
+            if (_streamHadChart && accumulated) {
+              sessionStorage.setItem('ziwei_horoscope', accumulated);
+            }
             // Bug #9 Fix: always do a final synchronous render so partial markdown is resolved
             if (bubble) {
               flushRender(bubble, accumulated);
+              // Fix #5: add bookmark button after streaming completes
+              const msgEl = bubble.closest('.msg');
+              if (msgEl) {
+                const footer = msgEl.querySelector('.msg-footer');
+                if (footer && !footer.querySelector('.bookmark-btn')) {
+                  const btn = document.createElement('button');
+                  btn.className = 'bookmark-btn';
+                  btn.title = '收藏此回應';
+                  btn.textContent = '🔖';
+                  btn.onclick = function() { bookmarkMessage(this); };
+                  footer.appendChild(btn);
+                }
+              }
             } else {
               // No tokens arrived (e.g. pipeline returned full text at once)
               removeTyping();
@@ -1167,6 +2256,14 @@
       _currentController = null;
       isLoading = false;
       document.getElementById('send-btn').disabled = false;
+      document.getElementById('stop-btn').style.display = 'none';
+    }
+  }
+
+  function stopGeneration() {
+    if (_currentController) {
+      _currentController.abort();
+      _currentController = null;
     }
   }
 
@@ -1207,24 +2304,262 @@
   }
 
   // ── Chart modal ──────────────────────────────────────────────
-  function _storeChart(md) {
+  let _currentChartView = 'grid'; // 'grid' | 'table'
+
+  function _storeChart(md, birthInfo) {
     if (!md) return;
     sessionStorage.setItem('ziwei_chart', md);
+    if (birthInfo) sessionStorage.setItem('ziwei_birth_info', JSON.stringify(birthInfo));
     document.getElementById('chart-btn').style.display = '';
+    _lifeEventsCache = null;  // invalidate cache when new chart arrives
+  }
+
+  // Parse pandas to_markdown() output into array of palace objects
+  function _parseChartMarkdown(md) {
+    const lines = md.trim().split('\n').filter(l => l.includes('|'));
+    if (lines.length < 3) return [];
+    // pandas to_markdown() format:
+    //   |    | 宮  | 天干 | 地支 | 星 | 化 | 大限 | 小限 |
+    // After split('|').map(trim): ['', '', '宮', '天干', ..., '']
+    // slice(2,-1) skips leading '' + pandas empty index header + trailing ''
+    const headers = lines[0].split('|').map(h => h.trim()).slice(2, -1);
+    if (!headers.length) return [];
+    const palaces = [];
+    for (let i = 2; i < lines.length; i++) {
+      // Keep empty strings so column positions are preserved (e.g. 化 column may be empty)
+      const cols = lines[i].split('|').map(c => c.trim());
+      if (cols.length < headers.length + 2) continue;
+      // cols: ['', rowIndex, '命宮', '甲', '子', '紫微,貪狼', '', '2-11歲', '', '']
+      // slice(2, 2+headers.length) skips leading '' and row index
+      const data = cols.slice(2, 2 + headers.length);
+      const obj = {};
+      headers.forEach((h, idx) => { obj[h] = data[idx] ?? ''; });
+      palaces.push(obj);
+    }
+    return palaces;
+  }
+
+  function _getHourName(hour) {
+    const names = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+    return names[Math.min(Math.floor(Number(hour) / 2), 11)] || '';
+  }
+
+  function _renderPalaceGrid(palaces, birthInfo) {
+    // Di Zhi → [grid-row, grid-col] (1-indexed CSS)
+    const pos = {
+      '巳':[1,1],'午':[1,2],'未':[1,3],'申':[1,4],
+      '辰':[2,1],                        '酉':[2,4],
+      '卯':[3,1],                        '戌':[3,4],
+      '寅':[4,1],'丑':[4,2],'子':[4,3],'亥':[4,4],
+    };
+    const palaceMap = {};
+    palaces.forEach(p => { palaceMap[p['地支']] = p; });
+
+    // Center cell (spans rows 2-3, cols 2-3)
+    let centerHtml = `<div class="palace-cell palace-center">
+      <div class="palace-center-icon">☯</div>
+      <div class="palace-center-title">紫微斗數命盤</div>`;
+    if (birthInfo) {
+      centerHtml += `<div class="palace-center-date">${birthInfo.year}年${birthInfo.month}月${birthInfo.day}日</div>`;
+      centerHtml += `<div class="palace-center-sub">${_getHourName(birthInfo.hour)}時 ∙ ${birthInfo.is_male ? '男' : '女'}</div>`;
+    }
+    centerHtml += `</div>`;
+
+    const DI_ZHI = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+    const palaceCells = DI_ZHI.map(dz => {
+      const p = palaceMap[dz];
+      const [r, c] = pos[dz];
+      if (!p) return `<div class="palace-cell" style="grid-row:${r};grid-column:${c};"></div>`;
+      const stars = p['星'] ? p['星'].split(',').map(s => s.trim()).filter(Boolean) : [];
+      const hua = p['化'] || '';
+      const daXian = p['大限'] || '';
+      const xiaoXian = p['小限'] || '';
+      return `<div class="palace-cell" style="grid-row:${r};grid-column:${c};">
+        <div class="palace-name">${p['宮']}</div>
+        <div class="palace-ganzhi">${p['天干']}${p['地支']}</div>
+        ${stars.length ? `<div class="palace-stars">${stars.join('<br>')}</div>` : ''}
+        ${hua ? `<div class="palace-hua">化${hua}</div>` : ''}
+        ${daXian || xiaoXian ? `<div class="palace-limits">${[daXian, xiaoXian].filter(Boolean).join(' ∙ ')}</div>` : ''}
+      </div>`;
+    });
+
+    return `<div class="palace-grid">${centerHtml}${palaceCells.join('')}</div>`;
+  }
+
+  function switchChartView(view) {
+    _currentChartView = view;
+    document.getElementById('toggle-grid').classList.toggle('active', view === 'grid');
+    document.getElementById('toggle-table').classList.toggle('active', view === 'table');
+    document.getElementById('toggle-timeline').classList.toggle('active', view === 'timeline');
+    document.getElementById('toggle-events').classList.toggle('active', view === 'events');
+    const md = sessionStorage.getItem('ziwei_chart') || '';
+    const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
+    _renderChartBody(md, bi, view);
+  }
+
+  function _renderChartBody(md, bi, view) {
+    const body = document.getElementById('chart-modal-body');
+    if (!md) { body.innerHTML = '<p style="color:var(--text-muted);text-align:center;">尚無命盤資料</p>'; return; }
+    if (view === 'grid') {
+      const palaces = _parseChartMarkdown(md);
+      body.innerHTML = palaces.length ? _renderPalaceGrid(palaces, bi) : '<p style="color:var(--text-muted)">命盤解析失敗</p>';
+    } else if (view === 'timeline') {
+      const palaces = _parseChartMarkdown(md);
+      body.innerHTML = palaces.length ? _renderTimeline(palaces, bi) : '<p style="color:var(--text-muted)">無法解析時間軸資料</p>';
+    } else if (view === 'events') {
+      _renderLifeEvents(bi);
+    } else {
+      body.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(marked.parse(md)) : marked.parse(md);
+    }
+  }
+
+  let _daxianData = []; // stored for popup access
+
+  function _renderTimeline(palaces, bi) {
+    const birthYear = bi ? Number(bi.year) : null;
+    const currentYear = new Date().getFullYear();
+    const currentAge = birthYear ? currentYear - birthYear : null;
+
+    function parseAgeRange(str) {
+      if (!str) return null;
+      const m = String(str).match(/(\d+)[^\d]+(\d+)/);
+      return m ? [parseInt(m[1]), parseInt(m[2])] : null;
+    }
+
+    _daxianData = palaces
+      .map(p => ({ ...p, _range: parseAgeRange(p['大限']) }))
+      .filter(p => p._range)
+      .sort((a, b) => a._range[0] - b._range[0]);
+
+    if (!_daxianData.length) return '<p style="color:var(--text-muted);padding:20px">命盤中無大限資料</p>';
+
+    const blocks = _daxianData.map((p, idx) => {
+      const [s, e] = p._range;
+      const yearStart = birthYear ? birthYear + s : null;
+      const yearEnd   = birthYear ? birthYear + e : null;
+      const isCurrent = currentAge !== null && currentAge >= s && currentAge <= e;
+      const stars = p['星'] ? p['星'].split(',').map(x => x.trim()).filter(Boolean).join(' ') : '—';
+      const yearStr = yearStart ? `${yearStart}–${yearEnd}年` : '';
+      return `<div class="daxian-block${isCurrent ? ' current' : ''}" onclick="showDaxianPopup(event,${idx})" title="點擊查看詳情">
+        <div class="daxian-palace">${p['宮'] || ''}</div>
+        <div class="daxian-ganzhi">${p['天干'] || ''}${p['地支'] || ''}</div>
+        <div class="daxian-age">${s}–${e} 歲</div>
+        ${yearStr ? `<div class="daxian-year">${yearStr}</div>` : ''}
+        <div class="daxian-stars">${stars}</div>
+        ${p['化'] ? `<div class="daxian-age" style="color:var(--gold-light)">化${p['化']}</div>` : ''}
+      </div>`;
+    }).join('');
+
+    const legendCurrent = currentAge !== null
+      ? `<div class="legend-item"><div class="legend-dot current-dot"></div>當前大限（${currentAge}歲）</div>` : '';
+
+    return `<div class="timeline-wrap">
+      <div class="timeline-track">
+        <div class="timeline-axis"></div>
+        ${blocks}
+      </div>
+    </div>
+    <div class="timeline-legend">
+      ${legendCurrent}
+      <div class="legend-item"><div class="legend-dot"></div>其他大限（點擊查看詳情）</div>
+    </div>`;
+  }
+
+  let _daxianPopupEl = null;
+
+  function showDaxianPopup(event, idx) {
+    event.stopPropagation();
+    if (_daxianPopupEl) { _daxianPopupEl.remove(); _daxianPopupEl = null; }
+    const p = _daxianData[idx];
+    if (!p) return;
+    const [s, e] = p._range;
+    const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
+    const birthYear = bi ? Number(bi.year) : null;
+    const yearStr = birthYear ? `${birthYear + s} – ${birthYear + e} 年` : '';
+    const stars = p['星'] ? p['星'].split(',').map(x => x.trim()).filter(Boolean).join('、') : '無';
+    const popup = document.createElement('div');
+    popup.style.cssText = 'position:fixed;z-index:10000;background:#1c1035;border:1px solid rgba(201,162,39,0.45);border-radius:12px;padding:14px 16px;min-width:220px;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
+    popup.innerHTML = `
+      <div class="daxian-popup-header">
+        <span class="daxian-popup-title">${p['宮'] || ''} ∙ ${p['天干'] || ''}${p['地支'] || ''}</span>
+        <button onclick="this.closest('[style]').remove()">✕</button>
+      </div>
+      <div class="daxian-popup-row"><span class="daxian-popup-label">年齡</span><span>${s}–${e} 歲</span></div>
+      ${yearStr ? `<div class="daxian-popup-row"><span class="daxian-popup-label">年份</span><span>${yearStr}</span></div>` : ''}
+      <div class="daxian-popup-row"><span class="daxian-popup-label">主星</span><span>${stars}</span></div>
+      ${p['化'] ? `<div class="daxian-popup-row"><span class="daxian-popup-label">化星</span><span>化${p['化']}</span></div>` : ''}
+      ${p['小限'] ? `<div class="daxian-popup-row"><span class="daxian-popup-label">小限</span><span>${p['小限']}</span></div>` : ''}
+    `;
+    document.body.appendChild(popup);
+    _daxianPopupEl = popup;
+
+    // Position near the clicked block, keep inside viewport
+    const rect = event.currentTarget.getBoundingClientRect();
+    let top = rect.bottom + 6;
+    let left = rect.left;
+    if (left + 240 > window.innerWidth) left = Math.max(8, window.innerWidth - 248);
+    if (top + 220 > window.innerHeight) top = Math.max(8, rect.top - 228);
+    popup.style.top = top + 'px';
+    popup.style.left = left + 'px';
+
+    setTimeout(() => document.addEventListener('click', _closeDaxianPopup, { once: true }), 0);
+  }
+
+  function _closeDaxianPopup(e) {
+    if (_daxianPopupEl && !_daxianPopupEl.contains(e.target)) {
+      _daxianPopupEl.remove();
+      _daxianPopupEl = null;
+    }
   }
 
   function showChart() {
     const md = sessionStorage.getItem('ziwei_chart') || '';
     if (!md) return;
-    document.getElementById('chart-modal-body').innerHTML =
-      (typeof DOMPurify !== 'undefined')
-        ? DOMPurify.sanitize(marked.parse(md))
-        : marked.parse(md);
+    const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
+    _renderChartBody(md, bi, _currentChartView);
     document.getElementById('chart-modal').classList.add('open');
   }
 
   function closeChart() {
-    document.getElementById('chart-modal').classList.remove('open');
+    const modal = document.getElementById('chart-modal');
+    modal.classList.remove('open');
+    if (modal.dataset.preview) {
+      delete modal.dataset.preview;
+      const modalTitle = modal.querySelector('.modal-title');
+      if (modalTitle) modalTitle.textContent = '📊 紫微斗數命盤';
+    }
+  }
+
+  async function exportChartImage() {
+    // 強制切換到格局圖模式再截圖
+    const prevView = _currentChartView;
+    if (_currentChartView !== 'grid') switchChartView('grid');
+
+    const btn = document.getElementById('export-btn');
+    btn.textContent = '⏳ 生成中…';
+    btn.disabled = true;
+
+    try {
+      const target = document.getElementById('chart-modal-body');
+      const canvas = await html2canvas(target, {
+        backgroundColor: '#0d0718',
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+      const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
+      const filename = bi ? `ziwei_${bi.year}${String(bi.month).padStart(2,'0')}${String(bi.day).padStart(2,'0')}.png` : 'ziwei_chart.png';
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    } catch (e) {
+      alert('截圖失敗，請稍後再試');
+    } finally {
+      btn.textContent = '⬇ 下載';
+      btn.disabled = false;
+      if (prevView !== 'grid') switchChartView(prevView);
+    }
   }
 
   function closeChartOnOverlay(e) {
@@ -1238,9 +2573,9 @@
     }
   })();
 
+
   async function resetChat(skipConfirm) {
-    if (!skipConfirm && !confirm('確定要重置對話嗎？所有命盤記錄將清除。')) return;
-    // Bug #9 Fix: 取消任何進行中的 fetch，避免舊回應附加到重置後的聊天
+    if (!skipConfirm && !confirm('確定要重置對話嗎？對話記憶與命盤將全部清除。\n（命盤已儲存到「命盤庫」的不受影響）')) return;
     if (_currentController) {
       _currentController.abort();
       _currentController = null;
@@ -1248,6 +2583,14 @@
     isLoading = false;
     const sendBtn = document.getElementById('send-btn');
     if (sendBtn) sendBtn.disabled = false;
+    // 清除前端 session storage（命盤、birth_info、horoscope 分析文字）
+    sessionStorage.removeItem('ziwei_chart');
+    sessionStorage.removeItem('ziwei_birth_info');
+    sessionStorage.removeItem('ziwei_horoscope');
+    document.getElementById('chart-btn').style.display = 'none';
+    _lifeEventsCache = null;
+    _calData = null;
+    // 呼叫後端重置（清除 HOROSCOPE/CHART_TABLE/SESSION_STATS，讓排盤重新開始）
     if (SESSION_ID) {
       try {
         await fetch('/api/reset', {
@@ -1257,17 +2600,997 @@
         });
       } catch(e) {}
     }
-    // 命盤資料持久化 — 重置只清對話記憶，不清命盤
-    const hadChart = !!sessionStorage.getItem('ziwei_chart');
     const msgs = document.getElementById('messages');
     if (msgs) { msgs.innerHTML = ''; chatStarted = true; }
     if (!skipConfirm) {
-      if (hadChart) {
-        appendAIMessage('✅ 對話記憶已重置！你的命盤資料仍然保留 📊，可以繼續提問。');
-      } else {
-        appendAIMessage('✅ 對話已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你排盤。');
-      }
+      appendAIMessage('✅ 對話與命盤已重置！請重新告訴我你的**出生年月日、時辰和性別**，我來幫你排盤。\n\n> 如要恢復之前的命盤，可點「👥 命盤庫」載入。');
     }
+  }
+
+  // 只清除命盤資料，保留對話記憶 — 用於「排新命盤」情境
+  async function startNewChart() {
+    // Clear frontend chart state
+    sessionStorage.removeItem('ziwei_chart');
+    sessionStorage.removeItem('ziwei_birth_info');
+    sessionStorage.removeItem('ziwei_horoscope');
+    document.getElementById('chart-btn').style.display = 'none';
+    _lifeEventsCache = null;
+    _calData = null;
+    // Ask backend to clear only chart data (keeps conversation thread)
+    if (SESSION_ID) {
+      try {
+        await fetch('/api/clear-chart', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: SESSION_ID })
+        });
+      } catch(e) {}
+    }
+    appendAIMessage('✅ 命盤已清除！請告訴我新的**出生年月日、時辰和性別**，我來幫你排盤。');
+    document.getElementById('user-input').focus();
+  }
+
+  // ── Hour Guide ───────────────────────────────────────────────
+  const HOUR_INFO = {
+    '子':{ range:'23:00–01:00', desc:'夜深靜謐，直覺敏銳，個性內斂' },
+    '丑':{ range:'01:00–03:00', desc:'踏實耐心，意志堅定，重視根基' },
+    '寅':{ range:'03:00–05:00', desc:'積極進取，勇氣十足，開創力強' },
+    '卯':{ range:'05:00–07:00', desc:'思維靈活，親和力佳，善於溝通' },
+    '辰':{ range:'07:00–09:00', desc:'務實穩健，執行力強，追求完美' },
+    '巳':{ range:'09:00–11:00', desc:'聰慧機敏，反應迅速，分析力佳' },
+    '午':{ range:'11:00–13:00', desc:'熱情開朗，領導力強，外向自信' },
+    '未':{ range:'13:00–15:00', desc:'溫柔貼心，藝術感強，重視和諧' },
+    '申':{ range:'15:00–17:00', desc:'口才犀利，機智幽默，適應力強' },
+    '酉':{ range:'17:00–19:00', desc:'細膩審慎，重視細節，品味出眾' },
+    '戌':{ range:'19:00–21:00', desc:'忠誠守信，正義感強，踏實可靠' },
+    '亥':{ range:'21:00–23:00', desc:'浪漫感性，想像豐富，直覺過人' },
+  };
+  const DZ_ALL = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+
+  const GUIDE_QUESTIONS = [
+    {
+      q: '你大概知道出生的時段嗎？',
+      sub: '請選擇最接近的時段（每個時段涵蓋 2 小時）',
+      opts: [
+        { icon:'🌙', text:'深夜 23:00–01:00', hours:['子'] },
+        { icon:'🌛', text:'凌晨 01:00–05:00', hours:['丑','寅'] },
+        { icon:'🌅', text:'清晨 05:00–09:00', hours:['卯','辰'] },
+        { icon:'☀️', text:'上午 09:00–13:00', hours:['巳','午'] },
+        { icon:'🌤️', text:'下午 13:00–19:00', hours:['未','申','酉'] },
+        { icon:'🌆', text:'傍晚至深夜 19:00–23:00', hours:['戌','亥'] },
+        { icon:'❓', text:'完全不確定',        hours: DZ_ALL },
+      ]
+    },
+    {
+      q: '你的性格最符合以下哪種描述？',
+      sub: '選擇最接近你自身特質的選項',
+      opts: [
+        { icon:'🔥', text:'積極進取、好勝心強、天生領袖',  hours:['午','寅','巳'] },
+        { icon:'🌊', text:'溫柔體貼、重視感受、和平主義',  hours:['未','卯','亥'] },
+        { icon:'⚡', text:'思維靈活、口才好、反應快',       hours:['申','巳','卯'] },
+        { icon:'🪨', text:'穩重踏實、有耐心、值得信賴',     hours:['丑','辰','戌'] },
+        { icon:'🎨', text:'富有創意、感性、直覺敏銳',       hours:['子','亥','未'] },
+      ]
+    },
+    {
+      q: '以下哪個情境最符合你的日常狀態？',
+      sub: '選一個最貼近的描述',
+      opts: [
+        { icon:'📚', text:'喜歡深入研究、思考後才行動',  hours:['辰','巳','丑'] },
+        { icon:'🤝', text:'熱愛社交、人脈廣、善於合作',  hours:['卯','申','午'] },
+        { icon:'🏃', text:'行動力強、決策快、不拖延',     hours:['寅','午','申'] },
+        { icon:'🌙', text:'享受獨處、深夜是靈感高峰',     hours:['子','亥','酉'] },
+        { icon:'🎯', text:'目標明確、計畫性強、重細節',   hours:['酉','戌','辰'] },
+      ]
+    },
+    {
+      q: '家人或朋友常如何形容你？',
+      sub: '選一個最常聽到的形容',
+      opts: [
+        { icon:'⚡', text:'做事快、急性子',   hours:['午','寅','卯'] },
+        { icon:'🐢', text:'慢工出細活、謹慎', hours:['丑','辰','酉'] },
+        { icon:'😄', text:'樂觀、外向、陽光', hours:['午','卯','申'] },
+        { icon:'🌿', text:'沉穩、可靠、內斂', hours:['戌','子','丑'] },
+        { icon:'💡', text:'創意多、點子多',   hours:['亥','未','巳'] },
+      ]
+    }
+  ];
+
+  let _guideStep = 0;
+  let _guideAnswers = [];  // index of chosen option per step
+
+  function openHourGuide() {
+    _guideStep = 0;
+    _guideAnswers = new Array(GUIDE_QUESTIONS.length).fill(-1);
+    document.getElementById('hour-guide-modal').classList.add('open');
+    _renderGuideStep();
+  }
+  function closeHourGuide() { document.getElementById('hour-guide-modal').classList.remove('open'); }
+  function closeHourGuideOnOverlay(e) { if (e.target === document.getElementById('hour-guide-modal')) closeHourGuide(); }
+
+  function _renderGuideStep() {
+    const body = document.getElementById('hour-guide-body');
+    const total = GUIDE_QUESTIONS.length;
+    if (_guideStep >= total) { _renderGuideResult(); return; }
+
+    const q = GUIDE_QUESTIONS[_guideStep];
+    const dots = Array.from({length: total}, (_, i) =>
+      `<div class="guide-progress-dot${i < _guideStep ? ' done' : ''}"></div>`
+    ).join('');
+
+    const opts = q.opts.map((o, idx) =>
+      `<div class="guide-opt${_guideAnswers[_guideStep] === idx ? ' selected' : ''}"
+            onclick="_selectGuideOpt(${idx})">
+        <span class="guide-opt-icon">${o.icon}</span><span>${o.text}</span>
+       </div>`
+    ).join('');
+
+    const canNext = _guideAnswers[_guideStep] >= 0;
+    body.innerHTML = `
+      <div class="guide-progress">${dots}</div>
+      <div class="guide-q">${_guideStep + 1}. ${q.q}</div>
+      <div class="guide-q-sub">${q.sub}</div>
+      <div class="guide-options">${opts}</div>
+      <div class="guide-nav">
+        ${_guideStep > 0 ? `<button class="guide-prev-btn" onclick="_guideBack()">← 上一題</button>` : ''}
+        <button class="guide-next-btn" onclick="_guideNext()" ${canNext ? '' : 'disabled'}>
+          ${_guideStep < total - 1 ? '下一題 →' : '查看推薦時辰 ✨'}
+        </button>
+      </div>`;
+  }
+
+  function _selectGuideOpt(idx) {
+    _guideAnswers[_guideStep] = idx;
+    _renderGuideStep();
+  }
+  function _guideNext() {
+    if (_guideAnswers[_guideStep] < 0) return;
+    _guideStep++;
+    _renderGuideStep();
+  }
+  function _guideBack() { if (_guideStep > 0) { _guideStep--; _renderGuideStep(); } }
+
+  function _renderGuideResult() {
+    // Tally scores per Di Zhi
+    const scores = {};
+    DZ_ALL.forEach(dz => { scores[dz] = 0; });
+
+    GUIDE_QUESTIONS.forEach((q, qi) => {
+      const ans = _guideAnswers[qi];
+      if (ans < 0) return;
+      const weight = qi === 0 ? 3 : 1;  // first question (time range) weighs more
+      q.opts[ans].hours.forEach(dz => { scores[dz] = (scores[dz] || 0) + weight; });
+    });
+
+    const ranked = DZ_ALL
+      .map(dz => ({ dz, score: scores[dz] || 0 }))
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    const medals = ['🥇', '🥈', '🥉'];
+    const cards = ranked.map((r, i) => {
+      const info = HOUR_INFO[r.dz];
+      return `<div class="hour-card">
+        <span class="hour-card-rank">${medals[i]}</span>
+        <div>
+          <div class="hour-card-name">${r.dz}時</div>
+          <div class="hour-card-range">${info.range}</div>
+          <div class="hour-card-desc">${info.desc}</div>
+        </div>
+        <button class="hour-card-apply" onclick="applyHour('${r.dz}')">填入</button>
+      </div>`;
+    }).join('');
+
+    document.getElementById('hour-guide-body').innerHTML = `
+      <div class="guide-result">
+        <div class="guide-result-title">✨ 根據你的回答，推薦以下時辰</div>
+        <div class="hour-cards">${cards}</div>
+        <div style="margin-top:14px;font-size:0.78rem;color:var(--text-muted);line-height:1.6">
+          ⚠️ 以上為參考推測，若有出生證明或家人確認更佳。<br>
+          可嘗試不同時辰分別排盤，比對哪份命盤最符合你的人生。
+        </div>
+        <button class="guide-prev-btn" style="margin-top:12px;width:100%" onclick="_guideStep=0;_renderGuideStep()">← 重新作答</button>
+      </div>`;
+  }
+
+  function applyHour(dz) {
+    appendTime(dz);
+    closeHourGuide();
+    document.getElementById('user-input').focus();
+  }
+
+  // ── Daily Fortune ────────────────────────────────────────────
+  let _fortuneLoaded = false;
+
+  function openDailyFortune() {
+    document.getElementById('fortune-modal').classList.add('open');
+    const today = new Date().toLocaleDateString('zh-TW', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
+    document.getElementById('fortune-date-badge').textContent = today;
+    if (!_fortuneLoaded) loadDailyFortune(false);
+  }
+  function closeFortune() { document.getElementById('fortune-modal').classList.remove('open'); }
+  function closeFortuneOnOverlay(e) { if (e.target === document.getElementById('fortune-modal')) closeFortune(); }
+
+  async function loadDailyFortune(forceRefresh) {
+    const content = document.getElementById('fortune-content');
+    const refreshBtn = document.getElementById('fortune-refresh-btn');
+    content.innerHTML = '<span style="color:var(--text-muted)">⏳ 正在為你生成今日運勢…</span>';
+    refreshBtn.style.display = 'none';
+    _fortuneLoaded = false;
+
+    let accumulated = '';
+    try {
+      const url = `/api/daily-fortune?session_id=${encodeURIComponent(SESSION_ID)}${forceRefresh ? '&force=1' : ''}`;
+      const res = await fetch(url);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+          if (evt.token) { accumulated += evt.token; content.innerHTML = renderMarkdown(accumulated); }
+          if (evt.done) { _fortuneLoaded = true; refreshBtn.style.display = ''; break; }
+        }
+      }
+    } catch {
+      content.innerHTML = '<p style="color:#e74c3c">⚠️ 載入失敗，請稍後再試。</p>';
+    }
+  }
+
+  // ── Bookmarks ─────────────────────────────────────────────────
+  function openBookmarks() {
+    document.getElementById('bookmark-overlay').classList.add('open');
+    _loadBookmarks();
+  }
+  function closeBookmarks() { document.getElementById('bookmark-overlay').classList.remove('open'); }
+  function closeBookmarkOnOverlay(e) { if (e.target === document.getElementById('bookmark-overlay')) closeBookmarks(); }
+
+  async function _loadBookmarks() {
+    const body = document.getElementById('bookmark-body');
+    body.innerHTML = '<div class="history-empty">載入中…</div>';
+    try {
+      const res = await fetch(`/api/bookmarks?session_id=${encodeURIComponent(SESSION_ID)}`);
+      const data = await res.json();
+      const items = data.bookmarks || [];
+      if (!items.length) { body.innerHTML = '<div class="history-empty">尚無收藏的訊息<br><small>在 AI 回應旁點 🔖 即可收藏</small></div>'; return; }
+      body.innerHTML = '';
+      items.forEach(bm => {
+        const div = document.createElement('div');
+        div.className = 'history-msg';
+        div.dataset.id = bm.id;
+        const shortDate = bm.created_at ? bm.created_at.slice(0, 16) : '';
+        div.innerHTML = `
+          <div class="history-msg-header">
+            <span class="history-role-badge ai">AI</span>
+            <span>${shortDate}</span>
+            <button onclick="deleteBookmark(${bm.id}, this)" style="margin-left:auto;background:none;border:none;color:var(--text-muted);cursor:pointer;font-size:0.8rem;" title="刪除">✕</button>
+          </div>
+          <div class="history-msg-content" onclick="this.classList.toggle('expanded')">${bm.content.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,' ')}</div>`;
+        body.appendChild(div);
+      });
+    } catch { body.innerHTML = '<div class="history-empty">載入失敗</div>'; }
+  }
+
+  async function deleteBookmark(id, btn) {
+    try {
+      await fetch(`/api/bookmarks/${id}?session_id=${encodeURIComponent(SESSION_ID)}`, { method: 'DELETE' });
+      btn.closest('.history-msg').remove();
+      if (!document.querySelector('#bookmark-body .history-msg')) {
+        document.getElementById('bookmark-body').innerHTML = '<div class="history-empty">尚無收藏的訊息</div>';
+      }
+    } catch { alert('刪除失敗'); }
+  }
+
+  async function bookmarkMessage(btn) {
+    const bubble = btn.closest('.msg').querySelector('.msg-bubble');
+    if (!bubble) return;
+    const content = bubble.innerText || bubble.textContent;
+    try {
+      const res = await fetch('/api/bookmarks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: SESSION_ID, content }),
+      });
+      if (res.ok) { btn.classList.add('saved'); btn.title = '已收藏'; }
+    } catch { alert('收藏失敗'); }
+  }
+
+  // ── Compatibility ─────────────────────────────────────────────
+  function openCompat() {
+    document.getElementById('compat-modal').classList.add('open');
+    document.getElementById('compat-result').classList.remove('visible');
+    document.getElementById('compat-result').innerHTML = '';
+  }
+  function closeCompat() { document.getElementById('compat-modal').classList.remove('open'); }
+  function closeCompatOnOverlay(e) {
+    if (e.target === document.getElementById('compat-modal')) closeCompat();
+  }
+
+  async function runCompatibility() {
+    const getVal = id => document.getElementById(id).value.trim();
+    const a = { year: +getVal('ca-year'), month: +getVal('ca-month'), day: +getVal('ca-day'), hour: +getVal('ca-hour'), is_male: getVal('ca-gender') === '1' };
+    const b = { year: +getVal('cb-year'), month: +getVal('cb-month'), day: +getVal('cb-day'), hour: +getVal('cb-hour'), is_male: getVal('cb-gender') === '1' };
+    const nameA = getVal('ca-name') || '甲方';
+    const nameB = getVal('cb-name') || '乙方';
+    if (!a.year || !a.month || !a.day || !b.year || !b.month || !b.day) {
+      alert('請填寫兩人的完整出生資料'); return;
+    }
+    const btn = document.getElementById('compat-submit-btn');
+    const result = document.getElementById('compat-result');
+    const savedNotice = document.getElementById('compat-saved-notice');
+    btn.disabled = true;
+    btn.textContent = '⏳ 分析中，請稍候…';
+    result.innerHTML = '';
+    result.classList.add('visible');
+    savedNotice.style.display = 'none';
+
+    let accumulated = '';
+    try {
+      const res = await fetch('/api/compatibility', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ person_a: a, person_b: b, session_id: SESSION_ID, name_a: nameA, name_b: nameB }),
+      });
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let done = false;
+      while (!done) {
+        const { done: streamDone, value } = await reader.read();
+        if (streamDone) break;
+        for (const line of decoder.decode(value, { stream: true }).split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          let evt;
+          try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+          if (evt.progress) {
+            btn.textContent = evt.progress;
+          }
+          if (evt.clear) {
+            accumulated = '';
+            result.innerHTML = '';
+          }
+          if (evt.token) { accumulated += evt.token; result.innerHTML = renderMarkdown(accumulated); }
+          if (evt.saved) {
+            savedNotice.textContent = `✅ 命盤已自動儲存至命盤庫：${evt.saved.join('、')}`;
+            savedNotice.style.display = '';
+          }
+          if (evt.done) { done = true; break; }
+        }
+      }
+    } catch (err) {
+      result.innerHTML = '<p style="color:#e74c3c">⚠️ 分析失敗，請稍後再試。</p>';
+    } finally {
+      btn.disabled = false;
+      btn.textContent = '✨ 開始合盤分析';
+    }
+  }
+
+  // ── History Drawer ───────────────────────────────────────────
+  let _historyOffset = 0;
+  let _historyHasMore = false;
+
+  function openHistory() {
+    document.getElementById('history-overlay').classList.add('open');
+    _historyOffset = 0;
+    _loadHistory(true);
+  }
+
+  function closeHistory() {
+    document.getElementById('history-overlay').classList.remove('open');
+  }
+
+  function closeHistoryOnOverlay(e) {
+    if (e.target === document.getElementById('history-overlay')) closeHistory();
+  }
+
+  async function _loadHistory(reset) {
+    if (reset) _historyOffset = 0;
+    const body = document.getElementById('history-body');
+    if (reset) body.innerHTML = '<div class="history-empty">載入中…</div>';
+    try {
+      const res = await fetch(`/api/history?session_id=${encodeURIComponent(SESSION_ID)}&limit=30&offset=${_historyOffset}`);
+      const data = await res.json();
+      const msgs = data.messages || [];
+      _historyHasMore = data.has_more;
+
+      if (reset) body.innerHTML = '';
+
+      if (msgs.length === 0 && reset) {
+        body.innerHTML = '<div class="history-empty">尚無對話歷史</div>';
+        return;
+      }
+
+      // Remove load-more button if exists
+      const existingBtn = body.querySelector('.history-load-more');
+      if (existingBtn) existingBtn.remove();
+
+      msgs.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'history-msg';
+        const shortDate = m.created_at ? m.created_at.slice(5, 16) : '';
+        const roleLabel = m.role === 'user' ? '你' : 'AI';
+        const preview = m.content.replace(/<[^>]+>/g, '').replace(/\n/g, ' ').trim();
+        div.innerHTML = `
+          <div class="history-msg-header">
+            <span class="history-role-badge ${m.role}">${roleLabel}</span>
+            <span>${shortDate}</span>
+          </div>
+          <div class="history-msg-content" onclick="this.classList.toggle('expanded')">${preview}</div>
+        `;
+        body.appendChild(div);
+      });
+
+      _historyOffset += msgs.length;
+
+      if (_historyHasMore) {
+        const loadMore = document.createElement('div');
+        loadMore.className = 'history-load-more';
+        loadMore.innerHTML = `<button class="history-load-btn" onclick="_loadHistory(false)">載入更多</button>`;
+        body.appendChild(loadMore);
+      }
+    } catch {
+      body.innerHTML = '<div class="history-empty">載入失敗，請稍後再試</div>';
+    }
+  }
+
+  async function clearHistory() {
+    if (!confirm('確定要清除所有對話歷史嗎？此操作無法復原。')) return;
+    try {
+      await fetch(`/api/history?session_id=${encodeURIComponent(SESSION_ID)}`, { method: 'DELETE' });
+      document.getElementById('history-body').innerHTML = '<div class="history-empty">歷史已清除</div>';
+    } catch {
+      alert('清除失敗，請稍後再試');
+    }
+  }
+
+  // Load last N history messages into chat area on login
+  async function _loadRecentHistoryToChat(sessionId) {
+    try {
+      const res = await fetch(`/api/history?session_id=${encodeURIComponent(sessionId)}&limit=10`);
+      const data = await res.json();
+      const msgs = data.messages || [];
+      if (msgs.length === 0) return false;
+
+      const msgs_el = document.getElementById('messages');
+      // Prepend a divider
+      const divider = document.createElement('div');
+      divider.style.cssText = 'text-align:center;color:var(--text-muted);font-size:0.75rem;padding:8px 0;';
+      divider.textContent = '── 最近對話記錄 ──';
+      msgs_el.insertBefore(divider, msgs_el.firstChild);
+
+      // Render messages in reverse order (oldest first at top)
+      const frag = document.createDocumentFragment();
+      msgs.forEach(m => {
+        const div = document.createElement('div');
+        div.className = `msg ${m.role === 'user' ? 'user' : 'ai'}`;
+        if (m.role === 'user') {
+          div.innerHTML = `
+            <div>
+              <div class="msg-bubble">${escapeHtml(m.content)}</div>
+              <div class="msg-time">${m.created_at ? m.created_at.slice(5,16) : ''}</div>
+            </div>
+            <div class="msg-avatar">👤</div>`;
+        } else {
+          div.innerHTML = `
+            <div class="msg-avatar">🔯</div>
+            <div>
+              <div class="msg-bubble">${renderMarkdown(m.content)}</div>
+              <div class="msg-time">${m.created_at ? m.created_at.slice(5,16) : ''}</div>
+            </div>`;
+        }
+        frag.appendChild(div);
+      });
+      msgs_el.insertBefore(frag, divider.nextSibling);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  // ── Profile Manager ──────────────────────────────────────────
+  function openProfiles() {
+    document.getElementById('profiles-modal').classList.add('open');
+    _loadProfiles();
+  }
+  function closeProfiles() { document.getElementById('profiles-modal').classList.remove('open'); }
+  function closeProfilesOnOverlay(e) { if (e.target === document.getElementById('profiles-modal')) closeProfiles(); }
+
+
+  async function _loadProfiles() {
+    const body = document.getElementById('profile-list-body');
+    body.innerHTML = '<div class="profile-empty">載入中…</div>';
+    try {
+      const res = await fetch(`/api/profiles?session_id=${encodeURIComponent(SESSION_ID)}`);
+      const data = await res.json();
+      const items = data.profiles || [];
+      if (!items.length) {
+        body.innerHTML = '<div class="profile-empty">尚無儲存的命盤<br><small>輸入名稱後點「儲存目前命盤」即可保存</small></div>';
+        return;
+      }
+      body.innerHTML = '';
+      const list = document.createElement('div');
+      list.className = 'profile-list';
+      items.forEach(p => {
+        const bi = p.birth_info || {};
+        const biStr = bi.year ? `${bi.year}年${bi.month}月${bi.day}日 ${_getHourName(bi.hour)}時 ${bi.is_male ? '男' : '女'}` : '生辰未記錄';
+        const div = document.createElement('div');
+        div.className = 'profile-item';
+        div.innerHTML = `
+          <div class="profile-item-info">
+            <div class="profile-item-name">${p.profile_name.replace(/</g,'&lt;')}</div>
+            <div class="profile-item-bi">${biStr}　<span style="color:var(--text-muted);font-size:0.72rem">${p.created_at ? p.created_at.slice(0,10) : ''}</span></div>
+          </div>
+          <button class="profile-view-btn" onclick="viewProfileChart(${p.id}, '${p.profile_name.replace(/'/g,"&#39;")}')">👁 查看</button>
+          <button class="profile-load-btn" onclick="loadProfile(${p.id})">載入</button>
+          <button class="profile-del-btn" onclick="deleteProfile(${p.id}, this)">✕</button>`;
+        list.appendChild(div);
+      });
+      body.appendChild(list);
+    } catch { body.innerHTML = '<div class="profile-empty">載入失敗</div>'; }
+  }
+
+  async function saveCurrentProfile() {
+    const nameEl = document.getElementById('profile-name-input');
+    const name = nameEl.value.trim();
+    if (!name) { alert('請輸入命盤名稱'); return; }
+    try {
+      const res = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: SESSION_ID, profile_name: name }),
+      });
+      const data = await res.json();
+      if (!res.ok) { alert(data.detail || '儲存失敗'); return; }
+      nameEl.value = '';
+      _loadProfiles();
+    } catch { alert('儲存失敗，請稍後再試'); }
+  }
+
+  async function loadProfile(id) {
+    try {
+      // activate=true: 後端同步更新 HOROSCOPE/CHART_TABLE，讓 Q&A 使用此命盤
+      const res = await fetch(`/api/profiles/${id}?session_id=${encodeURIComponent(SESSION_ID)}&activate=true`);
+      if (!res.ok) { alert('命盤載入失敗'); return; }
+      const data = await res.json();
+      if (data.chart_table) {
+        _storeChart(data.chart_table, data.birth_info || null);
+      }
+      closeProfiles();
+      appendAIMessage(`已載入命盤：**${data.profile_name}**\n\n你現在可以直接提問關於此命盤的問題。\n\n> 💡 若要為其他人排盤，點下方「💫 排新命盤」即可清除目前命盤重新排盤（對話歷史不受影響）。`);
+    } catch { alert('載入失敗'); }
+  }
+
+  async function deleteProfile(id, btn) {
+    if (!confirm('確定要刪除此命盤嗎？')) return;
+    try {
+      await fetch(`/api/profiles/${id}?session_id=${encodeURIComponent(SESSION_ID)}`, { method: 'DELETE' });
+      btn.closest('.profile-item').remove();
+      if (!document.querySelector('#profile-list-body .profile-item')) {
+        document.getElementById('profile-list-body').innerHTML = '<div class="profile-empty">尚無儲存的命盤</div>';
+      }
+    } catch { alert('刪除失敗'); }
+  }
+
+  // 查看命盤庫中某命盤的格局圖（不影響目前使用中的 session 命盤）
+  async function viewProfileChart(id, name) {
+    try {
+      const res = await fetch(`/api/profiles/${id}?session_id=${encodeURIComponent(SESSION_ID)}`);
+      if (!res.ok) { alert('命盤載入失敗'); return; }
+      const data = await res.json();
+      if (!data.chart_table) { alert('此命盤無圖表資料'); return; }
+      const bi = data.birth_info || null;
+      // Render into chart modal without touching sessionStorage
+      const modalTitle = document.querySelector('#chart-modal .modal-title');
+      if (modalTitle) modalTitle.textContent = `📊 ${name} 的命盤`;
+      _renderChartBody(data.chart_table, bi, 'grid');
+      document.getElementById('chart-modal').classList.add('open');
+      // Mark as preview so closing restores original title
+      document.getElementById('chart-modal').dataset.preview = '1';
+    } catch { alert('載入失敗'); }
+  }
+
+  // ── Fortune Calendar ──────────────────────────────────────────
+  let _calYear = new Date().getFullYear();
+  let _calMonth = new Date().getMonth() + 1;
+  let _calData = null;
+  let _calPopup = null;
+
+  function openCalendar() {
+    document.getElementById('calendar-modal').classList.add('open');
+    _loadCalendar();
+  }
+  function closeCalendar() {
+    document.getElementById('calendar-modal').classList.remove('open');
+    _removeCalPopup();
+  }
+  function closeCalendarOnOverlay(e) { if (e.target === document.getElementById('calendar-modal')) closeCalendar(); }
+
+  function calNavMonth(delta) {
+    _calMonth += delta;
+    if (_calMonth > 12) { _calMonth = 1; _calYear++; }
+    if (_calMonth < 1) { _calMonth = 12; _calYear--; }
+    _calData = null;
+    _loadCalendar();
+  }
+
+  async function _loadCalendar() {
+    document.getElementById('cal-month-label').textContent = `${_calYear} 年 ${_calMonth} 月`;
+    const wrap = document.getElementById('cal-grid-wrap');
+    const summaryEl = document.getElementById('cal-summary');
+    wrap.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;font-size:0.88rem">⏳ AI 正在分析本月運勢…</div>';
+    summaryEl.style.display = 'none';
+    try {
+      const res = await fetch(`/api/fortune-calendar?session_id=${encodeURIComponent(SESSION_ID)}&year=${_calYear}&month=${_calMonth}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        wrap.innerHTML = `<div style="text-align:center;color:#e74c3c;padding:24px">${err.detail || '載入失敗，請先排盤'}</div>`;
+        return;
+      }
+      _calData = await res.json();
+      _renderCalGrid(_calData);
+    } catch { wrap.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:24px">載入失敗，請稍後再試</div>'; }
+  }
+
+  function _renderCalGrid(data) {
+    const wrap = document.getElementById('cal-grid-wrap');
+    const summaryEl = document.getElementById('cal-summary');
+    if (data.month_summary) { summaryEl.textContent = data.month_summary; summaryEl.style.display = ''; }
+    const dayMap = {};
+    (data.days || []).forEach(d => { dayMap[d.day] = d; });
+
+    const firstDay = new Date(_calYear, _calMonth - 1, 1).getDay(); // 0=Sun
+    const daysInMonth = new Date(_calYear, _calMonth, 0).getDate();
+    const today = new Date(); const todayStr = `${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
+
+    const headers = ['日','一','二','三','四','五','六'];
+    let html = '<div class="cal-grid">';
+    headers.forEach(h => { html += `<div class="cal-day-header">${h}</div>`; });
+    for (let i = 0; i < firstDay; i++) html += '<div class="cal-day empty"></div>';
+    for (let d = 1; d <= daysInMonth; d++) {
+      const info = dayMap[d] || { score: 3, note: '' };
+      const isToday = `${_calYear}-${_calMonth}-${d}` === todayStr;
+      const dotClass = `cal-dot-${info.score}`;
+      const bgClass = `cal-score-${info.score}`;
+      html += `<div class="cal-day ${bgClass}${isToday ? ' today' : ''}" onclick="showCalDayPopup(event,${d})" data-day="${d}">
+        <div class="cal-day-num" style="color:${info.score>=4?'#7dcea0':info.score<=2?'#e59866':'var(--text-light)'}">${d}</div>
+        <div class="cal-day-dots"><div class="cal-dot ${dotClass}" style="width:6px;height:6px;border-radius:50%"></div></div>
+      </div>`;
+    }
+    html += '</div>';
+    // Add SVG trend line chart below calendar grid
+    html += _buildCalLineChart(dayMap, daysInMonth);
+    wrap.innerHTML = html;
+  }
+
+  function _buildCalLineChart(dayMap, daysInMonth) {
+    const W = 480, H = 72, padL = 28, padR = 12, padT = 10, padB = 20;
+    const innerW = W - padL - padR;
+    const innerH = H - padT - padB;
+    const scores = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      scores.push((dayMap[d] || { score: 3 }).score);
+    }
+    const n = scores.length;
+    const xStep = innerW / (n - 1 || 1);
+    const scoreColor = s => s >= 4 ? '#7dcea0' : s <= 2 ? '#e59866' : '#a090c0';
+
+    // Build polyline points
+    const pts = scores.map((s, i) => {
+      const x = padL + i * xStep;
+      const y = padT + innerH - ((s - 1) / 4) * innerH;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    }).join(' ');
+
+    // Build gradient fill polygon (close path to bottom)
+    const fillPts = scores.map((s, i) => {
+      const x = padL + i * xStep;
+      const y = padT + innerH - ((s - 1) / 4) * innerH;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    });
+    fillPts.push(`${(padL + (n-1)*xStep).toFixed(1)},${(padT+innerH).toFixed(1)}`);
+    fillPts.push(`${padL.toFixed(1)},${(padT+innerH).toFixed(1)}`);
+
+    // Y-axis labels
+    const yLabels = [[5,'大吉'],[3,'平'],[1,'凶']].map(([s, lbl]) => {
+      const y = padT + innerH - ((s - 1) / 4) * innerH;
+      return `<text x="${padL - 4}" y="${y + 4}" text-anchor="end" fill="#a090c0" font-size="9">${lbl}</text>`;
+    }).join('');
+
+    // Dots for today
+    const today = new Date();
+    const todayDay = today.getFullYear() === _calYear && (today.getMonth()+1) === _calMonth ? today.getDate() : null;
+
+    const dots = scores.map((s, i) => {
+      const d = i + 1;
+      const x = padL + i * xStep;
+      const y = padT + innerH - ((s - 1) / 4) * innerH;
+      const isToday = d === todayDay;
+      return isToday
+        ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${scoreColor(s)}" stroke="#fff" stroke-width="1.5"/>`
+        : '';
+    }).join('');
+
+    // X-axis day labels (every 5 days)
+    const xLabels = scores.map((_, i) => {
+      const d = i + 1;
+      if (d === 1 || d % 5 === 0 || d === n) {
+        const x = padL + i * xStep;
+        return `<text x="${x.toFixed(1)}" y="${H - 4}" text-anchor="middle" fill="#a090c0" font-size="9">${d}</text>`;
+      }
+      return '';
+    }).join('');
+
+    return `<div style="padding:4px 0 0;overflow-x:auto">
+      <svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;max-width:${W}px">
+        <defs>
+          <linearGradient id="calGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(201,162,39,0.25)"/>
+            <stop offset="100%" stop-color="rgba(201,162,39,0)"/>
+          </linearGradient>
+        </defs>
+        <!-- Baseline -->
+        <line x1="${padL}" y1="${padT+innerH}" x2="${padL+innerW}" y2="${padT+innerH}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <!-- Midline (平) -->
+        <line x1="${padL}" y1="${(padT + innerH - ((3-1)/4)*innerH).toFixed(1)}" x2="${padL+innerW}" y2="${(padT + innerH - ((3-1)/4)*innerH).toFixed(1)}" stroke="rgba(160,144,192,0.15)" stroke-width="1" stroke-dasharray="3,3"/>
+        <!-- Fill -->
+        <polygon points="${fillPts.join(' ')}" fill="url(#calGrad)"/>
+        <!-- Line -->
+        <polyline points="${pts}" fill="none" stroke="rgba(201,162,39,0.7)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
+        ${yLabels}${dots}${xLabels}
+      </svg>
+    </div>`;
+  }
+
+  function showCalDayPopup(e, day) {
+    _removeCalPopup();
+    if (!_calData) return;
+    const info = (_calData.days || []).find(d => d.day === day);
+    if (!info) return;
+    const scoreLabel = ['','凶','小凶','平','吉','大吉'][info.score] || '';
+    const popup = document.createElement('div');
+    popup.className = 'cal-day-popup';
+    popup.innerHTML = `
+      <button class="cal-popup-close" onclick="this.parentElement.remove()">✕</button>
+      <div class="cal-popup-title">${_calYear}/${_calMonth}/${day} — ${scoreLabel}</div>
+      <div class="cal-popup-note">${(info.note || '').replace(/</g,'&lt;')}</div>`;
+    document.body.appendChild(popup);
+    _calPopup = popup;
+    const rect = e.target.closest('.cal-day').getBoundingClientRect();
+    let top = rect.bottom + 6; let left = rect.left;
+    if (left + 260 > window.innerWidth) left = window.innerWidth - 268;
+    if (top + 100 > window.innerHeight) top = rect.top - 108;
+    popup.style.top = top + 'px'; popup.style.left = left + 'px';
+    document.addEventListener('click', _calPopupOutsideClick, { once: true, capture: true });
+  }
+
+  function _calPopupOutsideClick(e) {
+    if (_calPopup && !_calPopup.contains(e.target)) _removeCalPopup();
+  }
+
+  function _removeCalPopup() {
+    if (_calPopup) { _calPopup.remove(); _calPopup = null; }
+  }
+
+  // ── Life Events ───────────────────────────────────────────────
+  let _lifeEventsCache = null;
+
+  async function _renderLifeEvents(bi) {
+    const body = document.getElementById('chart-modal-body');
+    body.innerHTML = '<div class="life-events-loading">⏳ AI 正在分析你的人生關鍵節點…</div>';
+    const birthYear = bi ? Number(bi.year) : null;
+
+    // Use cached if available
+    if (_lifeEventsCache) {
+      body.innerHTML = _buildLifeEventsHTML(_lifeEventsCache, birthYear);
+      return;
+    }
+    try {
+      const res = await fetch(`/api/life-events?session_id=${encodeURIComponent(SESSION_ID)}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        body.innerHTML = `<div class="life-events-loading" style="color:#e74c3c">${err.detail || '載入失敗，請先排盤'}</div>`;
+        return;
+      }
+      const data = await res.json();
+      _lifeEventsCache = data;
+      body.innerHTML = _buildLifeEventsHTML(data, birthYear);
+    } catch {
+      body.innerHTML = '<div class="life-events-loading" style="color:#e74c3c">載入失敗，請稍後再試</div>';
+    }
+  }
+
+  function _buildLifeEventsHTML(data, birthYear) {
+    const events = data.events || [];
+    if (!events.length) return '<p style="color:var(--text-muted);text-align:center;padding:32px">無法生成人生節點資料</p>';
+    const typeColor = { good: '#27ae60', caution: '#e59866', neutral: 'var(--text-muted)' };
+    const typeIcon = { good: '✨', caution: '⚠️', neutral: '📌' };
+    return `<div style="display:flex;flex-direction:column;gap:12px;padding:4px 0">
+      ${events.map(ev => {
+        const sameAge = ev.age_start === ev.age_end;
+        const ageStr = sameAge ? `${ev.age_start}歲` : `${ev.age_start}–${ev.age_end}歲`;
+        const yearStr = birthYear
+          ? (sameAge ? `（${birthYear + ev.age_start}年）` : `（${birthYear + ev.age_start}–${birthYear + ev.age_end}年）`)
+          : '';
+        return `<div style="background:rgba(45,27,84,0.4);border:1.5px solid ${typeColor[ev.type] || 'rgba(201,162,39,0.2)'};border-radius:12px;padding:14px 16px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+            <span style="font-size:1.1rem">${typeIcon[ev.type] || '📌'}</span>
+            <span style="font-family:'Noto Serif TC',serif;font-weight:700;color:${typeColor[ev.type] || 'var(--gold)'};font-size:0.95rem">${ev.title}</span>
+            <span style="font-size:0.78rem;color:var(--text-muted);margin-left:auto">${ageStr} ${yearStr}</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:flex-start">
+            <span style="background:rgba(201,162,39,0.15);color:var(--gold);border-radius:5px;padding:2px 7px;font-size:0.75rem;flex-shrink:0">${ev.palace}</span>
+            <div style="font-size:0.85rem;color:var(--text-light);line-height:1.6">${ev.description}</div>
+          </div>
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  // ── Settings ──────────────────────────────────────────────────
+  let _currentStyle = 'balanced';
+
+  async function openSettings() {
+    document.getElementById('settings-modal').classList.add('open');
+    document.getElementById('settings-pw-msg').textContent = '';
+    document.getElementById('settings-pw-msg').className = 'settings-msg';
+    _loadSettingsBirthInfo();
+    await _loadSettingsStyle();
+  }
+  function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
+  function closeSettingsOnOverlay(e) { if (e.target === document.getElementById('settings-modal')) closeSettings(); }
+
+  function _loadSettingsBirthInfo() {
+    const el = document.getElementById('settings-birth-info');
+    const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
+    if (bi) {
+      el.innerHTML = `出生日期：${bi.year} 年 ${bi.month} 月 ${bi.day} 日<br>出生時辰：${_getHourName(bi.hour)} 時<br>性別：${bi.is_male ? '男' : '女'}<br><small style="color:var(--text-muted)">如需修改，請重置對話重新排盤</small>`;
+    } else {
+      el.textContent = '尚未排盤，請先輸入出生資料';
+    }
+  }
+
+  async function _loadSettingsStyle() {
+    try {
+      const res = await fetch(`/api/settings?session_id=${encodeURIComponent(SESSION_ID)}`);
+      const data = await res.json();
+      _currentStyle = data.response_style || 'balanced';
+    } catch {}
+    document.querySelectorAll('.settings-style-opt').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.style === _currentStyle);
+    });
+  }
+
+  async function setStyle(style) {
+    _currentStyle = style;
+    document.querySelectorAll('.settings-style-opt').forEach(btn => {
+      btn.classList.toggle('active', btn.dataset.style === style);
+    });
+    try {
+      await fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: SESSION_ID, response_style: style }),
+      });
+      const msg = document.getElementById('settings-style-msg');
+      msg.textContent = '✓ 已儲存'; msg.className = 'settings-msg ok';
+      setTimeout(() => { msg.textContent = ''; }, 2000);
+    } catch {}
+  }
+
+  async function changePassword() {
+    const oldPw = document.getElementById('pw-old').value;
+    const newPw = document.getElementById('pw-new').value;
+    const confirm = document.getElementById('pw-confirm').value;
+    const msg = document.getElementById('settings-pw-msg');
+    msg.textContent = ''; msg.className = 'settings-msg';
+    if (!oldPw || !newPw) { msg.textContent = '請填寫所有欄位'; msg.className = 'settings-msg err'; return; }
+    if (newPw !== confirm) { msg.textContent = '兩次密碼不一致'; msg.className = 'settings-msg err'; return; }
+    if (newPw.length < 6) { msg.textContent = '新密碼至少需要 6 個字元'; msg.className = 'settings-msg err'; return; }
+    try {
+      const token = _getStoredToken();
+      const res = await fetch('/api/auth/change-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ old_password: oldPw, new_password: newPw }),
+      });
+      const data = await res.json();
+      if (!res.ok) { msg.textContent = data.detail || '修改失敗'; msg.className = 'settings-msg err'; return; }
+      msg.textContent = '✓ 密碼已更新'; msg.className = 'settings-msg ok';
+      document.getElementById('pw-old').value = '';
+      document.getElementById('pw-new').value = '';
+      document.getElementById('pw-confirm').value = '';
+    } catch { msg.textContent = '網路錯誤，請稍後再試'; msg.className = 'settings-msg err'; }
+  }
+
+  // ── PDF Report Export ─────────────────────────────────────────
+  async function exportChartPDF() {
+    const md = sessionStorage.getItem('ziwei_chart') || '';
+    if (!md) { alert('尚無命盤資料'); return; }
+    const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
+    const biStr = bi ? `${bi.year}年${bi.month}月${bi.day}日 ${_getHourName(bi.hour)}時 ${bi.is_male ? '男' : '女'}` : '';
+
+    // Capture the palace grid as base64 image using html2canvas
+    const prevView = _currentChartView;
+    if (_currentChartView !== 'grid') switchChartView('grid');
+    await new Promise(r => setTimeout(r, 100));
+
+    let gridImgSrc = '';
+    try {
+      const target = document.getElementById('chart-modal-body');
+      const canvas = await html2canvas(target, { backgroundColor: '#0d0718', scale: 1.5, useCORS: true });
+      gridImgSrc = canvas.toDataURL('image/png');
+    } catch {}
+
+    // Restore view
+    if (prevView !== 'grid') switchChartView(prevView);
+
+    // Build print window
+    const pw = window.open('', '_blank', 'width=900,height=700');
+    const horoscopeText = sessionStorage.getItem('ziwei_horoscope') || '（命盤分析文字未載入）';
+
+    pw.document.write(`<!DOCTYPE html><html lang="zh-TW"><head>
+<meta charset="UTF-8">
+<title>紫微斗數完整報告</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;700&family=Noto+Sans+TC:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Noto Sans TC',sans-serif;background:#fff;color:#1a1a2e;line-height:1.8;padding:40px}
+  .cover{text-align:center;padding:60px 0 40px;border-bottom:2px solid #c9a227;margin-bottom:32px}
+  .cover-title{font-family:'Noto Serif TC',serif;font-size:2rem;font-weight:700;color:#1a1a2e;margin-bottom:8px}
+  .cover-sub{font-size:1rem;color:#555;margin-bottom:4px}
+  .section{margin-bottom:32px}
+  .section-title{font-family:'Noto Serif TC',serif;font-size:1.2rem;font-weight:700;color:#9a7a1a;border-left:4px solid #c9a227;padding-left:12px;margin-bottom:16px}
+  .chart-img{width:100%;border-radius:8px;border:1px solid #ddd}
+  .analysis{font-size:0.9rem;color:#333;white-space:pre-wrap;background:#f8f6f0;border-radius:8px;padding:16px}
+  @media print{body{padding:20px}.cover{padding:30px 0 20px}}
+</style>
+</head><body>
+<div class="cover">
+  <div class="cover-title">紫微斗數完整命盤報告</div>
+  <div class="cover-sub">生辰：${biStr || '未填寫'}</div>
+  <div class="cover-sub" style="color:#888;font-size:0.85rem">生成日期：${new Date().toLocaleDateString('zh-TW')}</div>
+</div>
+${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖</div><img class="chart-img" src="${gridImgSrc}"></div>` : ''}
+<div class="section"><div class="section-title">命盤分析</div><div class="analysis">${horoscopeText.replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div></div>
+<script>window.onload=()=>{window.print();}<\/script>
+</body></html>`);
+    pw.document.close();
+  }
+
+  // ── PWA Service Worker + Install Prompt ─────────────────────
+  let _deferredInstallPrompt = null;
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+    });
+  }
+
+  window.addEventListener('beforeinstallprompt', e => {
+    e.preventDefault();
+    _deferredInstallPrompt = e;
+    // Only show banner if user hasn't dismissed it before
+    if (!localStorage.getItem('pwa_dismissed')) {
+      setTimeout(() => {
+        document.getElementById('pwa-banner').classList.remove('hidden');
+      }, 5000);  // show after 5s so it doesn't interrupt onboarding
+    }
+  });
+
+  document.getElementById('pwa-install-btn').addEventListener('click', async () => {
+    if (!_deferredInstallPrompt) return;
+    _deferredInstallPrompt.prompt();
+    const { outcome } = await _deferredInstallPrompt.userChoice;
+    if (outcome === 'accepted') dismissPwaBanner();
+    _deferredInstallPrompt = null;
+  });
+
+  window.addEventListener('appinstalled', () => { dismissPwaBanner(); });
+
+  function dismissPwaBanner() {
+    document.getElementById('pwa-banner').classList.add('hidden');
+    localStorage.setItem('pwa_dismissed', '1');
   }
 
   // Support Enter key in auth inputs

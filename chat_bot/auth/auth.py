@@ -54,33 +54,145 @@ def init_db() -> None:
                 last_login TEXT
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history(session_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS daily_fortune (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                date TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(session_id, date)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bookmarks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bookmarks_session ON bookmarks(session_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                profile_name TEXT NOT NULL,
+                horoscope TEXT NOT NULL,
+                chart_table TEXT NOT NULL DEFAULT '',
+                birth_info_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_profiles_session ON profiles(session_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_settings (
+                session_id TEXT PRIMARY KEY,
+                response_style TEXT NOT NULL DEFAULT 'balanced',
+                updated_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS monthly_fortune (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                year_month TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(session_id, year_month)
+            )
+        """)
         conn.commit()
 
 
-def save_horoscope(session_id: str, horoscope: str, chart_table: str = "") -> None:
+def save_chat_message(session_id: str, role: str, content: str) -> None:
+    """儲存單一訊息到 chat_history（背景執行）。role: 'user' | 'ai'"""
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO chat_history (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+                (session_id, role, content, now),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[chat_history] 儲存失敗: %s", session_id)
+
+
+def load_chat_history(session_id: str, limit: int = 30, offset: int = 0) -> list:
+    """載入指定 session 的最近 N 則訊息（依時間升序）。"""
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                """SELECT role, content, created_at FROM chat_history
+                   WHERE session_id = ?
+                   ORDER BY id DESC LIMIT ? OFFSET ?""",
+                (session_id, limit, offset),
+            ).fetchall()
+        return [{"role": r["role"], "content": r["content"], "created_at": r["created_at"]} for r in reversed(rows)]
+    except Exception:
+        logger.warning("[chat_history] 載入失敗: %s", session_id)
+        return []
+
+
+def clear_chat_history(session_id: str) -> None:
+    """清除指定 session 的所有聊天記錄。"""
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+            conn.commit()
+    except Exception:
+        logger.warning("[chat_history] 清除失敗: %s", session_id)
+
+
+def save_horoscope(session_id: str, horoscope: str, chart_table: str = "", birth_info: "dict | None" = None) -> None:
     """存成 horoscope/{session_id}.json，與 memory/ 同樣的檔案儲存模式。"""
     import json as _json
     _HOROSCOPE_DIR.mkdir(exist_ok=True)
     path = _HOROSCOPE_DIR / f"{_safe_sid(session_id)}.json"
-    path.write_text(
-        _json.dumps({"horoscope": horoscope, "chart_table": chart_table}, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    data: dict = {"horoscope": horoscope, "chart_table": chart_table}
+    if birth_info:
+        data["birth_info"] = birth_info
+    path.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
     logger.info("[horoscope] 已儲存: %s", session_id)
 
 
-def load_horoscope(session_id: str) -> "tuple[str, str] | tuple[None, None]":
-    """從 horoscope/{session_id}.json 載入，不存在時回傳 (None, None)。"""
+def delete_horoscope(session_id: str) -> None:
+    """刪除 horoscope/{session_id}.json，用於「排新命盤」清除舊命盤檔案。"""
+    path = _HOROSCOPE_DIR / f"{_safe_sid(session_id)}.json"
+    try:
+        path.unlink(missing_ok=True)
+        logger.info("[horoscope] 已刪除: %s", session_id)
+    except Exception:
+        logger.warning("[horoscope] 刪除失敗: %s", path)
+
+
+def load_horoscope(session_id: str) -> "tuple[str, str, dict] | tuple[None, None, None]":
+    """從 horoscope/{session_id}.json 載入，不存在時回傳 (None, None, None)。"""
     import json as _json
     path = _HOROSCOPE_DIR / f"{_safe_sid(session_id)}.json"
     if not path.exists():
-        return None, None
+        return None, None, None
     try:
         data = _json.loads(path.read_text(encoding="utf-8"))
-        return data.get("horoscope") or None, data.get("chart_table", "")
+        return (
+            data.get("horoscope") or None,
+            data.get("chart_table", ""),
+            data.get("birth_info") or None,
+        )
     except Exception:
         logger.warning("[horoscope] 載入失敗: %s", path)
-        return None, None
+        return None, None, None
 
 
 def _hash_password(password: str, salt: str) -> str:
@@ -152,6 +264,222 @@ def verify_token(token: str) -> Optional[dict]:
         return {"username": payload["sub"], "session_id": payload["session_id"]}
     except Exception:
         return None
+
+
+def get_daily_fortune(session_id: str, date: str) -> "str | None":
+    """回傳當日快取的運勢文字，若無快取則回傳 None。"""
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT content FROM daily_fortune WHERE session_id=? AND date=?",
+                (session_id, date),
+            ).fetchone()
+        return row["content"] if row else None
+    except Exception:
+        return None
+
+
+def save_daily_fortune(session_id: str, date: str, content: str) -> None:
+    """INSERT OR REPLACE 當日運勢快取。"""
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO daily_fortune (session_id, date, content, created_at) VALUES (?,?,?,?)",
+                (session_id, date, content, now),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[daily_fortune] 儲存失敗: %s %s", session_id, date)
+
+
+def save_bookmark(session_id: str, content: str) -> int:
+    """儲存收藏訊息，回傳 id。"""
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                "INSERT INTO bookmarks (session_id, content, created_at) VALUES (?,?,?)",
+                (session_id, content, now),
+            )
+            conn.commit()
+            return cur.lastrowid
+    except Exception:
+        logger.warning("[bookmarks] 儲存失敗: %s", session_id)
+        return -1
+
+
+def load_bookmarks(session_id: str) -> list:
+    """載入此 session 的所有收藏（依建立時間降序）。"""
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, content, created_at FROM bookmarks WHERE session_id=? ORDER BY id DESC",
+                (session_id,),
+            ).fetchall()
+        return [{"id": r["id"], "content": r["content"], "created_at": r["created_at"]} for r in rows]
+    except Exception:
+        return []
+
+
+def delete_bookmark(bookmark_id: int, session_id: str) -> bool:
+    """刪除指定收藏（驗證 session_id 防止越權）。"""
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "DELETE FROM bookmarks WHERE id=? AND session_id=?",
+                (bookmark_id, session_id),
+            )
+            conn.commit()
+        return True
+    except Exception:
+        return False
+
+
+# ── Multi-profile management ───────────────────────────────────
+
+def save_profile(session_id: str, profile_name: str, horoscope: str, chart_table: str = "", birth_info: "dict | None" = None) -> int:
+    import json as _json
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    bi_json = _json.dumps(birth_info or {}, ensure_ascii=False)
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                "INSERT INTO profiles (session_id, profile_name, horoscope, chart_table, birth_info_json, created_at) VALUES (?,?,?,?,?,?)",
+                (session_id, profile_name, horoscope, chart_table, bi_json, now),
+            )
+            conn.commit()
+            return cur.lastrowid
+    except Exception:
+        logger.warning("[profiles] 儲存失敗: %s", session_id)
+        return -1
+
+
+def load_profiles(session_id: str) -> list:
+    import json as _json
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT id, profile_name, birth_info_json, created_at FROM profiles WHERE session_id=? ORDER BY id DESC",
+                (session_id,),
+            ).fetchall()
+        result = []
+        for r in rows:
+            bi: dict = {}
+            try:
+                bi = _json.loads(r["birth_info_json"] or "{}")
+            except Exception:
+                pass
+            result.append({"id": r["id"], "profile_name": r["profile_name"], "birth_info": bi, "created_at": r["created_at"]})
+        return result
+    except Exception:
+        return []
+
+
+def get_profile(profile_id: int, session_id: str) -> "dict | None":
+    import json as _json
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT id, profile_name, horoscope, chart_table, birth_info_json FROM profiles WHERE id=? AND session_id=?",
+                (profile_id, session_id),
+            ).fetchone()
+        if not row:
+            return None
+        bi: dict = {}
+        try:
+            bi = _json.loads(row["birth_info_json"] or "{}")
+        except Exception:
+            pass
+        return {
+            "id": row["id"],
+            "profile_name": row["profile_name"],
+            "horoscope": row["horoscope"],
+            "chart_table": row["chart_table"],
+            "birth_info": bi,
+        }
+    except Exception:
+        return None
+
+
+def delete_profile(profile_id: int, session_id: str) -> bool:
+    try:
+        with get_db() as conn:
+            conn.execute("DELETE FROM profiles WHERE id=? AND session_id=?", (profile_id, session_id))
+            conn.commit()
+        return True
+    except Exception:
+        return False
+
+
+# ── User settings ──────────────────────────────────────────────
+
+def get_user_settings(session_id: str) -> dict:
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT response_style FROM user_settings WHERE session_id=?", (session_id,)
+            ).fetchone()
+        return {"response_style": row["response_style"] if row else "balanced"}
+    except Exception:
+        return {"response_style": "balanced"}
+
+
+def save_user_settings(session_id: str, response_style: str) -> None:
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO user_settings (session_id, response_style, updated_at) VALUES (?,?,?)",
+                (session_id, response_style, now),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[user_settings] 儲存失敗: %s", session_id)
+
+
+def change_password(session_id: str, old_password: str, new_password: str) -> bool:
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT password_hash FROM users WHERE session_id=?", (session_id,)
+            ).fetchone()
+        if not row or not _verify_password(old_password, row["password_hash"]):
+            return False
+        new_hash = _make_password_entry(new_password)
+        with get_db() as conn:
+            conn.execute("UPDATE users SET password_hash=? WHERE session_id=?", (new_hash, session_id))
+            conn.commit()
+        return True
+    except Exception:
+        return False
+
+
+# ── Monthly fortune cache ──────────────────────────────────────
+
+def get_monthly_fortune(session_id: str, year_month: str) -> "str | None":
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT content FROM monthly_fortune WHERE session_id=? AND year_month=?",
+                (session_id, year_month),
+            ).fetchone()
+        return row["content"] if row else None
+    except Exception:
+        return None
+
+
+def save_monthly_fortune(session_id: str, year_month: str, content: str) -> None:
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO monthly_fortune (session_id, year_month, content, created_at) VALUES (?,?,?,?)",
+                (session_id, year_month, content, now),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[monthly_fortune] 儲存失敗: %s %s", session_id, year_month)
 
 
 def sync_whitelist() -> None:
