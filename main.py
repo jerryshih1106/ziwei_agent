@@ -109,6 +109,52 @@ os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
+# ── 安全 Headers middleware ───────────────────────────────────
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+        return response
+
+app.add_middleware(SecurityHeadersMiddleware)
+
+# ── 登入速率限制（暴力破解防護）────────────────────────────────
+from collections import defaultdict as _defaultdict
+
+_login_attempts: dict = _defaultdict(list)
+_LOGIN_MAX_ATTEMPTS = 10   # 10 次
+_LOGIN_WINDOW_SECS  = 300  # 5 分鐘內
+
+
+def _check_login_rate(ip: str) -> bool:
+    """回傳 True 表示允許，False 表示已超過速率限制。"""
+    now = time.time()
+    bucket = _login_attempts[ip]
+    _login_attempts[ip] = [t for t in bucket if now - t < _LOGIN_WINDOW_SECS]
+    if len(_login_attempts[ip]) >= _LOGIN_MAX_ATTEMPTS:
+        return False
+    _login_attempts[ip].append(now)
+    return True
+
+
+# ── 啟動安全性檢查 ────────────────────────────────────────────
+if not os.environ.get("JWT_SECRET"):
+    logger.warning(
+        "[security] JWT_SECRET 未設定！每次重啟將產生新的隨機 secret，"
+        "導致所有使用者 Token 失效。請在 .env 設定固定的 JWT_SECRET。"
+    )
+if not GlobalConfig.API_KEY:
+    logger.warning(
+        "[security] API_KEY 未設定！部分 API 端點（chat/reset/pop-last 等）"
+        "處於完全開放狀態，任何人皆可呼叫。建議在 .env 設定 API_KEY。"
+    )
+
 # ── API Key 驗證 ──────────────────────────────────────────────
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -126,9 +172,18 @@ def verify_api_key(api_key: str = Security(_api_key_header)):
 
 
 # ── Request / Response schemas ────────────────────────────────
+from pydantic import field_validator
+
 class ChatRequest(BaseModel):
     message: str
     session_id: str = "web_default"
+
+    @field_validator("message")
+    @classmethod
+    def message_length(cls, v: str) -> str:
+        if len(v) > 2000:
+            raise ValueError("訊息長度不得超過 2000 字元")
+        return v
 
 
 class ResetRequest(BaseModel):
@@ -138,6 +193,15 @@ class ResetRequest(BaseModel):
 class RegisterRequest(BaseModel):
     username: str
     password: str
+
+    @field_validator("username")
+    @classmethod
+    def username_chars(cls, v: str) -> str:
+        import re as _re
+        v = v.strip()
+        if not _re.match(r"^[a-zA-Z0-9_\-一-鿿]{3,20}$", v):
+            raise ValueError("帳號只能包含英數字、底線、橫線或中文，長度 3-20")
+        return v
 
 
 class LoginRequest(BaseModel):
@@ -227,7 +291,10 @@ def chat_page(request: Request):
 
 # ── 帳戶驗證 API ──────────────────────────────────────────────
 @app.post("/api/auth/register")
-async def api_register(body: RegisterRequest):
+async def api_register(body: RegisterRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_login_rate(f"reg:{client_ip}"):
+        raise HTTPException(status_code=429, detail="註冊嘗試過於頻繁，請 5 分鐘後再試")
     if not GlobalConfig.ALLOW_REGISTER:
         raise HTTPException(status_code=403, detail="目前不開放自行註冊")
     from chat_bot.auth.auth import create_user, create_token
@@ -245,7 +312,10 @@ async def api_register(body: RegisterRequest):
 
 
 @app.post("/api/auth/login")
-async def api_login(body: LoginRequest):
+async def api_login(body: LoginRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_login_rate(client_ip):
+        raise HTTPException(status_code=429, detail="登入嘗試過於頻繁，請 5 分鐘後再試")
     from chat_bot.auth.auth import authenticate_user, create_token
     user = authenticate_user(body.username.strip(), body.password)
     if user is None:
@@ -445,13 +515,13 @@ async def api_chart(session_id: str = "web_default"):
 
 # ── 對話歷史 API ──────────────────────────────────────────────
 @app.get("/api/history")
-async def api_history(session_id: str = "web_default", limit: int = 30, offset: int = 0):
-    """回傳指定 session 的聊天歷史（最多 limit 筆，依時間升序）。"""
+async def api_history(session_id: str = "web_default", limit: int = 30, offset: int = 0, q: str = ""):
+    """回傳指定 session 的聊天歷史（支援關鍵字搜尋 q）。"""
     session_id = (session_id or "").strip() or "web_default"
     limit = max(1, min(limit, 100))
     from chat_bot.auth.auth import load_chat_history
-    messages = await run_in_threadpool(load_chat_history, session_id, limit, offset)
-    return {"messages": messages, "has_more": len(messages) == limit}
+    messages = await run_in_threadpool(load_chat_history, session_id, limit, offset, q.strip())
+    return {"messages": messages, "has_more": len(messages) == limit and not q}
 
 
 @app.delete("/api/history")
@@ -764,22 +834,33 @@ async def api_daily_fortune(session_id: str = "web_default"):
         stars = random.choice(stars_options)
         prompt = PromptTemplate.from_template(_DAILY_FORTUNE_PROMPT)
         chain = prompt | _llm
+        _inputs = {"today": today, "horoscope": horoscope[:2500], "stars": stars}
         accumulated = []
-        try:
-            async for chunk in chain.astream({
-                "today": today,
-                "horoscope": horoscope[:2500],   # 節省 tokens
-                "stars": stars,
-            }):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
-                if token:
-                    accumulated.append(token)
-                    yield f'data: {json.dumps({"token": token})}\n\n'
-        except Exception as exc:
-            logger.exception("[daily-fortune] generate error")
-            yield f'data: {json.dumps({"token": f"⚠️ 生成失敗：{exc}"})}\n\n'
-            yield f'data: {json.dumps({"done": True})}\n\n'
-            return
+        _max_retries = 3
+        for _attempt in range(_max_retries):
+            _attempt_tokens: list[str] = []
+            try:
+                async for chunk in chain.astream(_inputs):
+                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if token:
+                        _attempt_tokens.append(token)
+                        yield f'data: {json.dumps({"token": token})}\n\n'
+                accumulated = _attempt_tokens
+                break
+            except Exception as exc:
+                _err = str(exc)
+                _is_busy = any(k in _err for k in ["503", "high demand", "overloaded", "UNAVAILABLE", "Resource has been exhausted"])
+                if _attempt < _max_retries - 1 and _is_busy:
+                    _wait = 5 * (2 ** _attempt)
+                    yield f'data: {json.dumps({"clear": True})}\n\n'
+                    yield f'data: {json.dumps({"token": f"⚠️ AI 服務繁忙，{_wait} 秒後自動重試（第 {_attempt + 2}/{_max_retries} 次）…"})}\n\n'
+                    await asyncio.sleep(_wait)
+                    yield f'data: {json.dumps({"clear": True})}\n\n'
+                else:
+                    logger.exception("[daily-fortune] generate error")
+                    yield f'data: {json.dumps({"token": "⚠️ 生成失敗，請稍後再試。"})}\n\n'
+                    yield f'data: {json.dumps({"done": True})}\n\n'
+                    return
 
         content = "".join(accumulated)
         threading.Thread(
@@ -794,6 +875,13 @@ async def api_daily_fortune(session_id: str = "web_default"):
 class BookmarkRequest(BaseModel):
     session_id: str = "web_default"
     content: str
+
+    @field_validator("content")
+    @classmethod
+    def content_length(cls, v: str) -> str:
+        if len(v) > 5000:
+            raise ValueError("收藏內容長度不得超過 5000 字元")
+        return v
 
 
 @app.post("/api/bookmarks")
@@ -820,13 +908,160 @@ async def api_bookmark_delete(bookmark_id: int, session_id: str = "web_default")
     return {"status": "ok" if ok else "not_found"}
 
 
+# ── 重新生成（pop last messages）API ─────────────────────────
+@app.post("/api/chat/pop-last", dependencies=[Depends(verify_api_key)])
+async def api_chat_pop_last(body: ResetRequest):
+    """移除 SESSION_STATS 中最後一對 AI+User 訊息，回傳最後的 user 訊息內容，供前端重新送出。"""
+    session_id = (body.session_id or "").strip() or "web_default"
+    session_lock = await _get_session_lock(session_id)
+    async with session_lock:
+        msgs = SESSION_STATS.get(session_id, [])
+        last_user = None
+        if msgs and isinstance(msgs[-1], AIMessage):
+            msgs.pop()
+        if msgs and isinstance(msgs[-1], HumanMessage):
+            last_user = msgs[-1].content
+            msgs.pop()
+        SESSION_STATS[session_id] = msgs
+    return {"last_user_msg": last_user}
+
+
+# ── Push notification API ─────────────────────────────────────
+class PushSubscribeRequest(BaseModel):
+    session_id: str = "web_default"
+    endpoint: str
+    p256dh: str
+    auth: str
+
+
+@app.post("/api/push/subscribe")
+async def api_push_subscribe(body: PushSubscribeRequest):
+    session_id = (body.session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import save_push_subscription
+    await run_in_threadpool(save_push_subscription, session_id, body.endpoint, body.p256dh, body.auth)
+    return {"status": "ok"}
+
+
+@app.delete("/api/push/subscribe")
+async def api_push_unsubscribe(session_id: str = "web_default", endpoint: str = ""):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import delete_push_subscription
+    await run_in_threadpool(delete_push_subscription, session_id, endpoint)
+    return {"status": "ok"}
+
+
+@app.get("/api/push/vapid-public-key")
+async def api_push_vapid_key():
+    return {"key": GlobalConfig.VAPID_PUBLIC_KEY}
+
+
+@app.post("/api/push/send-daily", dependencies=[Depends(verify_api_key)])
+async def api_push_send_daily():
+    """觸發對所有訂閱用戶發送今日運勢推播（需 VAPID 金鑰）。"""
+    if not GlobalConfig.VAPID_PUBLIC_KEY or not GlobalConfig.VAPID_PRIVATE_KEY:
+        raise HTTPException(status_code=503, detail="VAPID 金鑰未設定")
+    from chat_bot.auth.auth import load_all_push_subscriptions
+    subs = await run_in_threadpool(load_all_push_subscriptions)
+    if not subs:
+        return {"sent": 0}
+
+    import datetime as _dt
+    today = _dt.date.today().strftime("%m/%d")
+
+    def _send_all():
+        try:
+            from pywebpush import webpush, WebPushException
+        except ImportError:
+            logger.warning("[push] pywebpush 未安裝")
+            return 0
+        sent = 0
+        for sub in subs:
+            try:
+                webpush(
+                    subscription_info={
+                        "endpoint": sub["endpoint"],
+                        "keys": {"p256dh": sub["p256dh"], "auth": sub["auth"]},
+                    },
+                    data=json.dumps({"title": f"紫微AI {today} 今日運勢", "body": "點擊查看你的今日運勢，把握今天的好時機！", "url": "/chat"}, ensure_ascii=False),
+                    vapid_private_key=GlobalConfig.VAPID_PRIVATE_KEY,
+                    vapid_claims={"sub": f"mailto:{GlobalConfig.VAPID_CLAIMS_EMAIL}"},
+                )
+                sent += 1
+            except Exception as e:
+                logger.warning("[push] 推播失敗: %s", e)
+        return sent
+
+    sent = await run_in_threadpool(_send_all)
+    return {"sent": sent}
+
+
+# ── Message reactions API ─────────────────────────────────────
+class ReactionRequest(BaseModel):
+    session_id: str = "web_default"
+    msg_id: str
+    reaction: str  # 'like' | 'dislike' | ''
+
+
+@app.post("/api/reactions")
+async def api_reaction_save(body: ReactionRequest):
+    if body.reaction not in ("like", "dislike", ""):
+        raise HTTPException(status_code=400, detail="reaction 必須是 like、dislike 或空字串")
+    session_id = (body.session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import save_message_reaction
+    await run_in_threadpool(save_message_reaction, session_id, body.msg_id, body.reaction)
+    return {"status": "ok"}
+
+
 # ── 感情合盤 API ──────────────────────────────────────────────
+class PersonInfo(BaseModel):
+    year: int
+    month: int
+    day: int
+    hour: int
+    is_male: bool = True
+
+    @field_validator("year")
+    @classmethod
+    def year_range(cls, v: int) -> int:
+        if not (1900 <= v <= 2100):
+            raise ValueError("出生年份需在 1900–2100 之間")
+        return v
+
+    @field_validator("month")
+    @classmethod
+    def month_range(cls, v: int) -> int:
+        if not (1 <= v <= 12):
+            raise ValueError("月份需在 1–12 之間")
+        return v
+
+    @field_validator("day")
+    @classmethod
+    def day_range(cls, v: int) -> int:
+        if not (1 <= v <= 31):
+            raise ValueError("日期需在 1–31 之間")
+        return v
+
+    @field_validator("hour")
+    @classmethod
+    def hour_range(cls, v: int) -> int:
+        if not (0 <= v <= 23):
+            raise ValueError("時辰需在 0–23 之間")
+        return v
+
+
 class CompatibilityRequest(BaseModel):
-    person_a: dict  # {year, month, day, hour, is_male}
-    person_b: dict
+    person_a: PersonInfo
+    person_b: PersonInfo
     session_id: str = "web_default"
     name_a: str = "甲方"
     name_b: str = "乙方"
+
+    @field_validator("name_a", "name_b")
+    @classmethod
+    def name_length(cls, v: str) -> str:
+        if len(v.strip()) > 20:
+            raise ValueError("名稱長度不得超過 20 字元")
+        return v.strip()
 
 
 @app.post("/api/compatibility")
@@ -839,17 +1074,14 @@ async def api_compatibility(body: CompatibilityRequest):
     from ziweidoushu.base import ZiWeiConfig
     from chat_bot.node.gen_ziwei import get_palace_information, _get_domain_df
 
-    def _gen_full_chart(info: dict) -> tuple[str, str, str]:
+    def _gen_full_chart(info: PersonInfo) -> tuple[str, str, str]:
         """Returns (chart_markdown, horoscope_text, header_str)"""
-        cfg = ZiWeiConfig(
-            int(info["year"]), int(info["month"]), int(info["day"]),
-            int(info["hour"]), bool(info.get("is_male", True))
-        )
+        cfg = ZiWeiConfig(info.year, info.month, info.day, info.hour, info.is_male)
         df = ZiweiChart(cfg).gen_chart()
         chart_md = df.to_markdown()
         horoscope = get_palace_information(df, _get_domain_df())
-        gender = "男" if info.get("is_male", True) else "女"
-        header = f"{info['year']}年{info['month']}月{info['day']}日 {info['hour']}時 {gender}"
+        gender = "男" if info.is_male else "女"
+        header = f"{info.year}年{info.month}月{info.day}日 {info.hour}時 {gender}"
         chart_text = f"【{header}】\n\n命盤：\n{chart_md}\n\n命盤分析：\n{horoscope}"
         return chart_md, horoscope, chart_text
 
@@ -863,8 +1095,9 @@ async def api_compatibility(body: CompatibilityRequest):
         yield f'data: {json.dumps({"progress": f"⏳ 正在為【{body.name_a}】排命盤並分析（約 30-60 秒）…"})}\n\n'
         try:
             chart_md_a, horoscope_a, chart_text_a = await run_in_threadpool(_gen_full_chart, body.person_a)
-        except Exception as exc:
-            yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_a}】命盤生成失敗：{exc}"})}\n\n'
+        except Exception:
+            logger.exception("[compat] 命盤A生成失敗")
+            yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_a}】命盤生成失敗，請確認出生資料是否正確。"})}\n\n'
             yield f'data: {json.dumps({"done": True})}\n\n'
             return
 
@@ -872,8 +1105,9 @@ async def api_compatibility(body: CompatibilityRequest):
         yield f'data: {json.dumps({"progress": f"⏳ 正在為【{body.name_b}】排命盤並分析（約 30-60 秒）…"})}\n\n'
         try:
             chart_md_b, horoscope_b, chart_text_b = await run_in_threadpool(_gen_full_chart, body.person_b)
-        except Exception as exc:
-            yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_b}】命盤生成失敗：{exc}"})}\n\n'
+        except Exception:
+            logger.exception("[compat] 命盤B生成失敗")
+            yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_b}】命盤生成失敗，請確認出生資料是否正確。"})}\n\n'
             yield f'data: {json.dumps({"done": True})}\n\n'
             return
 
@@ -918,8 +1152,9 @@ async def api_compatibility(body: CompatibilityRequest):
                 token = chunk.content if hasattr(chunk, "content") else str(chunk)
                 if token:
                     yield f'data: {json.dumps({"token": token})}\n\n'
-        except Exception as exc:
-            yield f'data: {json.dumps({"token": f"⚠️ 分析失敗：{exc}"})}\n\n'
+        except Exception:
+            logger.exception("[compat] AI 分析失敗")
+            yield f'data: {json.dumps({"token": "⚠️ 合盤分析失敗，請稍後再試。"})}\n\n'
         yield f'data: {json.dumps({"done": True})}\n\n'
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
@@ -1068,6 +1303,14 @@ class ProfileRequest(BaseModel):
     session_id: str = "web_default"
     profile_name: str
 
+    @field_validator("profile_name")
+    @classmethod
+    def name_length(cls, v: str) -> str:
+        v = v.strip()
+        if not v or len(v) > 30:
+            raise ValueError("命盤名稱長度需在 1-30 字元之間")
+        return v
+
 
 @app.get("/api/profiles")
 async def api_profiles_list(session_id: str = "web_default"):
@@ -1113,6 +1356,45 @@ async def api_profiles_get(profile_id: int, session_id: str = "web_default", act
         SESSION_STATS.pop(session_id, None)
         NON_AGENT_THREAD.pop(session_id, None)
     return profile
+
+
+class MultiProfileRequest(BaseModel):
+    session_id: str = "web_default"
+    profile_ids: list[int]
+
+
+@app.post("/api/profiles/activate-multi")
+async def api_profiles_activate_multi(body: MultiProfileRequest):
+    """同時啟用複數命盤，合併為當前 session 的對話上下文。"""
+    from chat_bot.auth.auth import get_profile
+    session_id = (body.session_id or "").strip() or "web_default"
+    profiles = []
+    for pid in body.profile_ids:
+        p = await run_in_threadpool(get_profile, pid, session_id)
+        if p and p.get("horoscope"):
+            profiles.append(p)
+    if not profiles:
+        raise HTTPException(status_code=404, detail="找不到指定的命盤")
+
+    if len(profiles) == 1:
+        combined = profiles[0]["horoscope"]
+        chart = profiles[0].get("chart_table", "")
+        bi = profiles[0].get("birth_info")
+    else:
+        parts = [f"【{p['profile_name']}】命盤分析：\n{p['horoscope']}" for p in profiles]
+        combined = "\n\n═══════════════\n\n".join(parts)
+        chart = "\n\n".join(filter(None, (p.get("chart_table", "") for p in profiles)))
+        bi = None
+
+    HOROSCOPE[session_id] = combined
+    CHART_TABLE[session_id] = chart
+    if bi:
+        BIRTH_INFO[session_id] = bi
+    else:
+        BIRTH_INFO.pop(session_id, None)
+    SESSION_STATS.pop(session_id, None)
+    NON_AGENT_THREAD.pop(session_id, None)
+    return {"activated": [p["profile_name"] for p in profiles], "count": len(profiles)}
 
 
 @app.delete("/api/profiles/{profile_id}")
@@ -1286,9 +1568,9 @@ async def api_life_events(session_id: str = "web_default"):
         return _json.loads(match.group())
     except HTTPException:
         raise
-    except Exception as exc:
+    except Exception:
         logger.exception("[life-events] error")
-        raise HTTPException(status_code=500, detail=str(exc))
+        raise HTTPException(status_code=500, detail="人生節點分析失敗，請稍後再試")
 
 
 if __name__ == "__main__":

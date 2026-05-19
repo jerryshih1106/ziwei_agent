@@ -13,14 +13,14 @@
       --gold: #c9a227;
       --gold-light: #e8c84a;
       --gold-dark: #9a7a1a;
-      --deep-purple: #1a0a2e;
-      --purple: #2d1b54;
-      --purple-mid: #3d2470;
-      --purple-light: #5a3a9c;
-      --bg-dark: #0d0718;
-      --bg-card: #1c1035;
-      --text-light: #f0e8ff;
-      --text-muted: #a090c0;
+      --deep-purple: #081828;
+      --purple: #0d2244;
+      --purple-mid: #1a3a6a;
+      --purple-light: #2a5a9c;
+      --bg-dark: #060e1c;
+      --bg-card: #0d1c32;
+      --text-light: #e0eeff;
+      --text-muted: #6090b5;
       --red-fortune: #c0392b;
       --jade: #27ae60;
     }
@@ -50,7 +50,7 @@
       position: fixed;
       top: 0; left: 0; right: 0;
       z-index: 100;
-      background: rgba(13, 7, 24, 0.85);
+      background: rgba(6, 14, 28, 0.85);
       backdrop-filter: blur(12px);
       border-bottom: 1px solid rgba(201, 162, 39, 0.3);
       padding: 0 5%;
@@ -427,7 +427,7 @@
 
     /* ── LINE section ── */
     #line-bot {
-      background: linear-gradient(135deg, rgba(39, 174, 96, 0.08), rgba(13, 7, 24, 0.9));
+      background: linear-gradient(135deg, rgba(39, 174, 96, 0.08), rgba(6, 14, 28, 0.9));
     }
 
     .line-container {
@@ -650,7 +650,7 @@
       gap: 16px;
     }
     .payment-method {
-      background: rgba(13, 7, 24, 0.5);
+      background: rgba(6, 14, 28, 0.5);
       border: 1px solid rgba(201, 162, 39, 0.15);
       border-radius: 12px;
       padding: 20px 16px;
@@ -875,6 +875,46 @@
       pointer-events: none;
     }
     #copy-toast.show { opacity: 1; }
+
+    /* ── Compat Section ── */
+    #compat { background: linear-gradient(180deg, transparent 0%, rgba(13,34,68,0.25) 100%); }
+    .compat-wrap { max-width:820px; margin:0 auto; }
+    .compat-grid {
+      display:grid; grid-template-columns:1fr 1fr; gap:24px; margin-bottom:20px;
+    }
+    @media(max-width:600px){ .compat-grid{ grid-template-columns:1fr; } }
+    .compat-card {
+      background:rgba(13,34,68,0.5); border:1px solid rgba(201,162,39,0.2);
+      border-radius:14px; padding:20px;
+    }
+    .compat-card-title {
+      font-family:'Noto Serif TC',serif; font-weight:700; color:var(--gold);
+      font-size:1.05rem; margin-bottom:14px; text-align:center;
+    }
+    .compat-field { margin-bottom:10px; }
+    .compat-field label { display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:4px; }
+    .compat-field input, .compat-field select {
+      width:100%; background:rgba(6,14,28,0.7); border:1px solid rgba(201,162,39,0.25);
+      border-radius:8px; color:var(--text-light); padding:8px 12px; font-size:0.9rem;
+      font-family:'Noto Sans TC',sans-serif; outline:none;
+    }
+    .compat-field input:focus, .compat-field select:focus { border-color:var(--gold); }
+    .compat-submit-btn {
+      width:100%; padding:14px; border:none; border-radius:12px; cursor:pointer;
+      background:linear-gradient(135deg, var(--gold-dark), var(--gold));
+      color:#1a0e00; font-weight:700; font-size:1rem;
+      font-family:'Noto Serif TC',serif; transition:opacity 0.2s;
+    }
+    .compat-submit-btn:disabled { opacity:0.5; cursor:not-allowed; }
+    .compat-result-box {
+      display:none; margin-top:24px; background:rgba(13,34,68,0.5);
+      border:1px solid rgba(201,162,39,0.2); border-radius:14px; padding:24px;
+      color:var(--text-light); line-height:1.8; font-size:0.95rem;
+    }
+    .compat-result-box.visible { display:block; }
+    .compat-status {
+      text-align:center; color:var(--text-muted); font-size:0.88rem; margin-bottom:12px;
+    }
   </style>
 </head>
 <body>
@@ -895,6 +935,7 @@
     <li><a href="#features">特色功能</a></li>
     <li><a href="#howto">使用說明</a></li>
     <li><a href="#line-bot">LINE 機器人</a></li>
+    <li><a href="#compat">感情合盤</a></li>
     <li><a href="#pricing">方案定價</a></li>
     <li><a href="#faq">常見問題</a></li>
     <li><a href="/chat" class="nav-cta">立即算命 →</a></li>
@@ -1267,6 +1308,95 @@
   </div>
 </section>
 
+<!-- ── 感情合盤分析 ── -->
+<section id="compat">
+  <div class="container">
+    <div class="section-header fade-in">
+      <div class="section-label">雙人合盤</div>
+      <h2 class="section-title">感情<span class="gold">合盤分析</span></h2>
+      <div class="divider"></div>
+      <p class="section-desc">輸入兩人出生資料，AI 即刻從紫微斗數角度分析感情相性、個性互補與合作潛力</p>
+    </div>
+    <div class="compat-wrap fade-in">
+      <div class="compat-grid">
+        <!-- 甲方 -->
+        <div class="compat-card">
+          <div class="compat-card-title">甲方</div>
+          <div class="compat-field">
+            <label>代稱</label>
+            <input id="ic-a-name" type="text" placeholder="例：自己、小明" maxlength="20">
+          </div>
+          <div class="compat-field">
+            <label>出生年</label>
+            <input id="ic-a-year" type="number" placeholder="例：1990" min="1900" max="2099">
+          </div>
+          <div class="compat-field">
+            <label>出生月</label>
+            <input id="ic-a-month" type="number" placeholder="1–12" min="1" max="12">
+          </div>
+          <div class="compat-field">
+            <label>出生日</label>
+            <input id="ic-a-day" type="number" placeholder="1–31" min="1" max="31">
+          </div>
+          <div class="compat-field">
+            <label>出生時辰</label>
+            <select id="ic-a-hour">
+              {% for item in time_table %}
+              <option value="{{ item.hour }}">{{ item.zhi }}時（{{ item.range }}）</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="compat-field">
+            <label>性別</label>
+            <select id="ic-a-gender">
+              <option value="1">男</option>
+              <option value="0">女</option>
+            </select>
+          </div>
+        </div>
+        <!-- 乙方 -->
+        <div class="compat-card">
+          <div class="compat-card-title">乙方</div>
+          <div class="compat-field">
+            <label>代稱</label>
+            <input id="ic-b-name" type="text" placeholder="例：對象、小花" maxlength="20">
+          </div>
+          <div class="compat-field">
+            <label>出生年</label>
+            <input id="ic-b-year" type="number" placeholder="例：1992" min="1900" max="2099">
+          </div>
+          <div class="compat-field">
+            <label>出生月</label>
+            <input id="ic-b-month" type="number" placeholder="1–12" min="1" max="12">
+          </div>
+          <div class="compat-field">
+            <label>出生日</label>
+            <input id="ic-b-day" type="number" placeholder="1–31" min="1" max="31">
+          </div>
+          <div class="compat-field">
+            <label>出生時辰</label>
+            <select id="ic-b-hour">
+              {% for item in time_table %}
+              <option value="{{ item.hour }}">{{ item.zhi }}時（{{ item.range }}）</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="compat-field">
+            <label>性別</label>
+            <select id="ic-b-gender">
+              <option value="0">女</option>
+              <option value="1">男</option>
+            </select>
+          </div>
+        </div>
+      </div>
+      <div class="compat-status" id="ic-status">⏳ 合盤需分別為兩人排盤，請耐心等候（約 1–2 分鐘）</div>
+      <button class="compat-submit-btn" id="ic-submit-btn" onclick="runIndexCompat()">💕 開始合盤分析</button>
+      <div class="compat-result-box" id="ic-result"></div>
+    </div>
+  </div>
+</section>
+
 <!-- ── FAQ ── -->
 <section id="faq">
   <div class="container">
@@ -1456,6 +1586,54 @@ function copyLineId() {
 function showPayment(plan) {
   const names = { standard: '標準版 NT$299/月', pro: '尊享版 NT$799/月' };
   alert(`即將進入付款頁面：${names[plan]}\n\n支援付款方式：LINE Pay、信用卡、ATM 轉帳、街口支付、台灣Pay、超商代碼\n\n（此為示範提示，正式上線後將跳轉至金流頁面）`);
+}
+
+// ── 主畫面合盤分析 ──
+async function runIndexCompat() {
+  const v = id => document.getElementById(id).value.trim();
+  const a = { year:+v('ic-a-year'), month:+v('ic-a-month'), day:+v('ic-a-day'), hour:+v('ic-a-hour'), is_male: v('ic-a-gender')==='1' };
+  const b = { year:+v('ic-b-year'), month:+v('ic-b-month'), day:+v('ic-b-day'), hour:+v('ic-b-hour'), is_male: v('ic-b-gender')==='1' };
+  const nameA = v('ic-a-name') || '甲方';
+  const nameB = v('ic-b-name') || '乙方';
+  if (!a.year||!a.month||!a.day||!b.year||!b.month||!b.day) {
+    alert('請填寫兩人的完整出生年月日'); return;
+  }
+  const btn = document.getElementById('ic-submit-btn');
+  const result = document.getElementById('ic-result');
+  const status = document.getElementById('ic-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ 排盤分析中，請稍候…';
+  result.innerHTML = '';
+  result.classList.add('visible');
+  let accumulated = '';
+  try {
+    const res = await fetch('/api/compatibility', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ person_a:a, person_b:b, session_id:'index_compat', name_a:nameA, name_b:nameB }),
+    });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let done = false;
+    while (!done) {
+      const { done: sd, value } = await reader.read();
+      if (sd) break;
+      for (const line of decoder.decode(value,{stream:true}).split('\n')) {
+        if (!line.startsWith('data: ')) continue;
+        let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+        if (evt.progress) { status.textContent = evt.progress; }
+        if (evt.clear) { accumulated = ''; result.innerHTML = ''; }
+        if (evt.token) { accumulated += evt.token; result.innerHTML = accumulated.replace(/\n/g,'<br>'); }
+        if (evt.done) { done = true; }
+      }
+    }
+    status.textContent = '✅ 分析完成！';
+  } catch {
+    result.innerHTML = '<p style="color:#e59866">⚠️ 分析失敗，請稍後再試。</p>';
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '💕 開始合盤分析';
+  }
 }
 
 // ── Smooth scroll for nav links ──

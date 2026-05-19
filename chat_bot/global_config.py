@@ -24,3 +24,6 @@ class GlobalConfig:
     LINE_BOT_ID: str = os.environ.get("LINE_BOT_ID", "@ziwei_ai")
     API_KEY: str = os.environ.get("API_KEY", "")
     ALLOW_REGISTER: bool = os.environ.get("ALLOW_REGISTER", "false").lower() in ("1", "true", "yes")
+    VAPID_PUBLIC_KEY: str = os.environ.get("VAPID_PUBLIC_KEY", "")
+    VAPID_PRIVATE_KEY: str = os.environ.get("VAPID_PRIVATE_KEY", "")
+    VAPID_CLAIMS_EMAIL: str = os.environ.get("VAPID_CLAIMS_EMAIL", "admin@example.com")

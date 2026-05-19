@@ -112,6 +112,29 @@ def init_db() -> None:
                 UNIQUE(session_id, year_month)
             )
         """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS push_subscriptions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                endpoint TEXT NOT NULL,
+                p256dh TEXT NOT NULL,
+                auth TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(session_id, endpoint)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_push_session ON push_subscriptions(session_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS message_reactions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                msg_id TEXT NOT NULL,
+                reaction TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(session_id, msg_id)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_reactions_session ON message_reactions(session_id)")
         conn.commit()
 
 
@@ -129,16 +152,24 @@ def save_chat_message(session_id: str, role: str, content: str) -> None:
         logger.warning("[chat_history] 儲存失敗: %s", session_id)
 
 
-def load_chat_history(session_id: str, limit: int = 30, offset: int = 0) -> list:
-    """載入指定 session 的最近 N 則訊息（依時間升序）。"""
+def load_chat_history(session_id: str, limit: int = 30, offset: int = 0, q: str = "") -> list:
+    """載入指定 session 的最近 N 則訊息（依時間升序）。q 為關鍵字搜尋。"""
     try:
         with get_db() as conn:
-            rows = conn.execute(
-                """SELECT role, content, created_at FROM chat_history
-                   WHERE session_id = ?
-                   ORDER BY id DESC LIMIT ? OFFSET ?""",
-                (session_id, limit, offset),
-            ).fetchall()
+            if q:
+                rows = conn.execute(
+                    """SELECT role, content, created_at FROM chat_history
+                       WHERE session_id = ? AND content LIKE ?
+                       ORDER BY id DESC LIMIT ? OFFSET ?""",
+                    (session_id, f"%{q}%", limit, offset),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """SELECT role, content, created_at FROM chat_history
+                       WHERE session_id = ?
+                       ORDER BY id DESC LIMIT ? OFFSET ?""",
+                    (session_id, limit, offset),
+                ).fetchall()
         return [{"role": r["role"], "content": r["content"], "created_at": r["created_at"]} for r in reversed(rows)]
     except Exception:
         logger.warning("[chat_history] 載入失敗: %s", session_id)
@@ -513,3 +544,87 @@ def sync_whitelist() -> None:
         else:
             skipped += 1
     logger.info("[whitelist] 完成：新建 %d 個帳號，已存在略過 %d 個", created, skipped)
+
+
+# ── Push subscriptions ─────────────────────────────────────────
+
+def save_push_subscription(session_id: str, endpoint: str, p256dh: str, auth_key: str) -> None:
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO push_subscriptions (session_id, endpoint, p256dh, auth, created_at)
+                   VALUES (?,?,?,?,?)
+                   ON CONFLICT(session_id, endpoint) DO UPDATE SET p256dh=excluded.p256dh, auth=excluded.auth""",
+                (session_id, endpoint, p256dh, auth_key, now),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[push] 儲存訂閱失敗: %s", session_id)
+
+
+def delete_push_subscription(session_id: str, endpoint: str) -> None:
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "DELETE FROM push_subscriptions WHERE session_id=? AND endpoint=?",
+                (session_id, endpoint),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[push] 刪除訂閱失敗: %s", session_id)
+
+
+def load_push_subscriptions(session_id: str) -> list[dict]:
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT endpoint, p256dh, auth FROM push_subscriptions WHERE session_id=?",
+                (session_id,),
+            ).fetchall()
+        return [{"endpoint": r["endpoint"], "p256dh": r["p256dh"], "auth": r["auth"]} for r in rows]
+    except Exception:
+        return []
+
+
+def load_all_push_subscriptions() -> list[dict]:
+    """載入所有用戶的推播訂閱（用於每日推播排程）。"""
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT session_id, endpoint, p256dh, auth FROM push_subscriptions",
+            ).fetchall()
+        return [{"session_id": r["session_id"], "endpoint": r["endpoint"],
+                 "p256dh": r["p256dh"], "auth": r["auth"]} for r in rows]
+    except Exception:
+        return []
+
+
+# ── Message reactions ──────────────────────────────────────────
+
+def save_message_reaction(session_id: str, msg_id: str, reaction: str) -> None:
+    """儲存用戶對訊息的反應（'like' | 'dislike'），同一訊息只保留最後一次。"""
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO message_reactions (session_id, msg_id, reaction, created_at)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(session_id, msg_id) DO UPDATE SET reaction=excluded.reaction, created_at=excluded.created_at""",
+                (session_id, msg_id, reaction, now),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[reaction] 儲存失敗: %s", session_id)
+
+
+def get_message_reaction(session_id: str, msg_id: str) -> "str | None":
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT reaction FROM message_reactions WHERE session_id=? AND msg_id=?",
+                (session_id, msg_id),
+            ).fetchone()
+        return row["reaction"] if row else None
+    except Exception:
+        return None

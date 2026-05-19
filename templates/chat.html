@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="theme-color" content="#0d0718">
+  <meta name="theme-color" content="#060e1c">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -18,14 +18,14 @@
       --gold: #c9a227;
       --gold-light: #e8c84a;
       --gold-dark: #9a7a1a;
-      --bg-dark: #0d0718;
-      --bg-card: #1c1035;
-      --purple: #2d1b54;
-      --text-light: #f0e8ff;
-      --text-muted: #a090c0;
+      --bg-dark: #060e1c;
+      --bg-card: #0d1c32;
+      --purple: #0d2244;
+      --text-light: #e0eeff;
+      --text-muted: #6090b5;
       --jade: #27ae60;
-      --user-bubble: #2d1b54;
-      --ai-bubble: #1c1035;
+      --user-bubble: #0d2244;
+      --ai-bubble: #0d1c32;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -42,7 +42,7 @@
 
     /* ── Top Bar ── */
     .topbar {
-      background: rgba(13, 7, 24, 0.95);
+      background: rgba(6, 14, 28, 0.95);
       border-bottom: 1px solid rgba(201, 162, 39, 0.25);
       padding: 0 16px;
       height: 60px;
@@ -210,7 +210,7 @@
       background: linear-gradient(135deg, var(--gold-dark), var(--gold-light));
     }
     .msg.user .msg-avatar {
-      background: linear-gradient(135deg, #5a3a9c, #3d2470);
+      background: linear-gradient(135deg, #2a5a9c, #1a3a6a);
     }
 
     .msg-bubble {
@@ -229,7 +229,7 @@
     }
     .msg.user .msg-bubble {
       background: var(--user-bubble);
-      border: 1px solid rgba(90,58,156,0.4);
+      border: 1px solid rgba(42,90,156,0.4);
       border-top-right-radius: 4px;
       color: var(--text-light);
     }
@@ -301,7 +301,7 @@
     /* ── Input Area ── */
     .input-area {
       border-top: 1px solid rgba(201,162,39,0.2);
-      background: rgba(13, 7, 24, 0.9);
+      background: rgba(6, 14, 28, 0.9);
       padding: 12px 16px;
       flex-shrink: 0;
     }
@@ -312,8 +312,14 @@
       flex-wrap: wrap;
       margin-bottom: 10px;
     }
+    .qq-category-tabs { display:flex; gap:6px; margin-bottom:6px; flex-wrap:wrap; }
+    .qq-tab {
+      background:none; border:1px solid rgba(201,162,39,0.2); border-radius:14px;
+      padding:3px 10px; font-size:0.75rem; color:var(--text-muted); cursor:pointer; transition:all 0.2s;
+    }
+    .qq-tab.active { border-color:var(--gold); color:var(--gold); background:rgba(201,162,39,0.08); }
     .qq-chip {
-      background: rgba(45, 27, 84, 0.6);
+      background: rgba(13,34,68,0.6);
       border: 1px solid rgba(201,162,39,0.2);
       border-radius: 20px;
       padding: 5px 12px;
@@ -328,6 +334,64 @@
       color: var(--gold);
       background: rgba(201,162,39,0.1);
     }
+    /* Regenerate & Reaction buttons */
+    .regen-btn {
+      background:none; border:none; color:var(--text-muted); cursor:pointer;
+      font-size:0.8rem; padding:2px 6px; border-radius:6px; transition:all 0.2s; opacity:0.6;
+    }
+    .regen-btn:hover { color:var(--gold); opacity:1; }
+    /* Voice button */
+    .voice-btn {
+      background:none; border:1px solid rgba(201,162,39,0.2); border-radius:10px;
+      color:var(--text-muted); padding:8px 10px; cursor:pointer; font-size:1rem;
+      transition:all 0.2s; flex-shrink:0;
+    }
+    .voice-btn:hover { border-color:var(--gold); color:var(--gold); }
+    .voice-btn.recording { color:#e74c3c; border-color:rgba(231,76,60,0.5); animation:pulse 1s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    /* History search */
+    .history-search {
+      display:flex; gap:8px; padding:10px 16px 0;
+    }
+    .history-search input {
+      flex:1; background:rgba(13,34,68,0.5); border:1px solid rgba(201,162,39,0.2);
+      border-radius:8px; color:var(--text-light); padding:6px 10px; font-size:0.85rem;
+      outline:none; font-family:'Noto Sans TC',sans-serif;
+    }
+    .history-search input:focus { border-color:var(--gold); }
+    /* Life-events timeline modal */
+    .timeline-list { display:flex; flex-direction:column; gap:12px; }
+    .timeline-item {
+      display:flex; gap:14px; align-items:flex-start;
+    }
+    .timeline-dot {
+      width:12px; height:12px; border-radius:50%; flex-shrink:0; margin-top:4px;
+    }
+    .timeline-dot.good { background:#27ae60; }
+    .timeline-dot.caution { background:#e59866; }
+    .timeline-dot.neutral { background:var(--text-muted); }
+    .timeline-connector {
+      position:relative; padding-left:26px;
+    }
+    .timeline-connector::before {
+      content:''; position:absolute; left:5px; top:16px; bottom:-12px;
+      width:2px; background:rgba(201,162,39,0.15);
+    }
+    .timeline-item:last-child .timeline-connector::before { display:none; }
+    .timeline-content { flex:1; }
+    .timeline-age { font-size:0.75rem; color:var(--gold); font-weight:700; }
+    .timeline-title { font-family:'Noto Serif TC',serif; font-size:0.95rem; color:var(--text-light); }
+    .timeline-desc { font-size:0.82rem; color:var(--text-muted); margin-top:3px; }
+    /* Language toggle */
+    .lang-toggle {
+      background:none; border:1px solid rgba(201,162,39,0.2); border-radius:8px;
+      color:var(--text-muted); padding:4px 10px; font-size:0.8rem; cursor:pointer;
+      transition:all 0.2s;
+    }
+    .lang-toggle:hover { border-color:var(--gold); color:var(--gold); }
+    /* Trend chart */
+    .trend-chart-wrap { overflow-x:auto; margin-top:16px; }
+    .trend-svg { min-width:300px; }
 
     .input-row {
       display: flex;
@@ -502,7 +566,7 @@
       min-height: 420px;
     }
     .palace-cell {
-      background: rgba(13,7,24,0.95);
+      background: rgba(6,14,28,0.95);
       border: 1px solid rgba(201,162,39,0.15);
       padding: 8px 7px;
       overflow: hidden;
@@ -772,8 +836,8 @@
       border-radius: 10px;
     }
     .history-role-badge.user {
-      background: rgba(90,58,156,0.3);
-      color: #b09adc;
+      background: rgba(42,90,156,0.3);
+      color: #7ab0e0;
     }
     .history-role-badge.ai {
       background: rgba(201,162,39,0.15);
@@ -834,7 +898,7 @@
       border: 1px solid rgba(201,162,39,0.15);
       border-radius: 8px;
       margin-right: 6px;
-      background: rgba(13,7,24,0.9);
+      background: rgba(6,14,28,0.9);
       cursor: pointer;
       transition: border-color 0.2s, background 0.2s;
       position: relative;
@@ -844,7 +908,7 @@
     /* Daxian detail popup */
     .daxian-popup {
       position: absolute;
-      background: #1c1035;
+      background: #0d1c32;
       border: 1px solid rgba(201,162,39,0.4);
       border-radius: 12px;
       padding: 14px 16px;
@@ -906,7 +970,8 @@
     .legend-dot.current-dot { background: rgba(201,162,39,0.2); }
 
     /* ── Daily Fortune Modal ── */
-    .fortune-modal-body { padding: 20px; }
+    #fortune-modal .modal-box { max-height: 85vh; display: flex; flex-direction: column; }
+    .fortune-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
     .fortune-date-badge {
       display: inline-block;
       background: rgba(201,162,39,0.12);
@@ -1012,7 +1077,7 @@
     .compat-input {
       width: 100%;
       padding: 8px 10px;
-      background: rgba(13,7,24,0.6);
+      background: rgba(6,14,28,0.6);
       border: 1px solid rgba(201,162,39,0.2);
       border-radius: 6px;
       color: var(--text-light);
@@ -1025,7 +1090,7 @@
     .compat-select {
       width: 100%;
       padding: 8px 10px;
-      background: rgba(13,7,24,0.6);
+      background: rgba(6,14,28,0.6);
       border: 1px solid rgba(201,162,39,0.2);
       border-radius: 6px;
       color: var(--text-light);
@@ -1049,7 +1114,7 @@
     .compat-submit:hover { opacity: 0.88; }
     .compat-submit:disabled { opacity: 0.4; cursor: not-allowed; }
     .compat-result {
-      background: rgba(13,7,24,0.6);
+      background: rgba(6,14,28,0.6);
       border: 1px solid rgba(201,162,39,0.15);
       border-radius: 10px;
       padding: 16px;
@@ -1176,10 +1241,26 @@
     /* ── Profile Manager ── */
     .profile-list { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
     .profile-item {
-      background: rgba(45,27,84,0.4);
+      background: rgba(13,34,68,0.5);
       border: 1px solid rgba(201,162,39,0.2);
       border-radius: 10px; padding: 12px 14px;
       display: flex; align-items: center; gap: 12px;
+      transition: border-color 0.2s;
+    }
+    .profile-item.selected { border-color: rgba(201,162,39,0.7); background: rgba(13,34,68,0.75); }
+    .profile-cb { width:16px; height:16px; accent-color: var(--gold); cursor:pointer; flex-shrink:0; }
+    .profile-multi-bar {
+      display:none; margin-top:12px;
+      background: rgba(201,162,39,0.08); border: 1px solid rgba(201,162,39,0.25);
+      border-radius:10px; padding:10px 14px;
+      align-items:center; gap:10px;
+    }
+    .profile-multi-bar.visible { display:flex; }
+    .profile-multi-label { flex:1; font-size:0.85rem; color:var(--gold); }
+    .profile-multi-btn {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border:none; border-radius:8px; color:#1a0e00; font-weight:700;
+      padding:7px 16px; cursor:pointer; font-size:0.85rem; white-space:nowrap;
     }
     .profile-item-info { flex: 1; min-width: 0; }
     .profile-item-name { font-family: 'Noto Serif TC', serif; font-weight: 700; color: var(--gold); font-size: 0.95rem; }
@@ -1206,11 +1287,11 @@
     .profile-view-btn:hover { background: rgba(201,162,39,0.15); }
     .profile-save-bar {
       display: flex; gap: 8px; margin-bottom: 16px;
-      background: rgba(45,27,84,0.3); border: 1px solid rgba(201,162,39,0.15);
+      background: rgba(13,34,68,0.4); border: 1px solid rgba(201,162,39,0.15);
       border-radius: 10px; padding: 12px;
     }
     .profile-name-input {
-      flex: 1; background: rgba(13,7,24,0.6);
+      flex: 1; background: rgba(6,14,28,0.6);
       border: 1px solid rgba(201,162,39,0.25); border-radius: 8px;
       color: var(--text-light); padding: 8px 12px; font-size: 0.88rem;
       font-family: 'Noto Sans TC', sans-serif; outline: none;
@@ -1302,7 +1383,7 @@
     .settings-style-opt:hover { border-color: rgba(201,162,39,0.5); color: var(--text-light); }
     .settings-pw-form { display: flex; flex-direction: column; gap: 10px; }
     .settings-pw-input {
-      background: rgba(13,7,24,0.6); border: 1px solid rgba(201,162,39,0.25);
+      background: rgba(6,14,28,0.6); border: 1px solid rgba(201,162,39,0.25);
       border-radius: 8px; color: var(--text-light); padding: 10px 14px;
       font-size: 0.88rem; font-family: 'Noto Sans TC', sans-serif; outline: none;
     }
@@ -1463,9 +1544,11 @@
     <button class="topbar-btn" id="bookmark-btn" onclick="openBookmarks()" style="display:none">📌 收藏</button>
     <button class="topbar-btn" id="history-btn" onclick="openHistory()" style="display:none">📜 歷史</button>
     <button class="topbar-btn" id="chart-btn" onclick="showChart()" style="display:none">📊 命盤</button>
-    <button class="topbar-btn" id="compat-btn" onclick="openCompat()" style="display:none">💕 合盤</button>
+    <button class="topbar-btn" id="timeline-btn" onclick="openTimeline()" style="display:none">🗺 人生節點</button>
+<button class="topbar-btn" id="compat-btn" onclick="openCompat()" style="display:none">💕 合盤</button>
     <button class="topbar-btn" id="profiles-btn" onclick="openProfiles()" style="display:none">👥 命盤庫</button>
     <button class="topbar-btn" id="settings-btn" onclick="openSettings()" style="display:none">⚙️ 設定</button>
+    <button class="lang-toggle" id="lang-toggle" onclick="toggleLang()" title="切換語言">EN</button>
     <button class="topbar-btn topbar-btn-reset" onclick="resetChat()">🔄 重置</button>
   </div>
 </div>
@@ -1506,12 +1589,8 @@
     <!-- Input Area -->
     <div class="input-area">
       <div class="quick-questions" id="quick-questions">
-        <div class="qq-chip" onclick="sendQuick('我想了解感情運勢')">💕 感情運勢</div>
-        <div class="qq-chip" onclick="sendQuick('我的事業運如何？')">💼 事業運</div>
-        <div class="qq-chip" onclick="sendQuick('財運方面有什麼建議？')">💰 財運</div>
-        <div class="qq-chip" onclick="sendQuick('今年流年運勢如何？')">📅 流年運勢</div>
-        <div class="qq-chip" onclick="sendQuick('健康方面需要注意什麼？')">❤️ 健康</div>
-        <div class="qq-chip" onclick="startNewChart()">💫 排新命盤</div>
+        <div class="qq-category-tabs" id="qq-tabs"></div>
+        <div id="qq-chips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
       </div>
       <div class="input-row">
         <textarea
@@ -1521,6 +1600,7 @@
           onkeydown="handleKey(event)"
           oninput="autoResize(this)"
         ></textarea>
+        <button class="voice-btn" id="voice-btn" onclick="toggleVoice()" title="語音輸入">🎙</button>
         <button class="stop-btn" id="stop-btn" onclick="stopGeneration()" title="停止生成" style="display:none">⏹</button>
         <button class="send-btn" id="send-btn" onclick="sendMessage()" title="送出">➤</button>
       </div>
@@ -1623,6 +1703,9 @@
         <button class="history-close" onclick="closeHistory()">✕</button>
       </div>
     </div>
+    <div class="history-search">
+      <input type="text" id="history-search-input" placeholder="🔍 搜尋對話歷史…" oninput="_onHistorySearch()" autocomplete="off">
+    </div>
     <div class="history-body" id="history-body">
       <div class="history-empty">載入中…</div>
     </div>
@@ -1708,6 +1791,10 @@
         <button class="profile-save-submit" onclick="saveCurrentProfile()">💾 儲存目前命盤</button>
       </div>
       <div id="profile-list-body"><div class="profile-empty">載入中…</div></div>
+      <div class="profile-multi-bar" id="profile-multi-bar">
+        <span class="profile-multi-label" id="profile-multi-label">已選 0 個命盤</span>
+        <button class="profile-multi-btn" onclick="activateMultiProfiles()">✨ 使用選取命盤詢問</button>
+      </div>
     </div>
   </div>
 </div>
@@ -1728,12 +1815,16 @@
       <div id="cal-summary" class="cal-summary" style="display:none"></div>
       <div id="cal-grid-wrap"></div>
       <div class="cal-legend">
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-5" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 大吉</div>
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-4" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 吉</div>
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-3" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 平</div>
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-2" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 小凶</div>
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-1" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 凶</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-5" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 100%</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-4" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 80%</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-3" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 60%</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-2" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 40%</div>
+        <div class="cal-legend-item"><div class="cal-dot cal-dot-1" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 20%</div>
       </div>
+      <details style="margin-top:16px">
+        <summary style="cursor:pointer;color:var(--gold);font-size:0.85rem;user-select:none" onclick="loadTrendChart()">📈 近五個月運勢趨勢</summary>
+        <div id="trend-chart-wrap" style="margin-top:8px;overflow-x:auto"></div>
+      </details>
     </div>
   </div>
 </div>
@@ -1749,6 +1840,13 @@
       <div class="settings-section">
         <div class="settings-label">命盤資料</div>
         <div class="settings-info-card" id="settings-birth-info">載入中…</div>
+        <div id="settings-import-bar" style="display:none;margin-top:10px;gap:8px;flex-direction:column">
+          <div style="display:flex;gap:8px">
+            <input class="profile-name-input" id="settings-import-name" type="text" placeholder="輸入名稱後匯入命盤庫（例：自己）" maxlength="30" style="flex:1">
+            <button class="profile-save-submit" onclick="importCurrentToProfiles()" style="white-space:nowrap">📥 匯入命盤庫</button>
+          </div>
+          <div class="settings-msg" id="settings-import-msg"></div>
+        </div>
       </div>
       <div class="settings-section">
         <div class="settings-label">回應風格</div>
@@ -1759,6 +1857,11 @@
           <button class="settings-style-opt" data-style="philosophical" onclick="setStyle('philosophical')">🌙 哲學詩意</button>
         </div>
         <div class="settings-msg" id="settings-style-msg"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">每日運勢推播</div>
+        <button class="profile-save-submit" id="push-toggle-btn" onclick="togglePushSubscription()" style="width:100%">🔔 開啟每日運勢通知</button>
+        <div class="settings-msg" id="settings-push-msg"></div>
       </div>
       <div class="settings-section">
         <div class="settings-label">更改密碼</div>
@@ -1774,6 +1877,20 @@
   </div>
 </div>
 
+<!-- Life-events Timeline Modal -->
+<div class="modal-overlay" id="timeline-modal" onclick="if(event.target===this)closeTimeline()">
+  <div class="modal-box" style="max-width:540px">
+    <div class="modal-header">
+      <span class="modal-title">🗺 人生關鍵節點</span>
+      <button class="modal-close" onclick="closeTimeline()">✕</button>
+    </div>
+    <div class="modal-body" id="timeline-body">
+      <div class="profile-empty">載入中…</div>
+    </div>
+  </div>
+</div>
+
+
 <!-- Chart Modal -->
 <div class="modal-overlay" id="chart-modal" onclick="closeChartOnOverlay(event)">
   <div class="modal-box">
@@ -1783,7 +1900,6 @@
         <button class="toggle-btn active" id="toggle-grid" onclick="switchChartView('grid')">格局圖</button>
         <button class="toggle-btn" id="toggle-table" onclick="switchChartView('table')">表格</button>
         <button class="toggle-btn" id="toggle-timeline" onclick="switchChartView('timeline')">時間軸</button>
-        <button class="toggle-btn" id="toggle-events" onclick="switchChartView('events')">人生節點</button>
       </div>
       <button class="modal-export-btn" id="export-btn" onclick="exportChartImage()" title="下載命盤圖片">⬇ 下載</button>
       <button class="modal-export-btn" id="pdf-btn" onclick="exportChartPDF()" title="匯出完整報告 PDF" style="margin-right:4px">📄 PDF</button>
@@ -1901,6 +2017,9 @@
 
     // 嘗試載入最近歷史訊息（在歡迎訊息前顯示）
     await _loadRecentHistoryToChat(sessionId);
+
+    _initQuickChips(hasChart);
+    _newFeaturesInit();
 
     if (hasChart) {
       const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
@@ -2024,18 +2143,24 @@
     msgs.scrollTop = msgs.scrollHeight;
   }
 
+  function _makeAIFooter(msgId) {
+    return `<div class="msg-time">${getTime()}</div>
+      <button class="regen-btn" onclick="regenerateLastMessage(this)" title="重新生成">↺</button>
+      <button class="bookmark-btn" onclick="bookmarkMessage(this)" title="收藏此回應">🔖</button>`;
+  }
+
+  let _msgCounter = 0;
   function appendAIMessage(text) {
     const msgs = document.getElementById('messages');
     const div = document.createElement('div');
     div.className = 'msg ai';
+    const msgId = `m${Date.now()}-${++_msgCounter}`;
+    div.dataset.msgId = msgId;
     div.innerHTML = `
       <div class="msg-avatar">🔯</div>
       <div style="flex:1;min-width:0">
         <div class="msg-bubble">${renderMarkdown(text)}</div>
-        <div class="msg-footer">
-          <div class="msg-time">${getTime()}</div>
-          <button class="bookmark-btn" onclick="bookmarkMessage(this)" title="收藏此回應">🔖</button>
-        </div>
+        <div class="msg-footer">${_makeAIFooter(msgId)}</div>
       </div>
     `;
     msgs.appendChild(div);
@@ -2048,6 +2173,8 @@
     const msgs = document.getElementById('messages');
     const div = document.createElement('div');
     div.className = 'msg ai';
+    const msgId = `m${Date.now()}-${++_msgCounter}`;
+    div.dataset.msgId = msgId;
     div.innerHTML = `
       <div class="msg-avatar">🔯</div>
       <div style="flex:1;min-width:0">
@@ -2211,12 +2338,9 @@
               if (msgEl) {
                 const footer = msgEl.querySelector('.msg-footer');
                 if (footer && !footer.querySelector('.bookmark-btn')) {
-                  const btn = document.createElement('button');
-                  btn.className = 'bookmark-btn';
-                  btn.title = '收藏此回應';
-                  btn.textContent = '🔖';
-                  btn.onclick = function() { bookmarkMessage(this); };
-                  footer.appendChild(btn);
+                  const msgId = msgEl.dataset.msgId || `m${Date.now()}-${++_msgCounter}`;
+                  msgEl.dataset.msgId = msgId;
+                  footer.innerHTML = _makeAIFooter(msgId);
                 }
               }
             } else {
@@ -2311,7 +2435,11 @@
     sessionStorage.setItem('ziwei_chart', md);
     if (birthInfo) sessionStorage.setItem('ziwei_birth_info', JSON.stringify(birthInfo));
     document.getElementById('chart-btn').style.display = '';
+    document.getElementById('timeline-btn').style.display = '';
     _lifeEventsCache = null;  // invalidate cache when new chart arrives
+    const _tcw = document.getElementById('trend-chart-wrap');
+    if (_tcw) _tcw.innerHTML = '';  // invalidate trend cache
+    _initQuickChips(true);
   }
 
   // Parse pandas to_markdown() output into array of palace objects
@@ -2391,7 +2519,6 @@
     document.getElementById('toggle-grid').classList.toggle('active', view === 'grid');
     document.getElementById('toggle-table').classList.toggle('active', view === 'table');
     document.getElementById('toggle-timeline').classList.toggle('active', view === 'timeline');
-    document.getElementById('toggle-events').classList.toggle('active', view === 'events');
     const md = sessionStorage.getItem('ziwei_chart') || '';
     const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
     _renderChartBody(md, bi, view);
@@ -2406,8 +2533,6 @@
     } else if (view === 'timeline') {
       const palaces = _parseChartMarkdown(md);
       body.innerHTML = palaces.length ? _renderTimeline(palaces, bi) : '<p style="color:var(--text-muted)">無法解析時間軸資料</p>';
-    } else if (view === 'events') {
-      _renderLifeEvents(bi);
     } else {
       body.innerHTML = (typeof DOMPurify !== 'undefined') ? DOMPurify.sanitize(marked.parse(md)) : marked.parse(md);
     }
@@ -2478,7 +2603,7 @@
     const yearStr = birthYear ? `${birthYear + s} – ${birthYear + e} 年` : '';
     const stars = p['星'] ? p['星'].split(',').map(x => x.trim()).filter(Boolean).join('、') : '無';
     const popup = document.createElement('div');
-    popup.style.cssText = 'position:fixed;z-index:10000;background:#1c1035;border:1px solid rgba(201,162,39,0.45);border-radius:12px;padding:14px 16px;min-width:220px;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
+    popup.style.cssText = 'position:fixed;z-index:10000;background:#0d1c32;border:1px solid rgba(201,162,39,0.45);border-radius:12px;padding:14px 16px;min-width:220px;box-shadow:0 8px 32px rgba(0,0,0,0.6);';
     popup.innerHTML = `
       <div class="daxian-popup-header">
         <span class="daxian-popup-title">${p['宮'] || ''} ∙ ${p['天干'] || ''}${p['地支'] || ''}</span>
@@ -2542,7 +2667,7 @@
     try {
       const target = document.getElementById('chart-modal-body');
       const canvas = await html2canvas(target, {
-        backgroundColor: '#0d0718',
+        backgroundColor: '#060e1c',
         scale: 2,
         useCORS: true,
         logging: false,
@@ -2830,6 +2955,7 @@
         for (const line of decoder.decode(value, { stream: true }).split('\n')) {
           if (!line.startsWith('data: ')) continue;
           let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+          if (evt.clear) { accumulated = ''; content.innerHTML = ''; }
           if (evt.token) { accumulated += evt.token; content.innerHTML = renderMarkdown(accumulated); }
           if (evt.done) { _fortuneLoaded = true; refreshBtn.style.display = ''; break; }
         }
@@ -2984,56 +3110,6 @@
     if (e.target === document.getElementById('history-overlay')) closeHistory();
   }
 
-  async function _loadHistory(reset) {
-    if (reset) _historyOffset = 0;
-    const body = document.getElementById('history-body');
-    if (reset) body.innerHTML = '<div class="history-empty">載入中…</div>';
-    try {
-      const res = await fetch(`/api/history?session_id=${encodeURIComponent(SESSION_ID)}&limit=30&offset=${_historyOffset}`);
-      const data = await res.json();
-      const msgs = data.messages || [];
-      _historyHasMore = data.has_more;
-
-      if (reset) body.innerHTML = '';
-
-      if (msgs.length === 0 && reset) {
-        body.innerHTML = '<div class="history-empty">尚無對話歷史</div>';
-        return;
-      }
-
-      // Remove load-more button if exists
-      const existingBtn = body.querySelector('.history-load-more');
-      if (existingBtn) existingBtn.remove();
-
-      msgs.forEach(m => {
-        const div = document.createElement('div');
-        div.className = 'history-msg';
-        const shortDate = m.created_at ? m.created_at.slice(5, 16) : '';
-        const roleLabel = m.role === 'user' ? '你' : 'AI';
-        const preview = m.content.replace(/<[^>]+>/g, '').replace(/\n/g, ' ').trim();
-        div.innerHTML = `
-          <div class="history-msg-header">
-            <span class="history-role-badge ${m.role}">${roleLabel}</span>
-            <span>${shortDate}</span>
-          </div>
-          <div class="history-msg-content" onclick="this.classList.toggle('expanded')">${preview}</div>
-        `;
-        body.appendChild(div);
-      });
-
-      _historyOffset += msgs.length;
-
-      if (_historyHasMore) {
-        const loadMore = document.createElement('div');
-        loadMore.className = 'history-load-more';
-        loadMore.innerHTML = `<button class="history-load-btn" onclick="_loadHistory(false)">載入更多</button>`;
-        body.appendChild(loadMore);
-      }
-    } catch {
-      body.innerHTML = '<div class="history-empty">載入失敗，請稍後再試</div>';
-    }
-  }
-
   async function clearHistory() {
     if (!confirm('確定要清除所有對話歷史嗎？此操作無法復原。')) return;
     try {
@@ -3097,9 +3173,23 @@
   function closeProfilesOnOverlay(e) { if (e.target === document.getElementById('profiles-modal')) closeProfiles(); }
 
 
+  function _updateMultiBar() {
+    const checked = document.querySelectorAll('.profile-cb:checked');
+    const bar = document.getElementById('profile-multi-bar');
+    const label = document.getElementById('profile-multi-label');
+    if (checked.length > 0) {
+      bar.classList.add('visible');
+      label.textContent = `已選 ${checked.length} 個命盤`;
+    } else {
+      bar.classList.remove('visible');
+    }
+  }
+
   async function _loadProfiles() {
     const body = document.getElementById('profile-list-body');
     body.innerHTML = '<div class="profile-empty">載入中…</div>';
+    const bar = document.getElementById('profile-multi-bar');
+    if (bar) bar.classList.remove('visible');
     try {
       const res = await fetch(`/api/profiles?session_id=${encodeURIComponent(SESSION_ID)}`);
       const data = await res.json();
@@ -3116,7 +3206,9 @@
         const biStr = bi.year ? `${bi.year}年${bi.month}月${bi.day}日 ${_getHourName(bi.hour)}時 ${bi.is_male ? '男' : '女'}` : '生辰未記錄';
         const div = document.createElement('div');
         div.className = 'profile-item';
+        div.dataset.profileId = p.id;
         div.innerHTML = `
+          <input type="checkbox" class="profile-cb" data-id="${p.id}" onchange="_onProfileCbChange(this)">
           <div class="profile-item-info">
             <div class="profile-item-name">${p.profile_name.replace(/</g,'&lt;')}</div>
             <div class="profile-item-bi">${biStr}　<span style="color:var(--text-muted);font-size:0.72rem">${p.created_at ? p.created_at.slice(0,10) : ''}</span></div>
@@ -3128,6 +3220,35 @@
       });
       body.appendChild(list);
     } catch { body.innerHTML = '<div class="profile-empty">載入失敗</div>'; }
+  }
+
+  function _onProfileCbChange(cb) {
+    const item = cb.closest('.profile-item');
+    if (cb.checked) item.classList.add('selected');
+    else item.classList.remove('selected');
+    _updateMultiBar();
+  }
+
+  async function activateMultiProfiles() {
+    const checked = Array.from(document.querySelectorAll('.profile-cb:checked'));
+    if (!checked.length) return;
+    const ids = checked.map(cb => +cb.dataset.id);
+    try {
+      const res = await fetch('/api/profiles/activate-multi', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: SESSION_ID, profile_ids: ids }),
+      });
+      if (!res.ok) { alert('載入失敗'); return; }
+      const data = await res.json();
+      closeProfiles();
+      const names = data.activated.join('、');
+      if (data.count === 1) {
+        appendAIMessage(`已載入命盤：**${names}**\n\n你現在可以直接提問關於此命盤的問題。`);
+      } else {
+        appendAIMessage(`已同時載入 **${data.count}** 個命盤：**${names}**\n\n你可以詢問任一命盤的問題，或比較兩人的命盤差異、合盤相性等。`);
+      }
+    } catch { alert('載入失敗，請稍後再試'); }
   }
 
   async function saveCurrentProfile() {
@@ -3232,6 +3353,9 @@
     } catch { wrap.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:24px">載入失敗，請稍後再試</div>'; }
   }
 
+  function _scoreToPercent(s) { return Math.round((s / 5) * 100); }
+  function _percentColor(pct) { return pct >= 80 ? '#7dcea0' : pct <= 40 ? '#e59866' : 'var(--text-light)'; }
+
   function _renderCalGrid(data) {
     const wrap = document.getElementById('cal-grid-wrap');
     const summaryEl = document.getElementById('cal-summary');
@@ -3249,16 +3373,15 @@
     for (let i = 0; i < firstDay; i++) html += '<div class="cal-day empty"></div>';
     for (let d = 1; d <= daysInMonth; d++) {
       const info = dayMap[d] || { score: 3, note: '' };
+      const pct = _scoreToPercent(info.score);
       const isToday = `${_calYear}-${_calMonth}-${d}` === todayStr;
-      const dotClass = `cal-dot-${info.score}`;
       const bgClass = `cal-score-${info.score}`;
       html += `<div class="cal-day ${bgClass}${isToday ? ' today' : ''}" onclick="showCalDayPopup(event,${d})" data-day="${d}">
-        <div class="cal-day-num" style="color:${info.score>=4?'#7dcea0':info.score<=2?'#e59866':'var(--text-light)'}">${d}</div>
-        <div class="cal-day-dots"><div class="cal-dot ${dotClass}" style="width:6px;height:6px;border-radius:50%"></div></div>
+        <div class="cal-day-num" style="color:${_percentColor(pct)}">${d}</div>
+        <div style="font-size:0.6rem;color:${_percentColor(pct)};line-height:1;margin-top:1px">${pct}%</div>
       </div>`;
     }
     html += '</div>';
-    // Add SVG trend line chart below calendar grid
     html += _buildCalLineChart(dayMap, daysInMonth);
     wrap.innerHTML = html;
   }
@@ -3273,7 +3396,7 @@
     }
     const n = scores.length;
     const xStep = innerW / (n - 1 || 1);
-    const scoreColor = s => s >= 4 ? '#7dcea0' : s <= 2 ? '#e59866' : '#a090c0';
+    const scoreColor = s => s >= 4 ? '#7dcea0' : s <= 2 ? '#e59866' : '#6090b5';
 
     // Build polyline points
     const pts = scores.map((s, i) => {
@@ -3291,10 +3414,10 @@
     fillPts.push(`${(padL + (n-1)*xStep).toFixed(1)},${(padT+innerH).toFixed(1)}`);
     fillPts.push(`${padL.toFixed(1)},${(padT+innerH).toFixed(1)}`);
 
-    // Y-axis labels
-    const yLabels = [[5,'大吉'],[3,'平'],[1,'凶']].map(([s, lbl]) => {
+    // Y-axis labels (percentage)
+    const yLabels = [[5,100],[3,60],[1,20]].map(([s, pct]) => {
       const y = padT + innerH - ((s - 1) / 4) * innerH;
-      return `<text x="${padL - 4}" y="${y + 4}" text-anchor="end" fill="#a090c0" font-size="9">${lbl}</text>`;
+      return `<text x="${padL - 4}" y="${y + 4}" text-anchor="end" fill="#6090b5" font-size="9">${pct}%</text>`;
     }).join('');
 
     // Dots for today
@@ -3316,7 +3439,7 @@
       const d = i + 1;
       if (d === 1 || d % 5 === 0 || d === n) {
         const x = padL + i * xStep;
-        return `<text x="${x.toFixed(1)}" y="${H - 4}" text-anchor="middle" fill="#a090c0" font-size="9">${d}</text>`;
+        return `<text x="${x.toFixed(1)}" y="${H - 4}" text-anchor="middle" fill="#6090b5" font-size="9">${d}</text>`;
       }
       return '';
     }).join('');
@@ -3347,13 +3470,13 @@
     if (!_calData) return;
     const info = (_calData.days || []).find(d => d.day === day);
     if (!info) return;
-    const scoreLabel = ['','凶','小凶','平','吉','大吉'][info.score] || '';
+    const pct = _scoreToPercent(info.score);
     const popup = document.createElement('div');
     popup.className = 'cal-day-popup';
     popup.innerHTML = `
       <button class="cal-popup-close" onclick="this.parentElement.remove()">✕</button>
-      <div class="cal-popup-title">${_calYear}/${_calMonth}/${day} — ${scoreLabel}</div>
-      <div class="cal-popup-note">${(info.note || '').replace(/</g,'&lt;')}</div>`;
+      <div class="cal-popup-title">${_calYear}/${_calMonth}/${day} — <span style="color:${_percentColor(pct)}">${pct}%</span></div>
+      <div class="cal-popup-note">${escapeHtml(info.note || '')}</div>`;
     document.body.appendChild(popup);
     _calPopup = popup;
     const rect = e.target.closest('.cal-day').getBoundingClientRect();
@@ -3442,12 +3565,37 @@
 
   function _loadSettingsBirthInfo() {
     const el = document.getElementById('settings-birth-info');
+    const bar = document.getElementById('settings-import-bar');
+    const msgEl = document.getElementById('settings-import-msg');
     const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
     if (bi) {
       el.innerHTML = `出生日期：${bi.year} 年 ${bi.month} 月 ${bi.day} 日<br>出生時辰：${_getHourName(bi.hour)} 時<br>性別：${bi.is_male ? '男' : '女'}<br><small style="color:var(--text-muted)">如需修改，請重置對話重新排盤</small>`;
+      bar.style.display = 'flex';
+      if (msgEl) msgEl.textContent = '';
     } else {
       el.textContent = '尚未排盤，請先輸入出生資料';
+      bar.style.display = 'none';
     }
+  }
+
+  async function importCurrentToProfiles() {
+    const nameEl = document.getElementById('settings-import-name');
+    const msgEl = document.getElementById('settings-import-msg');
+    const name = nameEl.value.trim();
+    msgEl.textContent = ''; msgEl.className = 'settings-msg';
+    if (!name) { msgEl.textContent = '請輸入命盤名稱'; msgEl.className = 'settings-msg err'; return; }
+    try {
+      const res = await fetch('/api/profiles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: SESSION_ID, profile_name: name }),
+      });
+      const data = await res.json();
+      if (!res.ok) { msgEl.textContent = data.detail || '匯入失敗'; msgEl.className = 'settings-msg err'; return; }
+      nameEl.value = '';
+      msgEl.textContent = `✓ 已匯入命盤庫：${name}`; msgEl.className = 'settings-msg ok';
+      setTimeout(() => { msgEl.textContent = ''; }, 3000);
+    } catch { msgEl.textContent = '網路錯誤，請稍後再試'; msgEl.className = 'settings-msg err'; }
   }
 
   async function _loadSettingsStyle() {
@@ -3518,7 +3666,7 @@
     let gridImgSrc = '';
     try {
       const target = document.getElementById('chart-modal-body');
-      const canvas = await html2canvas(target, { backgroundColor: '#0d0718', scale: 1.5, useCORS: true });
+      const canvas = await html2canvas(target, { backgroundColor: '#060e1c', scale: 1.5, useCORS: true });
       gridImgSrc = canvas.toDataURL('image/png');
     } catch {}
 
@@ -3591,6 +3739,412 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   function dismissPwaBanner() {
     document.getElementById('pwa-banner').classList.add('hidden');
     localStorage.setItem('pwa_dismissed', '1');
+  }
+
+  // ── Feature 1+5: Context-aware Categorized Quick Questions ──────
+  const _QQ_CATS = {
+    '感情': [
+      { label:'💕 感情運勢', q:'我目前的感情運勢如何？' },
+      { label:'💍 婚姻時機', q:'我命盤中何時適合結婚？' },
+      { label:'🔮 桃花運', q:'我的桃花運如何？' },
+      { label:'💔 感情挑戰', q:'感情方面我需要注意什麼？' },
+    ],
+    '事業': [
+      { label:'💼 事業運', q:'我的事業發展方向如何？' },
+      { label:'🚀 創業', q:'我適合創業嗎？時機如何？' },
+      { label:'👔 職場貴人', q:'我的職場貴人運如何？' },
+      { label:'📈 升遷', q:'今年升遷的機會大嗎？' },
+    ],
+    '財運': [
+      { label:'💰 財運', q:'我的整體財運如何？' },
+      { label:'📊 投資', q:'今年適合投資理財嗎？' },
+      { label:'🏦 偏財', q:'我有偏財運嗎？' },
+      { label:'💸 破財', q:'有哪些破財的風險需要注意？' },
+    ],
+    '健康': [
+      { label:'❤️ 健康', q:'我的健康運勢如何？需要注意什麼？' },
+      { label:'🧘 養生', q:'根據命盤，我適合什麼養生方式？' },
+      { label:'⚕️ 注意事項', q:'我命盤中有哪些健康弱點？' },
+    ],
+    '人生': [
+      { label:'🌟 命盤優勢', q:'我的命盤最大的優勢是什麼？' },
+      { label:'📅 流年', q:'今年整體流年運勢如何？' },
+      { label:'🔯 大限', q:'目前的大限對我的影響是什麼？' },
+      { label:'🎯 人生方向', q:'根據命盤，我最適合的人生方向是什麼？' },
+    ],
+    '': [  // before chart
+      { label:'📖 如何開始', q:'請問要怎麼為我排盤？' },
+      { label:'⏰ 不知時辰', q:'我不確定出生時辰，怎麼辦？' },
+      { label:'🔯 紫微是什麼', q:'請簡單介紹紫微斗數是什麼？' },
+      { label:'📊 命盤內容', q:'排好命盤後可以問什麼問題？' },
+    ],
+  };
+  let _qqCurrent = '';
+
+  function _initQuickChips(hasChart) {
+    const tabs = document.getElementById('qq-tabs');
+    const chips = document.getElementById('qq-chips');
+    if (!tabs || !chips) return;
+    if (hasChart) {
+      const cats = Object.keys(_QQ_CATS).filter(k => k !== '');
+      tabs.innerHTML = cats.map(c =>
+        `<button class="qq-tab${c === _qqCurrent ? ' active' : ''}" onclick="_switchQQCat('${c}')">${c}</button>`
+      ).join('');
+      if (!_qqCurrent || !_QQ_CATS[_qqCurrent]) _qqCurrent = cats[0];
+      _renderQQChips(_qqCurrent);
+    } else {
+      tabs.innerHTML = '';
+      _qqCurrent = '';
+      _renderQQChips('');
+    }
+  }
+
+  function _switchQQCat(cat) {
+    _qqCurrent = cat;
+    document.querySelectorAll('.qq-tab').forEach(t => t.classList.toggle('active', t.textContent === cat));
+    _renderQQChips(cat);
+  }
+
+  function _renderQQChips(cat) {
+    const chips = document.getElementById('qq-chips');
+    if (!chips) return;
+    const items = _QQ_CATS[cat] || [];
+    chips.innerHTML = items.map(({ label, q }) =>
+      `<div class="qq-chip" onclick='sendQuick(${JSON.stringify(q)})'>${label}</div>`
+    ).join('') + (cat !== '' ? `<div class="qq-chip" onclick="startNewChart()">💫 排新命盤</div>` : '');
+  }
+
+  // ── Feature 2: Regenerate last response ──────────────────────
+  async function regenerateLastMessage(btn) {
+    // Guard: only allow regenerating the last AI message
+    const clickedMsg = btn.closest('.msg');
+    const allAI = document.querySelectorAll('#messages .msg.ai');
+    if (!allAI.length || allAI[allAI.length - 1] !== clickedMsg) {
+      alert('只能重新生成最後一則 AI 回應'); return;
+    }
+    // Guard: don't allow while another message is being sent
+    const sendBtn = document.getElementById('send-btn');
+    if (sendBtn && sendBtn.disabled) return;
+
+    try {
+      const res = await fetch('/api/chat/pop-last', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: SESSION_ID }),
+      });
+      const data = await res.json();
+      if (!data.last_user_msg) {
+        alert('找不到可重新生成的對話（此訊息前沒有你的提問）'); return;
+      }
+      // Remove DOM elements only after confirming there's something to resend
+      const allMsgs = document.querySelectorAll('#messages .msg');
+      let lastAIEl = null, lastUserEl = null;
+      for (let i = allMsgs.length - 1; i >= 0; i--) {
+        if (!lastAIEl && allMsgs[i].classList.contains('ai')) lastAIEl = allMsgs[i];
+        else if (!lastUserEl && allMsgs[i].classList.contains('user')) { lastUserEl = allMsgs[i]; break; }
+      }
+      if (lastAIEl) lastAIEl.remove();
+      if (lastUserEl) lastUserEl.remove();
+      const input = document.getElementById('user-input');
+      input.value = data.last_user_msg;
+      sendMessage();
+    } catch { alert('重新生成失敗，請稍後再試'); }
+  }
+
+  // ── Feature 3: History search + full _loadHistory ─────────────
+  let _historySearchTimer = null;
+  function _onHistorySearch() {
+    clearTimeout(_historySearchTimer);
+    _historySearchTimer = setTimeout(() => {
+      _historyOffset = 0;
+      _loadHistory(true);
+    }, 350);
+  }
+
+  async function _loadHistory(reset) {
+    if (reset) _historyOffset = 0;
+    const body = document.getElementById('history-body');
+    if (reset) body.innerHTML = '<div class="history-empty">載入中…</div>';
+    const q = (document.getElementById('history-search-input')?.value || '').trim();
+    try {
+      const url = `/api/history?session_id=${encodeURIComponent(SESSION_ID)}&limit=30&offset=${_historyOffset}${q ? '&q=' + encodeURIComponent(q) : ''}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      const msgs = data.messages || [];
+      _historyHasMore = data.has_more;
+      if (reset) body.innerHTML = '';
+      if (msgs.length === 0 && reset) {
+        body.innerHTML = q
+          ? `<div class="history-empty">找不到「${q}」相關對話</div>`
+          : '<div class="history-empty">尚無對話歷史</div>';
+        return;
+      }
+      const existingBtn = body.querySelector('.history-load-more');
+      if (existingBtn) existingBtn.remove();
+      msgs.forEach(m => {
+        const div = document.createElement('div');
+        div.className = 'history-msg';
+        const shortDate = m.created_at ? m.created_at.slice(5, 16) : '';
+        const roleLabel = m.role === 'user' ? '你' : 'AI';
+        const plainText = m.content.replace(/<[^>]+>/g, '').replace(/\n/g, ' ').trim();
+        let preview = escapeHtml(plainText);
+        if (q) {
+          const lower = plainText.toLowerCase();
+          const idx = lower.indexOf(q.toLowerCase());
+          if (idx !== -1) {
+            const start = Math.max(0, idx - 20);
+            const before = escapeHtml(plainText.slice(start, idx));
+            const match  = escapeHtml(plainText.slice(idx, idx + q.length));
+            const after  = escapeHtml(plainText.slice(idx + q.length, idx + q.length + 60));
+            preview = (start > 0 ? '…' : '') + before + `<mark style="background:rgba(201,162,39,0.3);border-radius:3px">${match}</mark>` + after + '…';
+          }
+        }
+        div.innerHTML = `
+          <div class="history-msg-header">
+            <span class="history-role-badge ${m.role}">${roleLabel}</span>
+            <span>${shortDate}</span>
+          </div>
+          <div class="history-msg-content" onclick="this.classList.toggle('expanded')">${preview}</div>
+        `;
+        body.appendChild(div);
+      });
+      _historyOffset += msgs.length;
+      if (_historyHasMore && !q) {
+        const loadMore = document.createElement('div');
+        loadMore.className = 'history-load-more';
+        loadMore.innerHTML = `<button class="history-load-btn" onclick="_loadHistory(false)">載入更多</button>`;
+        body.appendChild(loadMore);
+      }
+    } catch { body.innerHTML = '<div class="history-empty">載入失敗，請稍後再試</div>'; }
+  }
+
+  // ── Feature 4: PWA Push Notifications ────────────────────────
+  let _pushSubscription = null;
+  async function _initPush() {
+    if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      _pushSubscription = await reg.pushManager.getSubscription();
+      _updatePushBtn();
+    } catch {}
+  }
+
+  function _updatePushBtn() {
+    const btn = document.getElementById('push-toggle-btn');
+    if (!btn) return;
+    btn.textContent = _pushSubscription ? '🔕 關閉每日運勢通知' : '🔔 開啟每日運勢通知';
+  }
+
+  async function togglePushSubscription() {
+    const msg = document.getElementById('settings-push-msg');
+    msg.textContent = ''; msg.className = 'settings-msg';
+    if (!('PushManager' in window)) {
+      msg.textContent = '此瀏覽器不支援推播通知'; msg.className = 'settings-msg err'; return;
+    }
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (_pushSubscription) {
+        await _pushSubscription.unsubscribe();
+        await fetch(`/api/push/subscribe?session_id=${encodeURIComponent(SESSION_ID)}&endpoint=${encodeURIComponent(_pushSubscription.endpoint)}`, { method: 'DELETE' });
+        _pushSubscription = null;
+        msg.textContent = '✓ 已關閉每日運勢通知'; msg.className = 'settings-msg ok';
+      } else {
+        const permRes = await Notification.requestPermission();
+        if (permRes !== 'granted') { msg.textContent = '請允許通知權限'; msg.className = 'settings-msg err'; return; }
+        const keyRes = await fetch('/api/push/vapid-public-key');
+        const { key } = await keyRes.json();
+        if (!key) { msg.textContent = 'VAPID 金鑰未設定，請聯繫管理員'; msg.className = 'settings-msg err'; return; }
+        const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: _urlBase64ToUint8Array(key) });
+        const subJson = sub.toJSON();
+        await fetch('/api/push/subscribe', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: SESSION_ID, endpoint: sub.endpoint, p256dh: subJson.keys.p256dh, auth: subJson.keys.auth }),
+        });
+        _pushSubscription = sub;
+        msg.textContent = '✓ 已開啟每日運勢通知！每天早上將推送今日運勢。'; msg.className = 'settings-msg ok';
+      }
+      _updatePushBtn();
+    } catch (e) { msg.textContent = '操作失敗：' + e.message; msg.className = 'settings-msg err'; }
+  }
+
+  function _urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const rawData = atob(base64);
+    return new Uint8Array([...rawData].map(c => c.charCodeAt(0)));
+  }
+
+  // ── Feature 6: Life-events Timeline ──────────────────────────
+  function _buildTimelineModalHTML(data, birthYear) {
+    const events = data.events || [];
+    if (!events.length) return '<div class="profile-empty">無法生成節點資料</div>';
+    const list = document.createElement('div');
+    list.className = 'timeline-list';
+    events.forEach((ev, i) => {
+      const yearRange = birthYear ? ` (${birthYear + ev.age_start}–${birthYear + ev.age_end})` : '';
+      const isLast = i === events.length - 1;
+      const item = document.createElement('div');
+      item.className = 'timeline-item';
+      item.innerHTML = `
+        <div style="display:flex;flex-direction:column;align-items:center">
+          <div class="timeline-dot ${escapeHtml(ev.type || '')}"></div>
+          ${!isLast ? '<div style="width:2px;flex:1;background:rgba(201,162,39,0.15);margin-top:4px"></div>' : ''}
+        </div>
+        <div class="timeline-content" style="padding-bottom:${isLast ? 0 : 16}px">
+          <div class="timeline-age">大限 ${escapeHtml(String(ev.age_start))}–${escapeHtml(String(ev.age_end))} 歲${yearRange}　${escapeHtml(ev.palace || '')}</div>
+          <div class="timeline-title">${escapeHtml(ev.title || '')}</div>
+          <div class="timeline-desc">${escapeHtml(ev.description || '')}</div>
+        </div>`;
+      list.appendChild(item);
+    });
+    return list.outerHTML;
+  }
+
+  async function openTimeline() {
+    document.getElementById('timeline-modal').classList.add('open');
+    const body = document.getElementById('timeline-body');
+    const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
+    const birthYear = bi?.year ? Number(bi.year) : null;
+
+    // Use shared cache (same data as chart-modal life-events view)
+    if (_lifeEventsCache) {
+      body.innerHTML = _buildTimelineModalHTML(_lifeEventsCache, birthYear);
+      return;
+    }
+    body.innerHTML = '<div class="profile-empty">⏳ 載入人生節點分析中…</div>';
+    try {
+      const res = await fetch(`/api/life-events?session_id=${encodeURIComponent(SESSION_ID)}`);
+      if (!res.ok) { body.innerHTML = '<div class="profile-empty">載入失敗，請先完成排盤</div>'; return; }
+      const data = await res.json();
+      _lifeEventsCache = data;  // populate shared cache
+      body.innerHTML = _buildTimelineModalHTML(data, birthYear);
+    } catch { body.innerHTML = '<div class="profile-empty">載入失敗</div>'; }
+  }
+  function closeTimeline() { document.getElementById('timeline-modal').classList.remove('open'); }
+
+  // ── Feature 9: Multi-month Trend in Calendar ──────────────────
+  async function loadTrendChart() {
+    const wrap = document.getElementById('trend-chart-wrap');
+    if (!wrap) return;
+    if (wrap.querySelector('svg')) return;  // already rendered — don't refetch
+    wrap.innerHTML = '<div class="profile-empty">⏳ 載入趨勢中…</div>';
+    const now = new Date();
+    const months = [-2, -1, 0, 1, 2].map(d => {
+      const dt = new Date(now.getFullYear(), now.getMonth() + d, 1);
+      return { year: dt.getFullYear(), month: dt.getMonth() + 1 };
+    });
+    try {
+      const results = await Promise.all(months.map(m =>
+        fetch(`/api/fortune-calendar?session_id=${encodeURIComponent(SESSION_ID)}&year=${m.year}&month=${m.month}`)
+          .then(r => r.json()).then(d => ({ ...m, days: d.days || [] })).catch(() => ({ ...m, days: [] }))
+      ));
+      const allScores = results.flatMap(r => r.days.map(d => d.score));
+      if (!allScores.length) { wrap.innerHTML = '<div class="profile-empty">暫無資料</div>'; return; }
+      const W = 520, H = 140, padL = 30, padR = 10, padT = 10, padB = 30;
+      const innerW = W - padL - padR, innerH = H - padT - padB;
+      const total = allScores.length;
+      const xStep = innerW / Math.max(total - 1, 1);
+      const pts = allScores.map((s, i) => {
+        const x = padL + i * xStep;
+        const y = padT + innerH - ((s - 1) / 4) * innerH;
+        return `${x.toFixed(1)},${y.toFixed(1)}`;
+      }).join(' ');
+      const monthLabels = results.map((r, i) => {
+        const x = padL + (allScores.length * (i / results.length) + allScores.length / results.length / 2) * xStep;
+        return `<text x="${x.toFixed(0)}" y="${H - 6}" text-anchor="middle" fill="#6090b5" font-size="9">${r.year}/${r.month}</text>`;
+      }).join('');
+      const _trendGridLines = [[5,100],[3,60],[1,20]].map(([v,pct]) => {
+        const y = padT + innerH - ((v-1)/4)*innerH;
+        return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="rgba(201,162,39,0.1)" stroke-width="1"/><text x="${padL-4}" y="${y+4}" text-anchor="end" fill="#6090b5" font-size="9">${pct}%</text>`;
+      }).join('');
+      wrap.innerHTML = `<div class="trend-chart-wrap"><svg class="trend-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
+        ${_trendGridLines}
+        <polyline points="${pts}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round"/>
+        ${allScores.map((s,i) => { const x=padL+i*xStep; const y=padT+innerH-((s-1)/4)*innerH; const pct=_scoreToPercent(s); const c=pct>=80?'#7dcea0':pct<=40?'#e59866':'var(--gold)'; return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${c}"/>`; }).join('')}
+        ${monthLabels}
+      </svg></div>`;
+    } catch { wrap.innerHTML = '<div class="profile-empty">趨勢載入失敗</div>'; }
+  }
+
+  // ── Feature 11: Voice Input ───────────────────────────────────
+  let _recognition = null, _isRecording = false;
+  function toggleVoice() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) { alert('此瀏覽器不支援語音輸入，建議使用 Chrome'); return; }
+    const btn = document.getElementById('voice-btn');
+    if (_isRecording) {
+      _recognition?.stop();
+      return;
+    }
+    _recognition = new SpeechRecognition();
+    _recognition.lang = 'zh-TW';
+    _recognition.continuous = false;
+    _recognition.interimResults = true;
+    const originalVal = document.getElementById('user-input').value;
+    _recognition.onstart = () => { _isRecording = true; btn.classList.add('recording'); btn.title = '點擊停止'; };
+    _recognition.onresult = e => {
+      const transcript = Array.from(e.results).map(r => r[0].transcript).join('');
+      const input = document.getElementById('user-input');
+      input.value = originalVal + (originalVal ? ' ' : '') + transcript;
+      autoResize(input);
+    };
+    _recognition.onend = () => {
+      _isRecording = false; btn.classList.remove('recording'); btn.title = '語音輸入';
+      _recognition = null;
+      const input = document.getElementById('user-input');
+      if (input.value.trim()) input.focus();
+    };
+    _recognition.onerror = e => {
+      _isRecording = false; btn.classList.remove('recording');
+      if (e.error !== 'aborted') alert('語音識別失敗：' + e.error);
+    };
+    _recognition.start();
+  }
+
+  // ── Feature 8: Multi-language ────────────────────────────────
+  const _I18N = {
+    zh: {
+      'bot-name': '紫微AI算命大師', 'bot-status': '線上服務中',
+      'fortune-btn': '☀️ 今日運勢', 'calendar-btn': '📅 運勢日曆',
+      'bookmark-btn': '📌 收藏', 'history-btn': '📜 歷史',
+      'chart-btn': '📊 命盤', 'timeline-btn': '🗺 人生節點',
+      'compat-btn': '💕 合盤', 'profiles-btn': '👥 命盤庫',
+      'settings-btn': '⚙️ 設定', 'lang-toggle': 'EN',
+      'send-btn': '➤',
+    },
+    en: {
+      'bot-name': 'Ziwei AI Fortune', 'bot-status': 'Online',
+      'fortune-btn': '☀️ Daily Fortune', 'calendar-btn': '📅 Calendar',
+      'bookmark-btn': '📌 Saved', 'history-btn': '📜 History',
+      'chart-btn': '📊 Chart', 'timeline-btn': '🗺 Life Events',
+      'compat-btn': '💕 Compat', 'profiles-btn': '👥 Profiles',
+      'settings-btn': '⚙️ Settings', 'lang-toggle': '中文',
+      'send-btn': '➤',
+    },
+  };
+  let _lang = localStorage.getItem('ziwei_lang') || 'zh';
+
+  function _applyLang() {
+    const t = _I18N[_lang] || _I18N.zh;
+    Object.entries(t).forEach(([id, text]) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = text;
+    });
+    document.getElementById('user-input').placeholder = _lang === 'en'
+      ? 'Enter your birth date, time, and gender (e.g. 1990/3/15, Mao, Female)'
+      : '告訴我你的出生年月日、時辰和性別，例如：1990年3月15日卯時女生';
+  }
+
+  function toggleLang() {
+    _lang = _lang === 'zh' ? 'en' : 'zh';
+    localStorage.setItem('ziwei_lang', _lang);
+    _applyLang();
+  }
+
+  // ── Initialise new features after login ─────────────────────
+  function _newFeaturesInit() {
+    _initPush();
+    _applyLang();
   }
 
   // Support Enter key in auth inputs

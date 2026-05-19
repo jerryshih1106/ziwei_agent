@@ -24,6 +24,34 @@ self.addEventListener('activate', event => {
   );
 });
 
+// Push: show daily fortune notification
+self.addEventListener('push', event => {
+  let data = { title: '紫微AI今日運勢', body: '點擊查看你的今日運勢 ✨', url: '/chat' };
+  try { data = Object.assign(data, event.data.json()); } catch {}
+  event.waitUntil(
+    self.registration.showNotification(data.title, {
+      body: data.body,
+      icon: '/static/icon-192.png',
+      badge: '/static/icon-192.png',
+      data: { url: data.url },
+      vibrate: [200, 100, 200],
+    })
+  );
+});
+
+self.addEventListener('notificationclick', event => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || '/chat';
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then(list => {
+      for (const c of list) {
+        if (c.url.includes('/chat') && 'focus' in c) return c.focus();
+      }
+      if (clients.openWindow) return clients.openWindow(url);
+    })
+  );
+});
+
 // Fetch: network-first for API, cache-first for static
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
