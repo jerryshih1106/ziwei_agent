@@ -111,18 +111,15 @@ templates = Jinja2Templates(directory="templates")
 
 # ── 安全 Headers middleware ───────────────────────────────────
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 
-class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        response = await call_next(request)
-        response.headers.setdefault("X-Content-Type-Options", "nosniff")
-        response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
-        response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
-        response.headers.setdefault("X-XSS-Protection", "1; mode=block")
-        return response
-
-app.add_middleware(SecurityHeadersMiddleware)
+@app.middleware("http")
+async def _security_headers(request, call_next):
+    response = await call_next(request)
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+    return response
 
 # ── 登入速率限制（暴力破解防護）────────────────────────────────
 from collections import defaultdict as _defaultdict
