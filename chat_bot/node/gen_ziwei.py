@@ -20,8 +20,9 @@ logger = logging.getLogger(__name__)
 _rag_processor = None
 
 # Max parallel workers for palace analysis.
-# Keeps concurrent API calls low enough to avoid rate-limit errors.
-_PALACE_WORKERS = 3
+# 12 == one worker per palace; all palaces finish in a single parallel round.
+# Reduce if you hit API rate-limit errors (e.g. set to 6).
+_PALACE_WORKERS = 12
 
 
 def _get_rag_processor():

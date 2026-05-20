@@ -56,11 +56,11 @@ class OtherStarPosition:
         # 祿存：
         lu_chuen_di_zhi = cur_dict.get(self.config.year_of_tian_gan_di_zhi[0])
 
-        # 擎羊：從丑起順行，依月份加
-        qing_yang_di_zhi = DI_ZHI[DI_ZHI.index(lu_chuen_di_zhi)+1]  # 丑 = index 1
+        # 擎羊：祿存順行一位（壬年亥→子，需 % 12 避免越界）
+        qing_yang_di_zhi = DI_ZHI[(DI_ZHI.index(lu_chuen_di_zhi) + 1) % 12]
 
-        # 陀羅：從未起逆行，依月份減
-        tuo_luo_di_zhi = DI_ZHI[DI_ZHI.index(lu_chuen_di_zhi)-1]  # 未 = index 7
+        # 陀羅：祿存逆行一位（% 12 保持一致）
+        tuo_luo_di_zhi = DI_ZHI[(DI_ZHI.index(lu_chuen_di_zhi) - 1) % 12]
 
         self.total_star.update({
             "擎羊": qing_yang_di_zhi,

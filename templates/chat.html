@@ -1597,6 +1597,7 @@
           id="user-input"
           placeholder="告訴我你的出生年月日、時辰和性別，例如：1990年3月15日卯時女生"
           rows="1"
+          maxlength="2000"
           onkeydown="handleKey(event)"
           oninput="autoResize(this)"
         ></textarea>
@@ -1633,20 +1634,20 @@
     <div class="auth-form active" id="form-login">
       <div class="auth-error" id="login-error"></div>
       <label class="auth-label">帳號</label>
-      <input class="auth-input" id="login-username" type="text" placeholder="請輸入帳號" autocomplete="username">
+      <input class="auth-input" id="login-username" type="text" placeholder="請輸入帳號" maxlength="20" autocomplete="username">
       <label class="auth-label">密碼</label>
-      <input class="auth-input" id="login-password" type="password" placeholder="請輸入密碼" autocomplete="current-password">
+      <input class="auth-input" id="login-password" type="password" placeholder="請輸入密碼" maxlength="100" autocomplete="current-password">
       <button class="auth-submit" onclick="doLogin()">登入</button>
     </div>
     <!-- Register Form -->
     <div class="auth-form" id="form-register">
       <div class="auth-error" id="register-error"></div>
       <label class="auth-label">帳號（3-20 字元）</label>
-      <input class="auth-input" id="reg-username" type="text" placeholder="請輸入帳號" autocomplete="username">
+      <input class="auth-input" id="reg-username" type="text" placeholder="請輸入帳號" maxlength="20" autocomplete="username">
       <label class="auth-label">密碼（至少 6 字元）</label>
-      <input class="auth-input" id="reg-password" type="password" placeholder="請輸入密碼" autocomplete="new-password">
+      <input class="auth-input" id="reg-password" type="password" placeholder="請輸入密碼" maxlength="100" autocomplete="new-password">
       <label class="auth-label">確認密碼</label>
-      <input class="auth-input" id="reg-confirm" type="password" placeholder="再次輸入密碼" autocomplete="new-password">
+      <input class="auth-input" id="reg-confirm" type="password" placeholder="再次輸入密碼" maxlength="100" autocomplete="new-password">
       <button class="auth-submit" onclick="doRegister()">建立帳號</button>
     </div>
   </div>
@@ -1704,7 +1705,7 @@
       </div>
     </div>
     <div class="history-search">
-      <input type="text" id="history-search-input" placeholder="🔍 搜尋對話歷史…" oninput="_onHistorySearch()" autocomplete="off">
+      <input type="text" id="history-search-input" placeholder="🔍 搜尋對話歷史…" maxlength="100" oninput="_onHistorySearch()" autocomplete="off">
     </div>
     <div class="history-body" id="history-body">
       <div class="history-empty">載入中…</div>
@@ -1815,11 +1816,11 @@
       <div id="cal-summary" class="cal-summary" style="display:none"></div>
       <div id="cal-grid-wrap"></div>
       <div class="cal-legend">
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-5" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 100%</div>
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-4" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 80%</div>
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-3" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 60%</div>
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-2" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 40%</div>
-        <div class="cal-legend-item"><div class="cal-dot cal-dot-1" style="width:10px;height:10px;border-radius:50%;display:inline-block"></div> 20%</div>
+        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#27ae60"></div> 大吉 85+</div>
+        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#7dcea0"></div> 吉 70-84</div>
+        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--gold)"></div> 普通 40-69</div>
+        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#e59866"></div> 注意 25-39</div>
+        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#e74c3c"></div> 凶 1-24</div>
       </div>
       <details style="margin-top:16px">
         <summary style="cursor:pointer;color:var(--gold);font-size:0.85rem;user-select:none" onclick="loadTrendChart()">📈 近五個月運勢趨勢</summary>
@@ -1866,9 +1867,9 @@
       <div class="settings-section">
         <div class="settings-label">更改密碼</div>
         <div class="settings-pw-form">
-          <input class="settings-pw-input" id="pw-old" type="password" placeholder="目前密碼">
-          <input class="settings-pw-input" id="pw-new" type="password" placeholder="新密碼（至少 6 字元）">
-          <input class="settings-pw-input" id="pw-confirm" type="password" placeholder="確認新密碼">
+          <input class="settings-pw-input" id="pw-old" type="password" placeholder="目前密碼" maxlength="100">
+          <input class="settings-pw-input" id="pw-new" type="password" placeholder="新密碼（至少 6 字元）" maxlength="100">
+          <input class="settings-pw-input" id="pw-confirm" type="password" placeholder="確認新密碼" maxlength="100">
           <button class="settings-pw-submit" onclick="changePassword()">更新密碼</button>
           <div class="settings-msg" id="settings-pw-msg"></div>
         </div>
@@ -1947,12 +1948,15 @@
     document.getElementById('register-error').textContent = '';
   }
 
+  const _USERNAME_RE = /^[a-zA-Z0-9_\-一-鿿]{3,20}$/;
+
   async function doLogin() {
     const username = document.getElementById('login-username').value.trim();
     const password = document.getElementById('login-password').value;
     const errEl = document.getElementById('login-error');
     errEl.textContent = '';
     if (!username || !password) { errEl.textContent = '請填入帳號和密碼'; return; }
+    if (!_USERNAME_RE.test(username)) { errEl.textContent = '帳號只能包含英數字、底線、橫線或中文，長度 3-20'; return; }
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -1973,6 +1977,8 @@
     const errEl = document.getElementById('register-error');
     errEl.textContent = '';
     if (!username || !password) { errEl.textContent = '請填入帳號和密碼'; return; }
+    if (!_USERNAME_RE.test(username)) { errEl.textContent = '帳號只能包含英數字、底線、橫線或中文，長度 3-20'; return; }
+    if (password.length < 6) { errEl.textContent = '密碼至少需要 6 個字元'; return; }
     if (password !== confirm) { errEl.textContent = '兩次密碼輸入不一致'; return; }
     try {
       const res = await fetch('/api/auth/register', {
@@ -2254,6 +2260,7 @@
     const input = document.getElementById('user-input');
     const text = input.value.trim();
     if (!text) return;
+    if (text.length > 2000) { alert('訊息長度不得超過 2000 字元'); return; }
 
     // Start chat if not started
     if (!chatStarted) {
@@ -3012,7 +3019,7 @@
   async function bookmarkMessage(btn) {
     const bubble = btn.closest('.msg').querySelector('.msg-bubble');
     if (!bubble) return;
-    const content = bubble.innerText || bubble.textContent;
+    const content = (bubble.innerText || bubble.textContent).slice(0, 5000);
     try {
       const res = await fetch('/api/bookmarks', {
         method: 'POST',
@@ -3043,6 +3050,9 @@
     if (!a.year || !a.month || !a.day || !b.year || !b.month || !b.day) {
       alert('請填寫兩人的完整出生資料'); return;
     }
+    const _validBirth = p => p.year >= 1900 && p.year <= 2100 && p.month >= 1 && p.month <= 12 && p.day >= 1 && p.day <= 31 && p.hour >= 0 && p.hour <= 23;
+    if (!_validBirth(a) || !_validBirth(b)) { alert('出生資料數值超出範圍（年1900-2100、月1-12、日1-31、時0-23）'); return; }
+    if (nameA.length > 20 || nameB.length > 20) { alert('代稱不得超過 20 字元'); return; }
     const btn = document.getElementById('compat-submit-btn');
     const result = document.getElementById('compat-result');
     const savedNotice = document.getElementById('compat-saved-notice');
@@ -3255,6 +3265,7 @@
     const nameEl = document.getElementById('profile-name-input');
     const name = nameEl.value.trim();
     if (!name) { alert('請輸入命盤名稱'); return; }
+    if (name.length > 30) { alert('命盤名稱不得超過 30 字元'); return; }
     try {
       const res = await fetch('/api/profiles', {
         method: 'POST',
@@ -3353,8 +3364,25 @@
     } catch { wrap.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:24px">載入失敗，請稍後再試</div>'; }
   }
 
-  function _scoreToPercent(s) { return Math.round((s / 5) * 100); }
-  function _percentColor(pct) { return pct >= 80 ? '#7dcea0' : pct <= 40 ? '#e59866' : 'var(--text-light)'; }
+  // s > 5 → new 1-100 format (use directly); s ≤ 5 → old 1-5 cache (convert)
+  function _scoreToPercent(s) { return s > 5 ? s : Math.round((s / 5) * 100); }
+  function _percentColor(pct) { return pct >= 70 ? '#7dcea0' : pct <= 39 ? '#e59866' : 'var(--text-light)'; }
+  function _scoreBg(pct) {
+    if (pct >= 85) return 'rgba(39,174,96,0.35)';
+    if (pct >= 70) return 'rgba(39,174,96,0.2)';
+    if (pct >= 55) return 'rgba(39,174,96,0.1)';
+    if (pct >= 40) return 'rgba(201,162,39,0.18)';
+    if (pct >= 25) return 'rgba(231,76,60,0.15)';
+    return 'rgba(231,76,60,0.32)';
+  }
+  function _dotColor(pct) {
+    if (pct >= 85) return '#27ae60';
+    if (pct >= 70) return '#7dcea0';
+    if (pct >= 55) return '#a9cce3';
+    if (pct >= 40) return 'var(--gold)';
+    if (pct >= 25) return '#e59866';
+    return '#e74c3c';
+  }
 
   function _renderCalGrid(data) {
     const wrap = document.getElementById('cal-grid-wrap');
@@ -3372,13 +3400,12 @@
     headers.forEach(h => { html += `<div class="cal-day-header">${h}</div>`; });
     for (let i = 0; i < firstDay; i++) html += '<div class="cal-day empty"></div>';
     for (let d = 1; d <= daysInMonth; d++) {
-      const info = dayMap[d] || { score: 3, note: '' };
+      const info = dayMap[d] || { score: 50, note: '' };
       const pct = _scoreToPercent(info.score);
       const isToday = `${_calYear}-${_calMonth}-${d}` === todayStr;
-      const bgClass = `cal-score-${info.score}`;
-      html += `<div class="cal-day ${bgClass}${isToday ? ' today' : ''}" onclick="showCalDayPopup(event,${d})" data-day="${d}">
+      html += `<div class="cal-day${isToday ? ' today' : ''}" style="background:${_scoreBg(pct)}" onclick="showCalDayPopup(event,${d})" data-day="${d}">
         <div class="cal-day-num" style="color:${_percentColor(pct)}">${d}</div>
-        <div style="font-size:0.6rem;color:${_percentColor(pct)};line-height:1;margin-top:1px">${pct}%</div>
+        <div style="font-size:0.6rem;color:${_dotColor(pct)};line-height:1;margin-top:1px;font-weight:600">${pct}%</div>
       </div>`;
     }
     html += '</div>';
@@ -3584,6 +3611,7 @@
     const name = nameEl.value.trim();
     msgEl.textContent = ''; msgEl.className = 'settings-msg';
     if (!name) { msgEl.textContent = '請輸入命盤名稱'; msgEl.className = 'settings-msg err'; return; }
+    if (name.length > 30) { msgEl.textContent = '命盤名稱不得超過 30 字元'; msgEl.className = 'settings-msg err'; return; }
     try {
       const res = await fetch('/api/profiles', {
         method: 'POST',
@@ -4044,23 +4072,24 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
       const innerW = W - padL - padR, innerH = H - padT - padB;
       const total = allScores.length;
       const xStep = innerW / Math.max(total - 1, 1);
-      const pts = allScores.map((s, i) => {
+      const allPcts = allScores.map(s => _scoreToPercent(s));
+      const pts = allPcts.map((pct, i) => {
         const x = padL + i * xStep;
-        const y = padT + innerH - ((s - 1) / 4) * innerH;
+        const y = padT + innerH - (pct / 100) * innerH;
         return `${x.toFixed(1)},${y.toFixed(1)}`;
       }).join(' ');
       const monthLabels = results.map((r, i) => {
         const x = padL + (allScores.length * (i / results.length) + allScores.length / results.length / 2) * xStep;
         return `<text x="${x.toFixed(0)}" y="${H - 6}" text-anchor="middle" fill="#6090b5" font-size="9">${r.year}/${r.month}</text>`;
       }).join('');
-      const _trendGridLines = [[5,100],[3,60],[1,20]].map(([v,pct]) => {
-        const y = padT + innerH - ((v-1)/4)*innerH;
+      const _trendGridLines = [100, 70, 40, 10].map(pct => {
+        const y = padT + innerH - (pct / 100) * innerH;
         return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="rgba(201,162,39,0.1)" stroke-width="1"/><text x="${padL-4}" y="${y+4}" text-anchor="end" fill="#6090b5" font-size="9">${pct}%</text>`;
       }).join('');
       wrap.innerHTML = `<div class="trend-chart-wrap"><svg class="trend-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
         ${_trendGridLines}
         <polyline points="${pts}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round"/>
-        ${allScores.map((s,i) => { const x=padL+i*xStep; const y=padT+innerH-((s-1)/4)*innerH; const pct=_scoreToPercent(s); const c=pct>=80?'#7dcea0':pct<=40?'#e59866':'var(--gold)'; return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${c}"/>`; }).join('')}
+        ${allPcts.map((pct,i) => { const x=padL+i*xStep; const y=padT+innerH-(pct/100)*innerH; return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${_dotColor(pct)}"/>`; }).join('')}
         ${monthLabels}
       </svg></div>`;
     } catch { wrap.innerHTML = '<div class="profile-empty">趨勢載入失敗</div>'; }

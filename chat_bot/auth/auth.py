@@ -513,6 +513,24 @@ def save_monthly_fortune(session_id: str, year_month: str, content: str) -> None
         logger.warning("[monthly_fortune] 儲存失敗: %s %s", session_id, year_month)
 
 
+def count_users() -> int:
+    """回傳 users 資料表的帳號總數。"""
+    try:
+        with get_db() as conn:
+            row = conn.execute("SELECT COUNT(*) FROM users").fetchone()
+        return row[0] if row else 0
+    except Exception:
+        return 0
+
+
+def count_charts() -> int:
+    """回傳 horoscope/ 目錄下已儲存的命盤 JSON 檔數量。"""
+    try:
+        return len(list(_HOROSCOPE_DIR.glob("*.json")))
+    except Exception:
+        return 0
+
+
 def sync_whitelist() -> None:
     """Read whitelist.md and create any accounts that don't exist yet.
 

@@ -270,12 +270,20 @@ def _playbook_conv(session_id: str, n: int = 5) -> str:
 # ── 行銷首頁 ──────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
+    from chat_bot.auth.auth import count_users, count_charts
     line_id = GlobalConfig.LINE_BOT_ID or "@ziwei_ai"
     qr_url = f"https://qr-official.line.me/gs/M_{line_id.lstrip('@')}_BW.png"
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"request": request, "line_id": line_id, "qr_url": qr_url, "time_table": TIME_TABLE},
+        {
+            "request": request,
+            "line_id": line_id,
+            "qr_url": qr_url,
+            "time_table": TIME_TABLE,
+            "chart_count": count_charts(),
+            "user_count": count_users(),
+        },
     )
 
 
@@ -1091,33 +1099,33 @@ async def api_compatibility(body: CompatibilityRequest):
             yield f'data: {json.dumps({"done": True})}\n\n'
             return
 
-        # Generate chart A
-        yield f'data: {json.dumps({"progress": f"⏳ 正在為【{body.name_a}】排命盤並分析（約 30-60 秒）…"})}\n\n'
-        try:
-            chart_md_a, horoscope_a, chart_text_a = await run_in_threadpool(_gen_full_chart, body.person_a)
-        except Exception:
-            logger.exception("[compat] 命盤A生成失敗")
+        # Generate chart A and B in parallel
+        yield f'data: {json.dumps({"progress": f"⏳ 同時為【{body.name_a}】與【{body.name_b}】排命盤並分析（約 15-30 秒）…"})}\n\n'
+        results = await asyncio.gather(
+            run_in_threadpool(_gen_full_chart, body.person_a),
+            run_in_threadpool(_gen_full_chart, body.person_b),
+            return_exceptions=True,
+        )
+        if isinstance(results[0], Exception):
+            logger.exception("[compat] 命盤A生成失敗", exc_info=results[0])
             yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_a}】命盤生成失敗，請確認出生資料是否正確。"})}\n\n'
             yield f'data: {json.dumps({"done": True})}\n\n'
             return
-
-        # Generate chart B
-        yield f'data: {json.dumps({"progress": f"⏳ 正在為【{body.name_b}】排命盤並分析（約 30-60 秒）…"})}\n\n'
-        try:
-            chart_md_b, horoscope_b, chart_text_b = await run_in_threadpool(_gen_full_chart, body.person_b)
-        except Exception:
-            logger.exception("[compat] 命盤B生成失敗")
+        if isinstance(results[1], Exception):
+            logger.exception("[compat] 命盤B生成失敗", exc_info=results[1])
             yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_b}】命盤生成失敗，請確認出生資料是否正確。"})}\n\n'
             yield f'data: {json.dumps({"done": True})}\n\n'
             return
+        chart_md_a, horoscope_a, chart_text_a = results[0]
+        chart_md_b, horoscope_b, chart_text_b = results[1]
 
         # Auto-save both charts to profiles
         saved_names: list[str] = []
         session_id = (body.session_id or "").strip() or "web_default"
         try:
             from chat_bot.auth.auth import save_profile
-            save_profile(session_id, body.name_a, horoscope_a, chart_md_a, body.person_a)
-            save_profile(session_id, body.name_b, horoscope_b, chart_md_b, body.person_b)
+            save_profile(session_id, body.name_a, horoscope_a, chart_md_a, body.person_a.model_dump())
+            save_profile(session_id, body.name_b, horoscope_b, chart_md_b, body.person_b.model_dump())
             saved_names = [body.name_a, body.name_b]
         except Exception as exc:
             logger.warning("[compat] 儲存命盤失敗: %s", exc)
@@ -1412,9 +1420,13 @@ _MONTHLY_FORTUNE_PROMPT = """你是資深紫微斗數命理師。請根據以下
 {horoscope}
 
 請以嚴格的 JSON 格式回傳，不要包含 markdown 代碼塊或其他文字：
-{{"days":[{{"day":1,"score":4,"note":"一句概述"}},{{"day":2,"score":3,"note":"一句概述"}}...],"month_summary":"本月整體運勢（2-3句）"}}
+{{"days":[{{"day":1,"score":82,"note":"一句概述"}},{{"day":2,"score":47,"note":"一句概述"}}...],"month_summary":"本月整體運勢（2-3句）"}}
 
-score 為 1-5 整數（5最佳），共需包含 {days_count} 天。note 控制在 15 字以內。"""
+score 為 1-100 整數（100最佳）。評分要求：
+- 分數要真實反映命盤波動，不同日期間差異要明顯，避免大量相同分數
+- 大吉（85-100）、吉（70-84）、小吉（55-69）、普通（40-54）、小注意（25-39）、注意（10-24）、凶（1-9）
+- 一個月中各等級分布要自然，不要全部集中在某一區段
+- 共需包含 {days_count} 天。note 控制在 15 字以內。"""
 
 
 @app.get("/api/fortune-calendar")
