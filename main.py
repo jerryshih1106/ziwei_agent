@@ -1418,9 +1418,17 @@ async def api_profiles_activate_multi(body: MultiProfileRequest):
         chart = profiles[0].get("chart_table", "")
         bi = profiles[0].get("birth_info")
     else:
-        parts = [f"【{p['profile_name']}】命盤分析：\n{p['horoscope']}" for p in profiles]
-        combined = "\n\n═══════════════\n\n".join(parts)
-        chart = "\n\n".join(filter(None, (p.get("chart_table", "") for p in profiles)))
+        horoscope_parts = [
+            f"【{p['profile_name']} 的命盤】\n{p['horoscope']}"
+            for p in profiles
+        ]
+        combined = "\n\n---\n\n".join(horoscope_parts)
+        chart_parts = [
+            f"### {p['profile_name']} 的命盤\n\n{p['chart_table']}"
+            for p in profiles
+            if p.get("chart_table")
+        ]
+        chart = "\n\n---\n\n".join(chart_parts)
         bi = None
 
     HOROSCOPE[session_id] = combined
@@ -1431,7 +1439,12 @@ async def api_profiles_activate_multi(body: MultiProfileRequest):
         BIRTH_INFO.pop(session_id, None)
     SESSION_STATS.pop(session_id, None)
     NON_AGENT_THREAD.pop(session_id, None)
-    return {"activated": [p["profile_name"] for p in profiles], "count": len(profiles)}
+    return {
+        "activated": [p["profile_name"] for p in profiles],
+        "count": len(profiles),
+        "chart_table": chart,
+        "birth_info": bi,
+    }
 
 
 @app.delete("/api/profiles/{profile_id}")

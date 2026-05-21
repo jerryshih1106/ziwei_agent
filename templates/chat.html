@@ -3262,6 +3262,7 @@
       });
       if (!res.ok) { alert('載入失敗'); return; }
       const data = await res.json();
+      if (data.chart_table) _storeChart(data.chart_table, data.birth_info || null);
       closeProfiles();
       const names = data.activated.join('、');
       if (data.count === 1) {
