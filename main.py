@@ -1105,6 +1105,8 @@ class CompatibilityRequest(BaseModel):
     session_id: str = "web_default"
     name_a: str = "甲方"
     name_b: str = "乙方"
+    horoscope_a: str = ""   # 若已有命盤分析，傳入可跳過排盤
+    horoscope_b: str = ""
 
     @field_validator("name_a", "name_b")
     @classmethod
@@ -1141,34 +1143,63 @@ async def api_compatibility(body: CompatibilityRequest):
             yield f'data: {json.dumps({"done": True})}\n\n'
             return
 
-        # Generate chart A and B in parallel
-        yield f'data: {json.dumps({"progress": f"⏳ 同時為【{body.name_a}】與【{body.name_b}】排命盤並分析（約 15-30 秒）…"})}\n\n'
-        results = await asyncio.gather(
-            run_in_threadpool(_gen_full_chart, body.person_a),
-            run_in_threadpool(_gen_full_chart, body.person_b),
-            return_exceptions=True,
-        )
-        if isinstance(results[0], Exception):
-            logger.exception("[compat] 命盤A生成失敗", exc_info=results[0])
-            yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_a}】命盤生成失敗，請確認出生資料是否正確。"})}\n\n'
-            yield f'data: {json.dumps({"done": True})}\n\n'
-            return
-        if isinstance(results[1], Exception):
-            logger.exception("[compat] 命盤B生成失敗", exc_info=results[1])
-            yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_b}】命盤生成失敗，請確認出生資料是否正確。"})}\n\n'
-            yield f'data: {json.dumps({"done": True})}\n\n'
-            return
-        chart_md_a, horoscope_a, chart_text_a = results[0]
-        chart_md_b, horoscope_b, chart_text_b = results[1]
-
-        # Auto-save both charts to profiles
-        saved_names: list[str] = []
         session_id = (body.session_id or "").strip() or "web_default"
+
+        # 判斷哪一方需要排盤（命盤庫已有的直接使用）
+        need_a = not body.horoscope_a.strip()
+        need_b = not body.horoscope_b.strip()
+
+        if need_a or need_b:
+            who = "、".join(filter(None, [body.name_a if need_a else "", body.name_b if need_b else ""]))
+            yield f'data: {json.dumps({"progress": f"⏳ 正在為【{who}】排命盤並分析（約 15-30 秒）…"})}\n\n'
+
+        tasks = []
+        if need_a:
+            tasks.append(run_in_threadpool(_gen_full_chart, body.person_a))
+        if need_b:
+            tasks.append(run_in_threadpool(_gen_full_chart, body.person_b))
+
+        results = await asyncio.gather(*tasks, return_exceptions=True) if tasks else []
+
+        # 取出結果
+        idx = 0
+        if need_a:
+            if isinstance(results[idx], Exception):
+                logger.exception("[compat] 命盤A生成失敗", exc_info=results[idx])
+                yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_a}】命盤生成失敗，請確認出生資料是否正確。"})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+                return
+            chart_md_a, horoscope_a, chart_text_a = results[idx]
+            idx += 1
+        else:
+            horoscope_a = body.horoscope_a
+            chart_md_a = ""
+            gender_a = "男" if body.person_a.is_male else "女"
+            chart_text_a = f"【{body.person_a.year}年{body.person_a.month}月{body.person_a.day}日 {gender_a}】\n\n命盤分析：\n{horoscope_a}"
+
+        if need_b:
+            if isinstance(results[idx], Exception):
+                logger.exception("[compat] 命盤B生成失敗", exc_info=results[idx])
+                yield f'data: {json.dumps({"token": f"⚠️ 【{body.name_b}】命盤生成失敗，請確認出生資料是否正確。"})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+                return
+            chart_md_b, horoscope_b, chart_text_b = results[idx]
+        else:
+            horoscope_b = body.horoscope_b
+            chart_md_b = ""
+            gender_b = "男" if body.person_b.is_male else "女"
+            chart_text_b = f"【{body.person_b.year}年{body.person_b.month}月{body.person_b.day}日 {gender_b}】\n\n命盤分析：\n{horoscope_b}"
+
+        # 新排的才存入命盤庫
+        saved_names: list[str] = []
         try:
             from chat_bot.auth.auth import save_profile
-            save_profile(session_id, body.name_a, horoscope_a, chart_md_a, body.person_a.model_dump())
-            save_profile(session_id, body.name_b, horoscope_b, chart_md_b, body.person_b.model_dump())
-            saved_names = [body.name_a, body.name_b]
+            if need_a:
+                save_profile(session_id, body.name_a, horoscope_a, chart_md_a, body.person_a.model_dump())
+                saved_names.append(body.name_a)
+            if need_b:
+                save_profile(session_id, body.name_b, horoscope_b, chart_md_b, body.person_b.model_dump())
+                saved_names.append(body.name_b)
         except Exception as exc:
             logger.warning("[compat] 儲存命盤失敗: %s", exc)
 

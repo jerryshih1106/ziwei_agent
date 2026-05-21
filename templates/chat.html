@@ -3055,6 +3055,7 @@
 
   // ── Compatibility ─────────────────────────────────────────────
   let _compatProfiles = null;
+  const _compatSelected = { a: null, b: null }; // { horoscope, profile }
 
   async function _ensureCompatProfiles() {
     if (_compatProfiles) return _compatProfiles;
@@ -3093,7 +3094,7 @@
     });
   }
 
-  function _fillCompatFromProfile(side, profile) {
+  async function _fillCompatFromProfile(side, profile) {
     const bi = profile.birth_info || {};
     const pfx = side === 'a' ? 'ca' : 'cb';
     document.getElementById(`${pfx}-name`).value = profile.profile_name || '';
@@ -3103,13 +3104,35 @@
     if (bi.hour != null) document.getElementById(`${pfx}-hour`).value = bi.hour;
     if (bi.is_male != null) document.getElementById(`${pfx}-gender`).value = bi.is_male ? '1' : '0';
     document.getElementById(`compat-lib-${side}`).classList.remove('open');
+
+    // 顯示已選取狀態
+    const btn = document.querySelector(`#compat-lib-${side}`).previousElementSibling;
+    btn.textContent = `✅ 已選取：${profile.profile_name}`;
+    btn.style.borderStyle = 'solid';
+
+    // 抓取完整 horoscope（不重新排盤用）
+    _compatSelected[side] = null;
+    try {
+      const res = await fetch(`/api/profiles/${profile.id}?session_id=${encodeURIComponent(SESSION_ID)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.horoscope) _compatSelected[side] = { horoscope: data.horoscope, profile };
+      }
+    } catch {}
   }
 
   function openCompat() {
     document.getElementById('compat-modal').classList.add('open');
     document.getElementById('compat-result').classList.remove('visible');
     document.getElementById('compat-result').innerHTML = '';
-    _compatProfiles = null; // 每次開啟重新載入命盤庫
+    _compatProfiles = null;
+    _compatSelected.a = null;
+    _compatSelected.b = null;
+    // 重置選取按鈕文字
+    document.querySelectorAll('.compat-from-lib').forEach(btn => {
+      btn.textContent = '👥 從命盤庫選取 ▾';
+      btn.style.borderStyle = 'dashed';
+    });
   }
   function closeCompat() { document.getElementById('compat-modal').classList.remove('open'); }
   function closeCompatOnOverlay(e) {
@@ -3142,7 +3165,11 @@
       const res = await fetch('/api/compatibility', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ person_a: a, person_b: b, session_id: SESSION_ID, name_a: nameA, name_b: nameB }),
+        body: JSON.stringify({
+          person_a: a, person_b: b, session_id: SESSION_ID, name_a: nameA, name_b: nameB,
+          horoscope_a: _compatSelected.a?.horoscope || '',
+          horoscope_b: _compatSelected.b?.horoscope || '',
+        }),
       });
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
