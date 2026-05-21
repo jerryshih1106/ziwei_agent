@@ -3076,16 +3076,21 @@
       el.innerHTML = '<div class="compat-lib-empty">命盤庫尚無儲存的命盤</div>';
       return;
     }
-    el.innerHTML = profiles.map(p => {
+    el.innerHTML = profiles.map((p, i) => {
       const bi = p.birth_info || {};
       const zhi = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
       const hourLabel = bi.hour != null ? zhi[bi.hour / 2] + '時' : '';
       const genderLabel = bi.is_male != null ? (bi.is_male ? '男' : '女') : '';
       const detail = [bi.year && `${bi.year}年`, bi.month && `${bi.month}月`, bi.day && `${bi.day}日`, hourLabel, genderLabel].filter(Boolean).join('');
-      return `<div class="compat-lib-item" onclick="_fillCompatFromProfile('${side}',${JSON.stringify(p).replace(/'/g,"&#39;")})">
+      return `<div class="compat-lib-item" data-side="${side}" data-idx="${i}">
         <strong>${p.profile_name}</strong>${detail ? ' · ' + detail : ''}
       </div>`;
     }).join('');
+    el.querySelectorAll('.compat-lib-item').forEach(item => {
+      item.addEventListener('click', () => {
+        _fillCompatFromProfile(item.dataset.side, profiles[+item.dataset.idx]);
+      });
+    });
   }
 
   function _fillCompatFromProfile(side, profile) {
