@@ -726,14 +726,27 @@ async def api_chat_stream(body: ChatRequest):
             yield f'data: {json.dumps({"token": f"⏳ 正在幫 {label} 排命盤，請稍候…"})}\n\n'
             try:
                 from chat_bot.node.save_profile_intent import execute_save_profile
-                reply, profile_id = await run_in_threadpool(execute_save_profile, _save_data_snap, _save_session_snap)
+                reply, profile_id, horoscope, chart_table, birth_info = await run_in_threadpool(
+                    execute_save_profile, _save_data_snap, _save_session_snap
+                )
             except Exception:
                 logger.exception("[save_profile_stream] execute failed")
-                reply, profile_id = "⚠️ 排盤時發生錯誤，請稍後再試。", None
+                reply, profile_id, horoscope, chart_table, birth_info = (
+                    "⚠️ 排盤時發生錯誤，請稍後再試。", None, "", "", None
+                )
+            # 直接在後端更新 session，不依賴前端再打一次 API
+            if profile_id and horoscope:
+                HOROSCOPE[_save_session_snap] = horoscope
+                CHART_TABLE[_save_session_snap] = chart_table
+                if birth_info:
+                    BIRTH_INFO[_save_session_snap] = birth_info
+                SESSION_STATS.pop(_save_session_snap, None)
+                NON_AGENT_THREAD.pop(_save_session_snap, None)
             yield f'data: {json.dumps({"clear": True})}\n\n'
             yield f'data: {json.dumps({"token": reply})}\n\n'
-            if profile_id:
-                yield f'data: {json.dumps({"profile_saved": {"id": profile_id, "name": label}})}\n\n'
+            # 送出 chart 事件讓前端更新命盤圖（與一般排盤後相同邏輯）
+            if profile_id and chart_table:
+                yield f'data: {json.dumps({"chart": chart_table, "birth_info": birth_info})}\n\n'
             yield f'data: {json.dumps({"done": True})}\n\n'
 
         return StreamingResponse(_save_profile_stream(), media_type="text/event-stream")

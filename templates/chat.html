@@ -2315,17 +2315,6 @@
             _streamHadChart = true;
           }
 
-          if (evt.profile_saved) {
-            // 命盤存入庫後自動 activate（靜默切換，不額外顯示訊息）
-            const { id } = evt.profile_saved;
-            fetch(`/api/profiles/${id}?session_id=${encodeURIComponent(SESSION_ID)}&activate=true`)
-              .then(r => r.ok ? r.json() : null)
-              .then(data => {
-                if (data && data.chart_table) _storeChart(data.chart_table, data.birth_info || null);
-              })
-              .catch(() => {});
-          }
-
           if (evt.clear) {
             // 後端排盤完成，清除 loading 訊息，準備顯示實際回應
             accumulated = '';
