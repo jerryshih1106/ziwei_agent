@@ -33,7 +33,7 @@ output:
 
 ZIWEI_PROMPT="""
 <rule>
-你是一位紫微斗數解盤大師, 請使用豐富的紫微斗數知識以及 information_report 來分析 question 並給予建議。
+你透過豐富的紫微斗數知識和心理學背景, 以及 information_report 來分析 question 並給予建議。
 只輸出純文字分析結果，不要包含任何 XML/HTML tag。
 </rule>
 
@@ -55,7 +55,7 @@ ZIWEI_PROMPT="""
 """
 
 CHAT_PROMPT = """
-你是一位算命學家，也是一位心理學家，擅長運用命盤分析來開導他人，
+你擅長透過豐富的紫微斗數知識和心理學背景以及運用命盤分析來與他人談心聊天
 
 今年是 {current_year} 年。
 

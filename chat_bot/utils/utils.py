@@ -37,7 +37,7 @@ def _get_langfuse_handler():
         return None
 
 
-def build_llm(model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.7) -> BaseLLM:
+def build_llm(model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.5) -> BaseLLM:
     callbacks = []
     handler = _get_langfuse_handler()
     if handler:

@@ -970,18 +970,19 @@
     .legend-dot.current-dot { background: rgba(201,162,39,0.2); }
 
     /* ── Daily Fortune Modal ── */
-    #fortune-modal .modal-box { max-height: 85vh; display: flex; flex-direction: column; }
-    .fortune-modal-body { padding: 20px; overflow-y: auto; flex: 1; }
-    .fortune-date-badge {
-      display: inline-block;
-      background: rgba(201,162,39,0.12);
-      border: 1px solid rgba(201,162,39,0.3);
-      border-radius: 20px;
-      padding: 3px 12px;
-      font-size: 0.8rem;
-      color: var(--gold);
-      margin-bottom: 14px;
+    #calendar-modal .modal-box { max-height: 88vh; display: flex; flex-direction: column; }
+    .week-day-row {
+      display: flex; align-items: center; gap: 8px;
+      background: rgba(13,28,50,0.6); border: 1px solid transparent;
+      border-radius: 8px; padding: 8px 10px; transition: border-color 0.15s;
     }
+    .week-day-row.today { border-color: var(--gold); background: rgba(201,162,39,0.08); }
+    .wdr-label { font-size: 0.82rem; color: var(--text-muted); width: 28px; flex-shrink: 0; }
+    .wdr-date { font-size: 0.78rem; color: var(--text-muted); width: 38px; flex-shrink: 0; }
+    .wdr-bar-wrap { flex: 1; background: rgba(255,255,255,0.07); border-radius: 4px; height: 6px; }
+    .wdr-bar { height: 6px; border-radius: 4px; transition: width 0.4s; }
+    .wdr-pct { font-size: 0.78rem; font-weight: 700; width: 34px; text-align: right; flex-shrink: 0; }
+    .wdr-note { font-size: 0.78rem; color: var(--text-muted); flex: 1.2; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
     .fortune-content {
       font-size: 0.95rem;
       line-height: 1.85;
@@ -1024,6 +1025,21 @@
       transition: all 0.2s;
     }
     .fortune-refresh-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+    /* ── Fortune Tabs ── */
+    .fortune-tabs {
+      display: flex; border-bottom: 1px solid rgba(201,162,39,0.2);
+      margin-bottom: 14px;
+    }
+    .fortune-tab {
+      flex: 1; padding: 9px 4px; background: none; border: none;
+      border-bottom: 2px solid transparent; margin-bottom: -1px;
+      color: var(--text-muted); font-size: 0.88rem; cursor: pointer;
+      transition: color 0.2s, border-color 0.2s;
+    }
+    .fortune-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+    .fortune-tab-pane { display: none; }
+    .fortune-tab-pane.active { display: block; }
 
     /* ── Bookmark Drawer ── */
     .bookmark-btn {
@@ -1374,16 +1390,6 @@
     .cal-dot-1 { background: #e74c3c; }
     .cal-legend { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; }
     .cal-legend-item { display: flex; align-items: center; gap: 5px; font-size: 0.75rem; color: var(--text-muted); }
-    .cal-day-popup {
-      position: fixed; z-index: 9999;
-      background: rgba(28,16,53,0.97); border: 1px solid rgba(201,162,39,0.4);
-      border-radius: 12px; padding: 14px; min-width: 200px; max-width: 260px;
-      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-    }
-    .cal-popup-title { font-family: 'Noto Serif TC', serif; color: var(--gold); font-weight: 700; margin-bottom: 6px; }
-    .cal-popup-note { font-size: 0.85rem; color: var(--text-light); line-height: 1.5; }
-    .cal-popup-close { float: right; background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.9rem; }
-
     /* ── Settings Modal ── */
     .settings-section { margin-bottom: 20px; }
     .settings-label { font-size: 0.8rem; letter-spacing: 2px; color: var(--gold); text-transform: uppercase; margin-bottom: 10px; }
@@ -1558,8 +1564,7 @@
     <button class="topbar-logout" onclick="logout()">登出</button>
   </div>
   <div class="topbar-actions">
-    <button class="topbar-btn" id="fortune-btn" onclick="openDailyFortune()" style="display:none">☀️ 今日運勢</button>
-    <button class="topbar-btn" id="calendar-btn" onclick="openCalendar()" style="display:none">📅 運勢日曆</button>
+    <button class="topbar-btn" id="calendar-btn" onclick="openCalendar()" style="display:none">📅 本週運勢</button>
     <button class="topbar-btn" id="bookmark-btn" onclick="openBookmarks()" style="display:none">📌 收藏</button>
     <button class="topbar-btn" id="history-btn" onclick="openHistory()" style="display:none">📜 歷史</button>
     <button class="topbar-btn" id="chart-btn" onclick="showChart()" style="display:none">📊 命盤</button>
@@ -1673,20 +1678,6 @@
 </div>
 
 <!-- Daily Fortune Modal -->
-<div class="modal-overlay" id="fortune-modal" onclick="closeFortuneOnOverlay(event)">
-  <div class="modal-box" style="max-width:560px">
-    <div class="modal-header">
-      <span class="modal-title">☀️ 今日運勢</span>
-      <button class="modal-close" onclick="closeFortune()">✕</button>
-    </div>
-    <div class="fortune-modal-body">
-      <div id="fortune-date-badge" class="fortune-date-badge"></div>
-      <div class="fortune-content" id="fortune-content"></div>
-      <button class="fortune-refresh-btn" id="fortune-refresh-btn" onclick="loadDailyFortune(true)" style="display:none">↺ 重新生成今日運勢</button>
-    </div>
-  </div>
-</div>
-
 <!-- Bookmark Drawer -->
 <div class="history-overlay" id="bookmark-overlay" onclick="closeBookmarkOnOverlay(event)">
   <div class="history-drawer">
@@ -1798,6 +1789,7 @@
       <button class="compat-submit" id="compat-submit-btn" onclick="runCompatibility()">✨ 開始合盤分析</button>
       <div class="compat-result" id="compat-result"></div>
       <div id="compat-saved-notice" style="display:none;margin-top:10px;padding:8px 12px;background:rgba(39,174,96,0.1);border:1px solid rgba(39,174,96,0.3);border-radius:8px;font-size:0.8rem;color:#7dcea0;text-align:center"></div>
+      <button id="compat-save-btn" style="display:none;margin-top:10px;width:100%;padding:10px;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.4);border-radius:8px;color:var(--gold);font-size:0.85rem;cursor:pointer;transition:background 0.2s" onclick="saveCompatToHistory()">💾 儲存至聊天記錄</button>
     </div>
   </div>
 </div>
@@ -1827,28 +1819,42 @@
 <div class="modal-overlay" id="calendar-modal" onclick="closeCalendarOnOverlay(event)">
   <div class="modal-box" style="max-width:560px">
     <div class="modal-header">
-      <span class="modal-title">📅 運勢日曆</span>
+      <span class="modal-title" id="cal-modal-title">☀️ 今日運勢</span>
       <button class="modal-close" onclick="closeCalendar()">✕</button>
     </div>
     <div class="modal-body" id="calendar-modal-body">
-      <div class="cal-header">
-        <button class="cal-nav-btn" onclick="calNavMonth(-1)">◀</button>
-        <span class="cal-month-label" id="cal-month-label"></span>
-        <button class="cal-nav-btn" onclick="calNavMonth(1)">▶</button>
+      <div class="fortune-tabs">
+        <button class="fortune-tab active" id="tab-today" onclick="switchFortuneTab('today')">☀️ 今日運勢</button>
+        <button class="fortune-tab" id="tab-week" onclick="switchFortuneTab('week')">📅 本週運勢</button>
       </div>
-      <div id="cal-summary" class="cal-summary" style="display:none"></div>
-      <div id="cal-grid-wrap"></div>
-      <div class="cal-legend">
-        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#27ae60"></div> 大吉 85+</div>
-        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#7dcea0"></div> 吉 70-84</div>
-        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--gold)"></div> 普通 40-69</div>
-        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#e59866"></div> 注意 25-39</div>
-        <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#e74c3c"></div> 凶 1-24</div>
+
+      <!-- 今日運勢 pane -->
+      <div class="fortune-tab-pane active" id="pane-today">
+        <div class="fortune-content" id="week-today-content"></div>
+        <button class="fortune-refresh-btn" id="week-fortune-refresh-btn" onclick="loadWeekTodayFortune(true)" style="display:none">↺ 重新生成今日運勢</button>
       </div>
-      <details style="margin-top:16px">
-        <summary style="cursor:pointer;color:var(--gold);font-size:0.85rem;user-select:none" onclick="loadTrendChart()">📈 近五個月運勢趨勢</summary>
-        <div id="trend-chart-wrap" style="margin-top:8px;overflow-x:auto"></div>
-      </details>
+
+      <!-- 本週運勢 pane -->
+      <div class="fortune-tab-pane" id="pane-week">
+        <div class="cal-header">
+          <button class="cal-nav-btn" onclick="calNavWeek(-1)">◀</button>
+          <span class="cal-month-label" id="cal-month-label"></span>
+          <button class="cal-nav-btn" onclick="calNavWeek(1)">▶</button>
+        </div>
+        <div id="cal-grid-wrap"></div>
+        <div id="cal-summary" class="cal-summary" style="display:none"></div>
+        <div class="cal-legend">
+          <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#27ae60"></div> 大吉 85+</div>
+          <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#7dcea0"></div> 吉 70-84</div>
+          <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:var(--gold)"></div> 普通 40-69</div>
+          <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#e59866"></div> 注意 25-39</div>
+          <div class="cal-legend-item"><div style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#e74c3c"></div> 凶 1-24</div>
+        </div>
+        <details style="margin-top:16px">
+          <summary style="cursor:pointer;color:var(--gold);font-size:0.85rem;user-select:none" onclick="loadTrendChart()">📈 近五個月運勢趨勢</summary>
+          <div id="trend-chart-wrap" style="margin-top:8px;overflow-x:auto"></div>
+        </details>
+      </div>
     </div>
   </div>
 </div>
@@ -2024,7 +2030,6 @@
     document.getElementById('history-btn').style.display = '';
     document.getElementById('compat-btn').style.display = '';
     document.getElementById('bookmark-btn').style.display = '';
-    document.getElementById('fortune-btn').style.display = '';
     document.getElementById('calendar-btn').style.display = '';
     document.getElementById('profiles-btn').style.display = '';
     document.getElementById('settings-btn').style.display = '';
@@ -2954,47 +2959,6 @@
     document.getElementById('user-input').focus();
   }
 
-  // ── Daily Fortune ────────────────────────────────────────────
-  let _fortuneLoaded = false;
-
-  function openDailyFortune() {
-    document.getElementById('fortune-modal').classList.add('open');
-    const today = new Date().toLocaleDateString('zh-TW', { year:'numeric', month:'long', day:'numeric', weekday:'long' });
-    document.getElementById('fortune-date-badge').textContent = today;
-    if (!_fortuneLoaded) loadDailyFortune(false);
-  }
-  function closeFortune() { document.getElementById('fortune-modal').classList.remove('open'); }
-  function closeFortuneOnOverlay(e) { if (e.target === document.getElementById('fortune-modal')) closeFortune(); }
-
-  async function loadDailyFortune(forceRefresh) {
-    const content = document.getElementById('fortune-content');
-    const refreshBtn = document.getElementById('fortune-refresh-btn');
-    content.innerHTML = '<span style="color:var(--text-muted)">⏳ 正在為你生成今日運勢…</span>';
-    refreshBtn.style.display = 'none';
-    _fortuneLoaded = false;
-
-    let accumulated = '';
-    try {
-      const url = `/api/daily-fortune?session_id=${encodeURIComponent(SESSION_ID)}${forceRefresh ? '&force=1' : ''}`;
-      const res = await fetch(url);
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        for (const line of decoder.decode(value, { stream: true }).split('\n')) {
-          if (!line.startsWith('data: ')) continue;
-          let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
-          if (evt.clear) { accumulated = ''; content.innerHTML = ''; }
-          if (evt.token) { accumulated += evt.token; content.innerHTML = renderMarkdown(accumulated); }
-          if (evt.done) { _fortuneLoaded = true; refreshBtn.style.display = ''; break; }
-        }
-      }
-    } catch {
-      content.innerHTML = '<p style="color:#e74c3c">⚠️ 載入失敗，請稍後再試。</p>';
-    }
-  }
-
   // ── Bookmarks ─────────────────────────────────────────────────
   function openBookmarks() {
     document.getElementById('bookmark-overlay').classList.add('open');
@@ -3161,6 +3125,9 @@
     savedNotice.style.display = 'none';
 
     let accumulated = '';
+    const saveBtn = document.getElementById('compat-save-btn');
+    saveBtn.style.display = 'none';
+    window._compatLastResult = null;
     try {
       const res = await fetch('/api/compatibility', {
         method: 'POST',
@@ -3193,6 +3160,10 @@
             savedNotice.textContent = `✅ 命盤已自動儲存至命盤庫：${evt.saved.join('、')}`;
             savedNotice.style.display = '';
           }
+          if (evt.compat_complete) {
+            window._compatLastResult = { name_a: evt.compat_complete.name_a, name_b: evt.compat_complete.name_b, result: accumulated };
+            saveBtn.style.display = '';
+          }
           if (evt.done) { done = true; break; }
         }
       }
@@ -3201,6 +3172,28 @@
     } finally {
       btn.disabled = false;
       btn.textContent = '✨ 開始合盤分析';
+    }
+  }
+
+  async function saveCompatToHistory() {
+    const data = window._compatLastResult;
+    if (!data) return;
+    const saveBtn = document.getElementById('compat-save-btn');
+    saveBtn.disabled = true;
+    saveBtn.textContent = '⏳ 儲存中…';
+    try {
+      const res = await fetch('/api/compat/save-to-history', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: SESSION_ID, name_a: data.name_a, name_b: data.name_b, result: data.result }),
+      });
+      if (!res.ok) throw new Error('save failed');
+      saveBtn.textContent = '✅ 已儲存';
+      saveBtn.disabled = true;
+      appendAIMessage(`## 💕 合盤分析：${data.name_a} × ${data.name_b}\n\n${data.result}`);
+    } catch {
+      saveBtn.disabled = false;
+      saveBtn.textContent = '⚠️ 儲存失敗，請再試一次';
     }
   }
 
@@ -3425,59 +3418,75 @@
     } catch { alert('載入失敗'); }
   }
 
-  // ── Fortune Calendar ──────────────────────────────────────────
-  let _calYear = new Date().getFullYear();
-  let _calMonth = new Date().getMonth() + 1;
-  let _calData = null;
-  let _calPopup = null;
+  // ── Weekly Fortune ────────────────────────────────────────────
+  let _weekStart = null;   // Date (Monday of displayed week)
+  let _weekData = null;
+  let _weekFortuneLoaded = false;
+  let _activeFortuneTab = 'today';
+
+  function _getThisMonday() {
+    const now = new Date(); now.setHours(0,0,0,0);
+    const diff = now.getDay() === 0 ? -6 : 1 - now.getDay();
+    const mon = new Date(now); mon.setDate(now.getDate() + diff);
+    return mon;
+  }
 
   function openCalendar() {
     document.getElementById('calendar-modal').classList.add('open');
-    _loadCalendar();
+    if (!_weekStart) _weekStart = _getThisMonday();
+    switchFortuneTab('today');
+    if (!_weekFortuneLoaded) loadWeekTodayFortune(false);
   }
-  function closeCalendar() {
-    document.getElementById('calendar-modal').classList.remove('open');
-    _removeCalPopup();
-  }
+  function closeCalendar() { document.getElementById('calendar-modal').classList.remove('open'); }
   function closeCalendarOnOverlay(e) { if (e.target === document.getElementById('calendar-modal')) closeCalendar(); }
 
-  function calNavMonth(delta) {
-    _calMonth += delta;
-    if (_calMonth > 12) { _calMonth = 1; _calYear++; }
-    if (_calMonth < 1) { _calMonth = 12; _calYear--; }
-    _calData = null;
-    _loadCalendar();
+  function switchFortuneTab(tab) {
+    _activeFortuneTab = tab;
+    ['today','week'].forEach(t => {
+      document.getElementById(`tab-${t}`).classList.toggle('active', t === tab);
+      document.getElementById(`pane-${t}`).classList.toggle('active', t === tab);
+    });
+    document.getElementById('cal-modal-title').textContent = tab === 'today' ? '☀️ 今日運勢' : '📅 本週運勢';
+    if (tab === 'week' && !_weekData) _loadWeekFortune();
   }
 
-  async function _loadCalendar() {
-    document.getElementById('cal-month-label').textContent = `${_calYear} 年 ${_calMonth} 月`;
+  function calNavWeek(delta) {
+    if (!_weekStart) _weekStart = _getThisMonday();
+    _weekStart = new Date(_weekStart);
+    _weekStart.setDate(_weekStart.getDate() + delta * 7);
+    _weekData = null;
+    _loadWeekFortune();
+  }
+
+  function _fmtMD(d) { return `${d.getMonth()+1}/${d.getDate()}`; }
+  function _dateToISO(d) {
+    return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  async function _loadWeekFortune() {
+    const ws = _weekStart;
+    const we = new Date(ws); we.setDate(ws.getDate() + 6);
+    document.getElementById('cal-month-label').textContent = `${ws.getFullYear()}年 ${_fmtMD(ws)} – ${_fmtMD(we)}`;
     const wrap = document.getElementById('cal-grid-wrap');
     const summaryEl = document.getElementById('cal-summary');
-    wrap.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:32px;font-size:0.88rem">⏳ AI 正在分析本月運勢…</div>';
+    wrap.innerHTML = '<div style="text-align:center;color:var(--text-muted);padding:24px;font-size:0.88rem">⏳ AI 正在分析本週運勢…</div>';
     summaryEl.style.display = 'none';
     try {
-      const res = await fetch(`/api/fortune-calendar?session_id=${encodeURIComponent(SESSION_ID)}&year=${_calYear}&month=${_calMonth}`);
+      const wsStr = _dateToISO(ws);
+      const res = await fetch(`/api/weekly-fortune?session_id=${encodeURIComponent(SESSION_ID)}&week_start=${wsStr}`);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         wrap.innerHTML = `<div style="text-align:center;color:#e74c3c;padding:24px">${err.detail || '載入失敗，請先排盤'}</div>`;
         return;
       }
-      _calData = await res.json();
-      _renderCalGrid(_calData);
+      _weekData = await res.json();
+      const thisMonday = _getThisMonday();
+      const todayISO = ws.getTime() === thisMonday.getTime() ? _dateToISO(new Date()) : '';
+      _renderWeekGrid(_weekData, todayISO);
+      if (_weekData.week_summary) { summaryEl.textContent = _weekData.week_summary; summaryEl.style.display = ''; }
     } catch { wrap.innerHTML = '<div style="text-align:center;color:#e74c3c;padding:24px">載入失敗，請稍後再試</div>'; }
   }
 
-  // s > 5 → new 1-100 format (use directly); s ≤ 5 → old 1-5 cache (convert)
-  function _scoreToPercent(s) { return s > 5 ? s : Math.round((s / 5) * 100); }
-  function _percentColor(pct) { return pct >= 70 ? '#7dcea0' : pct <= 39 ? '#e59866' : 'var(--text-light)'; }
-  function _scoreBg(pct) {
-    if (pct >= 85) return 'rgba(39,174,96,0.35)';
-    if (pct >= 70) return 'rgba(39,174,96,0.2)';
-    if (pct >= 55) return 'rgba(39,174,96,0.1)';
-    if (pct >= 40) return 'rgba(201,162,39,0.18)';
-    if (pct >= 25) return 'rgba(231,76,60,0.15)';
-    return 'rgba(231,76,60,0.32)';
-  }
   function _dotColor(pct) {
     if (pct >= 85) return '#27ae60';
     if (pct >= 70) return '#7dcea0';
@@ -3487,142 +3496,56 @@
     return '#e74c3c';
   }
 
-  function _renderCalGrid(data) {
+  function _scoreToPercent(s) { return s > 5 ? s : Math.round((s / 5) * 100); }
+
+  function _renderWeekGrid(data, todayISO) {
     const wrap = document.getElementById('cal-grid-wrap');
-    const summaryEl = document.getElementById('cal-summary');
-    if (data.month_summary) { summaryEl.textContent = data.month_summary; summaryEl.style.display = ''; }
-    const dayMap = {};
-    (data.days || []).forEach(d => { dayMap[d.day] = d; });
-
-    const firstDay = new Date(_calYear, _calMonth - 1, 1).getDay(); // 0=Sun
-    const daysInMonth = new Date(_calYear, _calMonth, 0).getDate();
-    const today = new Date(); const todayStr = `${today.getFullYear()}-${today.getMonth()+1}-${today.getDate()}`;
-
-    const headers = ['日','一','二','三','四','五','六'];
-    let html = '<div class="cal-grid">';
-    headers.forEach(h => { html += `<div class="cal-day-header">${h}</div>`; });
-    for (let i = 0; i < firstDay; i++) html += '<div class="cal-day empty"></div>';
-    for (let d = 1; d <= daysInMonth; d++) {
-      const info = dayMap[d] || { score: 50, note: '' };
-      const pct = _scoreToPercent(info.score);
-      const isToday = `${_calYear}-${_calMonth}-${d}` === todayStr;
-      html += `<div class="cal-day${isToday ? ' today' : ''}" style="background:${_scoreBg(pct)}" onclick="showCalDayPopup(event,${d})" data-day="${d}">
-        <div class="cal-day-num" style="color:${_percentColor(pct)}">${d}</div>
-        <div style="font-size:0.6rem;color:${_dotColor(pct)};line-height:1;margin-top:1px;font-weight:600">${pct}%</div>
+    const weekdayNames = ['週一','週二','週三','週四','週五','週六','週日'];
+    let html = '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:12px">';
+    (data.days || []).forEach((d, i) => {
+      const pct = _scoreToPercent(d.score);
+      const isToday = d.date === todayISO;
+      const color = _dotColor(pct);
+      const wd = d.weekday || weekdayNames[i] || '';
+      const dateLabel = (d.date || '').slice(5).replace('-', '/');
+      html += `<div class="week-day-row${isToday ? ' today' : ''}">
+        <span class="wdr-label">${isToday ? '★' : ''}${wd}</span>
+        <span class="wdr-date">${dateLabel}</span>
+        <div class="wdr-bar-wrap"><div class="wdr-bar" style="width:${pct}%;background:${color}"></div></div>
+        <span class="wdr-pct" style="color:${color}">${pct}%</span>
+        <span class="wdr-note">${escapeHtml(d.note || '')}</span>
       </div>`;
-    }
+    });
     html += '</div>';
-    html += _buildCalLineChart(dayMap, daysInMonth);
     wrap.innerHTML = html;
   }
 
-  function _buildCalLineChart(dayMap, daysInMonth) {
-    const W = 480, H = 72, padL = 28, padR = 12, padT = 10, padB = 20;
-    const innerW = W - padL - padR;
-    const innerH = H - padT - padB;
-    const scores = [];
-    for (let d = 1; d <= daysInMonth; d++) {
-      scores.push((dayMap[d] || { score: 3 }).score);
-    }
-    const n = scores.length;
-    const xStep = innerW / (n - 1 || 1);
-    const scoreColor = s => s >= 4 ? '#7dcea0' : s <= 2 ? '#e59866' : '#6090b5';
-
-    // Build polyline points
-    const pts = scores.map((s, i) => {
-      const x = padL + i * xStep;
-      const y = padT + innerH - ((s - 1) / 4) * innerH;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    }).join(' ');
-
-    // Build gradient fill polygon (close path to bottom)
-    const fillPts = scores.map((s, i) => {
-      const x = padL + i * xStep;
-      const y = padT + innerH - ((s - 1) / 4) * innerH;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    });
-    fillPts.push(`${(padL + (n-1)*xStep).toFixed(1)},${(padT+innerH).toFixed(1)}`);
-    fillPts.push(`${padL.toFixed(1)},${(padT+innerH).toFixed(1)}`);
-
-    // Y-axis labels (percentage)
-    const yLabels = [[5,100],[3,60],[1,20]].map(([s, pct]) => {
-      const y = padT + innerH - ((s - 1) / 4) * innerH;
-      return `<text x="${padL - 4}" y="${y + 4}" text-anchor="end" fill="#6090b5" font-size="9">${pct}%</text>`;
-    }).join('');
-
-    // Dots for today
-    const today = new Date();
-    const todayDay = today.getFullYear() === _calYear && (today.getMonth()+1) === _calMonth ? today.getDate() : null;
-
-    const dots = scores.map((s, i) => {
-      const d = i + 1;
-      const x = padL + i * xStep;
-      const y = padT + innerH - ((s - 1) / 4) * innerH;
-      const isToday = d === todayDay;
-      return isToday
-        ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="4" fill="${scoreColor(s)}" stroke="#fff" stroke-width="1.5"/>`
-        : '';
-    }).join('');
-
-    // X-axis day labels (every 5 days)
-    const xLabels = scores.map((_, i) => {
-      const d = i + 1;
-      if (d === 1 || d % 5 === 0 || d === n) {
-        const x = padL + i * xStep;
-        return `<text x="${x.toFixed(1)}" y="${H - 4}" text-anchor="middle" fill="#6090b5" font-size="9">${d}</text>`;
+  async function loadWeekTodayFortune(forceRefresh) {
+    const content = document.getElementById('week-today-content');
+    const refreshBtn = document.getElementById('week-fortune-refresh-btn');
+    content.innerHTML = '<span style="color:var(--text-muted)">⏳ 正在生成今日運勢…</span>';
+    refreshBtn.style.display = 'none';
+    _weekFortuneLoaded = false;
+    let accumulated = '';
+    try {
+      const url = `/api/daily-fortune?session_id=${encodeURIComponent(SESSION_ID)}${forceRefresh ? '&force=1' : ''}`;
+      const res = await fetch(url);
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const line of decoder.decode(value, { stream: true }).split('\n')) {
+          if (!line.startsWith('data: ')) continue;
+          let evt; try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+          if (evt.clear) { accumulated = ''; content.innerHTML = ''; }
+          if (evt.token) { accumulated += evt.token; content.innerHTML = renderMarkdown(accumulated); }
+          if (evt.done) { _weekFortuneLoaded = true; refreshBtn.style.display = ''; break; }
+        }
       }
-      return '';
-    }).join('');
-
-    return `<div style="padding:4px 0 0;overflow-x:auto">
-      <svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block;max-width:${W}px">
-        <defs>
-          <linearGradient id="calGrad" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stop-color="rgba(201,162,39,0.25)"/>
-            <stop offset="100%" stop-color="rgba(201,162,39,0)"/>
-          </linearGradient>
-        </defs>
-        <!-- Baseline -->
-        <line x1="${padL}" y1="${padT+innerH}" x2="${padL+innerW}" y2="${padT+innerH}" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
-        <!-- Midline (平) -->
-        <line x1="${padL}" y1="${(padT + innerH - ((3-1)/4)*innerH).toFixed(1)}" x2="${padL+innerW}" y2="${(padT + innerH - ((3-1)/4)*innerH).toFixed(1)}" stroke="rgba(160,144,192,0.15)" stroke-width="1" stroke-dasharray="3,3"/>
-        <!-- Fill -->
-        <polygon points="${fillPts.join(' ')}" fill="url(#calGrad)"/>
-        <!-- Line -->
-        <polyline points="${pts}" fill="none" stroke="rgba(201,162,39,0.7)" stroke-width="1.5" stroke-linejoin="round" stroke-linecap="round"/>
-        ${yLabels}${dots}${xLabels}
-      </svg>
-    </div>`;
-  }
-
-  function showCalDayPopup(e, day) {
-    _removeCalPopup();
-    if (!_calData) return;
-    const info = (_calData.days || []).find(d => d.day === day);
-    if (!info) return;
-    const pct = _scoreToPercent(info.score);
-    const popup = document.createElement('div');
-    popup.className = 'cal-day-popup';
-    popup.innerHTML = `
-      <button class="cal-popup-close" onclick="this.parentElement.remove()">✕</button>
-      <div class="cal-popup-title">${_calYear}/${_calMonth}/${day} — <span style="color:${_percentColor(pct)}">${pct}%</span></div>
-      <div class="cal-popup-note">${escapeHtml(info.note || '')}</div>`;
-    document.body.appendChild(popup);
-    _calPopup = popup;
-    const rect = e.target.closest('.cal-day').getBoundingClientRect();
-    let top = rect.bottom + 6; let left = rect.left;
-    if (left + 260 > window.innerWidth) left = window.innerWidth - 268;
-    if (top + 100 > window.innerHeight) top = rect.top - 108;
-    popup.style.top = top + 'px'; popup.style.left = left + 'px';
-    document.addEventListener('click', _calPopupOutsideClick, { once: true, capture: true });
-  }
-
-  function _calPopupOutsideClick(e) {
-    if (_calPopup && !_calPopup.contains(e.target)) _removeCalPopup();
-  }
-
-  function _removeCalPopup() {
-    if (_calPopup) { _calPopup.remove(); _calPopup = null; }
+    } catch {
+      content.innerHTML = '<p style="color:#e74c3c">⚠️ 載入失敗，請稍後再試。</p>';
+    }
   }
 
   // ── Life Events ───────────────────────────────────────────────
@@ -4152,7 +4075,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   async function loadTrendChart() {
     const wrap = document.getElementById('trend-chart-wrap');
     if (!wrap) return;
-    if (wrap.querySelector('svg')) return;  // already rendered — don't refetch
+    if (wrap.querySelector('svg')) return;
     wrap.innerHTML = '<div class="profile-empty">⏳ 載入趨勢中…</div>';
     const now = new Date();
     const months = [-2, -1, 0, 1, 2].map(d => {
@@ -4164,32 +4087,72 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
         fetch(`/api/fortune-calendar?session_id=${encodeURIComponent(SESSION_ID)}&year=${m.year}&month=${m.month}`)
           .then(r => r.json()).then(d => ({ ...m, days: d.days || [] })).catch(() => ({ ...m, days: [] }))
       ));
-      const allScores = results.flatMap(r => r.days.map(d => d.score));
-      if (!allScores.length) { wrap.innerHTML = '<div class="profile-empty">暫無資料</div>'; return; }
-      const W = 520, H = 140, padL = 30, padR = 10, padT = 10, padB = 30;
+
+      // Aggregate to weekly buckets (every 7 days per month → ~4 points/month, ~20 total)
+      const weeks = [];
+      const curYear = now.getFullYear(), curMonth = now.getMonth() + 1, curDay = now.getDate();
+      results.forEach(r => {
+        const sorted = (r.days || []).slice().sort((a, b) => a.day - b.day);
+        const chunkSize = 7;
+        for (let i = 0; i < sorted.length; i += chunkSize) {
+          const chunk = sorted.slice(i, i + chunkSize);
+          if (!chunk.length) continue;
+          const avg = Math.round(chunk.reduce((s, d) => s + _scoreToPercent(d.score), 0) / chunk.length);
+          const weekIdx = Math.floor(i / chunkSize);
+          const isCur = r.year === curYear && r.month === curMonth
+            && weekIdx === Math.floor((curDay - 1) / chunkSize);
+          weeks.push({ label: weekIdx === 0 ? `${r.month}月` : '', avg, isCur });
+        }
+      });
+
+      if (!weeks.length) { wrap.innerHTML = '<div class="profile-empty">暫無資料</div>'; return; }
+
+      const W = 480, H = 130, padL = 28, padR = 8, padT = 12, padB = 26;
       const innerW = W - padL - padR, innerH = H - padT - padB;
-      const total = allScores.length;
-      const xStep = innerW / Math.max(total - 1, 1);
-      const allPcts = allScores.map(s => _scoreToPercent(s));
-      const pts = allPcts.map((pct, i) => {
-        const x = padL + i * xStep;
-        const y = padT + innerH - (pct / 100) * innerH;
-        return `${x.toFixed(1)},${y.toFixed(1)}`;
-      }).join(' ');
-      const monthLabels = results.map((r, i) => {
-        const x = padL + (allScores.length * (i / results.length) + allScores.length / results.length / 2) * xStep;
-        return `<text x="${x.toFixed(0)}" y="${H - 6}" text-anchor="middle" fill="#6090b5" font-size="9">${r.year}/${r.month}</text>`;
+      const n = weeks.length;
+      const xStep = innerW / Math.max(n - 1, 1);
+
+      const toXY = (i, pct) => [padL + i * xStep, padT + innerH - (pct / 100) * innerH];
+      const linePts = weeks.map((w, i) => { const [x,y]=toXY(i,w.avg); return `${x.toFixed(1)},${y.toFixed(1)}`; }).join(' ');
+      const fillPts = [
+        ...weeks.map((w,i) => { const [x,y]=toXY(i,w.avg); return `${x.toFixed(1)},${y.toFixed(1)}`; }),
+        `${(padL+(n-1)*xStep).toFixed(1)},${(padT+innerH).toFixed(1)}`,
+        `${padL.toFixed(1)},${(padT+innerH).toFixed(1)}`,
+      ].join(' ');
+
+      const gridLines = [80, 55, 30].map(pct => {
+        const [,y] = toXY(0, pct);
+        return `<line x1="${padL}" y1="${y.toFixed(1)}" x2="${W-padR}" y2="${y.toFixed(1)}" stroke="rgba(201,162,39,0.1)" stroke-width="1"/>
+                <text x="${padL-4}" y="${(y+3.5).toFixed(0)}" text-anchor="end" fill="#6090b5" font-size="9">${pct}</text>`;
       }).join('');
-      const _trendGridLines = [100, 70, 40, 10].map(pct => {
-        const y = padT + innerH - (pct / 100) * innerH;
-        return `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="rgba(201,162,39,0.1)" stroke-width="1"/><text x="${padL-4}" y="${y+4}" text-anchor="end" fill="#6090b5" font-size="9">${pct}%</text>`;
+
+      const dots = weeks.map((w, i) => {
+        const [x, y] = toXY(i, w.avg);
+        const c = _dotColor(w.avg);
+        return w.isCur
+          ? `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="5" fill="${c}" stroke="#fff" stroke-width="1.5"/>`
+          : `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.5" fill="${c}" opacity="0.8"/>`;
       }).join('');
-      wrap.innerHTML = `<div class="trend-chart-wrap"><svg class="trend-svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
-        ${_trendGridLines}
-        <polyline points="${pts}" fill="none" stroke="var(--gold)" stroke-width="2" stroke-linejoin="round"/>
-        ${allPcts.map((pct,i) => { const x=padL+i*xStep; const y=padT+innerH-(pct/100)*innerH; return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="3" fill="${_dotColor(pct)}"/>`; }).join('')}
+
+      const monthLabels = weeks.map((w, i) => {
+        if (!w.label) return '';
+        const [x] = toXY(i, 0);
+        return `<text x="${x.toFixed(1)}" y="${H-6}" text-anchor="middle" fill="#8090a5" font-size="9">${w.label}</text>`;
+      }).join('');
+
+      wrap.innerHTML = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;display:block">
+        <defs>
+          <linearGradient id="trendGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="rgba(201,162,39,0.28)"/>
+            <stop offset="100%" stop-color="rgba(201,162,39,0)"/>
+          </linearGradient>
+        </defs>
+        ${gridLines}
+        <polygon points="${fillPts}" fill="url(#trendGrad)"/>
+        <polyline points="${linePts}" fill="none" stroke="rgba(201,162,39,0.9)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+        ${dots}
         ${monthLabels}
-      </svg></div>`;
+      </svg>`;
     } catch { wrap.innerHTML = '<div class="profile-empty">趨勢載入失敗</div>'; }
   }
 
@@ -4232,7 +4195,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   const _I18N = {
     zh: {
       'bot-name': '紫微AI算命大師', 'bot-status': '線上服務中',
-      'fortune-btn': '☀️ 今日運勢', 'calendar-btn': '📅 運勢日曆',
+      'calendar-btn': '📅 本週運勢',
       'bookmark-btn': '📌 收藏', 'history-btn': '📜 歷史',
       'chart-btn': '📊 命盤', 'timeline-btn': '🗺 人生節點',
       'compat-btn': '💕 合盤', 'profiles-btn': '👥 命盤庫',
@@ -4241,7 +4204,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     },
     en: {
       'bot-name': 'Ziwei AI Fortune', 'bot-status': 'Online',
-      'fortune-btn': '☀️ Daily Fortune', 'calendar-btn': '📅 Calendar',
+      'calendar-btn': '📅 Weekly Fortune',
       'bookmark-btn': '📌 Saved', 'history-btn': '📜 History',
       'chart-btn': '📊 Chart', 'timeline-btn': '🗺 Life Events',
       'compat-btn': '💕 Compat', 'profiles-btn': '👥 Profiles',

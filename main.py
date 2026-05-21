@@ -1209,7 +1209,7 @@ async def api_compatibility(body: CompatibilityRequest):
             yield f'data: {json.dumps({"saved": saved_names})}\n\n'
 
         from langchain_core.prompts import PromptTemplate
-        COMPAT_PROMPT = """你是紫微斗數命理師，請根據以下兩份完整命盤分析兩人的感情相性。
+        COMPAT_PROMPT = """你是資深紫微斗數命理師，請根據以下兩份完整命盤，為兩人進行深度合盤分析。
 
 甲方（{name_a}）命盤分析：
 {chart_a}
@@ -1217,28 +1217,85 @@ async def api_compatibility(body: CompatibilityRequest):
 乙方（{name_b}）命盤分析：
 {chart_b}
 
-請從以下角度深入分析：
-1. 兩人的個性特質與互補性
-2. 感情發展的優勢與挑戰
-3. 事業財務上的合作潛力
-4. 整體相性評估與建議
+請按以下結構輸出（Markdown 格式，繁體中文，直接以 {name_a}、{name_b} 稱呼）：
 
-請用繁體中文回答，條理清晰，分段說明，並直接使用對方代稱（{name_a}、{name_b}）。"""
+## 👤 個性特質與互補性
+
+**{name_a}**：（核心特質 2-3 句）
+**{name_b}**：（核心特質 2-3 句）
+**互補分析**：（特質如何互補或碰撞）
+
+## 💕 感情發展
+
+**✅ 優勢**
+（列出 2-3 個感情優勢，每條單獨一行，以「- 」開頭）
+
+**⚠️ 挑戰與注意事項**
+（列出 2-3 個需留意的點，每條單獨一行，以「- 」開頭）
+
+## 💼 事業與財務合作潛力
+
+（評估合作潛力，是否適合共同創業或財務規劃）
+
+## ⭐ 整體相性評估
+
+**相性指數**：X／10 分
+**一句話總評**：（點評兩人關係核心）
+
+**建議**：
+- （建議一）
+- （建議二）
+- （建議三）
+
+---
+> **💡 合盤摘要**：（2-3 句精華，含相性指數與最關鍵特點，供後續對話參考）"""
 
         prompt = PromptTemplate.from_template(COMPAT_PROMPT)
         chain = prompt | _llm
+        full_tokens: list[str] = []
         try:
             async for chunk in chain.astream({"chart_a": chart_text_a, "chart_b": chart_text_b,
                                                "name_a": body.name_a, "name_b": body.name_b}):
                 token = chunk.content if hasattr(chunk, "content") else str(chunk)
                 if token:
+                    full_tokens.append(token)
                     yield f'data: {json.dumps({"token": token})}\n\n'
         except Exception:
             logger.exception("[compat] AI 分析失敗")
             yield f'data: {json.dumps({"token": "⚠️ 合盤分析失敗，請稍後再試。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        # 抽取摘要段落並加入 SESSION_STATS 作為 AI 歷史訊息
+        import re as _re
+        full_text = "".join(full_tokens)
+        _summary_match = _re.search(r'>\s*\*\*💡\s*合盤摘要\*\*[:：]?\s*(.*?)(?:\n\n|\Z)', full_text, _re.DOTALL)
+        summary = _summary_match.group(1).strip() if _summary_match else full_text[:300].strip() + ("…" if len(full_text) > 300 else "")
+        history_msg = f"[合盤分析：{body.name_a} × {body.name_b}]\n{summary}"
+        SESSION_STATS.setdefault(session_id, []).append(AIMessage(content=history_msg))
+
+        yield f'data: {json.dumps({"compat_complete": {"name_a": body.name_a, "name_b": body.name_b}})}\n\n'
         yield f'data: {json.dumps({"done": True})}\n\n'
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+class CompatSaveRequest(BaseModel):
+    session_id: str = "web_default"
+    name_a: str = "甲方"
+    name_b: str = "乙方"
+    result: str
+
+
+@app.post("/api/compat/save-to-history", dependencies=[Depends(verify_api_key)])
+async def api_compat_save(body: CompatSaveRequest):
+    """將合盤全文存入聊天記錄（SESSION_STATS + DB）。"""
+    session_id = (body.session_id or "").strip() or "web_default"
+    msg = f"## 💕 合盤分析：{body.name_a} × {body.name_b}\n\n{body.result}"
+    SESSION_STATS.setdefault(session_id, []).append(AIMessage(content=msg))
+    from chat_bot.auth.auth import save_chat_message
+    await run_in_threadpool(save_chat_message, session_id, "ai", msg)
+    return {"ok": True}
 
 
 # ── LINE Bot Webhook ───────────────────────────────────────────
@@ -1497,6 +1554,78 @@ async def api_profiles_delete(profile_id: int, session_id: str = "web_default"):
     from chat_bot.auth.auth import delete_profile
     await run_in_threadpool(delete_profile, profile_id, session_id)
     return {"status": "ok"}
+
+
+# ── 每週運勢 API ──────────────────────────────────────────────
+_WEEKLY_FORTUNE_PROMPT = """你是資深紫微斗數命理師。請根據命主命盤，為以下一週（{week_range}）生成每日運勢評分。
+
+命盤摘要：
+{horoscope}
+
+請以嚴格的 JSON 格式回傳（不含 markdown 代碼塊）：
+{{"days":[{{"date":"YYYY-MM-DD","weekday":"週一","score":82,"note":"一句概述（15字以內）"}},...],"week_summary":"本週整體運勢（2-3句）"}}
+
+score 為 1-100 整數，各天差異要明顯，分佈自然。共需 7 天，日期依序為：{dates_list}"""
+
+
+@app.get("/api/weekly-fortune")
+async def api_weekly_fortune(session_id: str = "web_default", week_start: str = None):
+    """回傳一週運勢 JSON（同週同 session 快取）。"""
+    import datetime as _dt, json as _json, re as _re
+    session_id = (session_id or "").strip() or "web_default"
+    today = _dt.date.today()
+    if week_start:
+        try:
+            ws = _dt.date.fromisoformat(week_start)
+        except Exception:
+            ws = today - _dt.timedelta(days=today.weekday())
+    else:
+        ws = today - _dt.timedelta(days=today.weekday())
+    week_dates = [ws + _dt.timedelta(days=i) for i in range(7)]
+    cache_key = f"week:{ws.isoformat()}"
+
+    from chat_bot.auth.auth import get_monthly_fortune, save_monthly_fortune, load_horoscope
+
+    cached = await run_in_threadpool(get_monthly_fortune, session_id, cache_key)
+    if cached:
+        try:
+            return _json.loads(cached)
+        except Exception:
+            pass
+
+    horoscope = HOROSCOPE.get(session_id, "")
+    if not horoscope:
+        _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
+        horoscope = _h or ""
+    if not horoscope:
+        raise HTTPException(status_code=400, detail="尚未建立命盤，請先排盤")
+    if _llm is None:
+        raise HTTPException(status_code=503, detail="AI 服務未就緒")
+
+    weekday_names = ["週一", "週二", "週三", "週四", "週五", "週六", "週日"]
+    dates_list = ", ".join(f"{d.isoformat()}({weekday_names[i]})" for i, d in enumerate(week_dates))
+    week_range = f"{ws.isoformat()} 至 {week_dates[-1].isoformat()}"
+
+    from langchain_core.prompts import PromptTemplate
+    prompt = PromptTemplate.from_template(_WEEKLY_FORTUNE_PROMPT)
+    chain = prompt | _llm
+    try:
+        result = await chain.ainvoke({"week_range": week_range, "horoscope": horoscope[:2000], "dates_list": dates_list})
+        content = result.content if hasattr(result, "content") else str(result)
+        match = _re.search(r'\{[\s\S]*\}', content)
+        if not match:
+            raise HTTPException(status_code=500, detail="AI 回傳格式錯誤")
+        data = _json.loads(match.group())
+        data["week_start"] = ws.isoformat()
+        data["week_label"] = f"{ws.month}/{ws.day} – {week_dates[-1].month}/{week_dates[-1].day}"
+        cache_str = _json.dumps(data, ensure_ascii=False)
+        threading.Thread(target=save_monthly_fortune, args=(session_id, cache_key, cache_str), daemon=True).start()
+        return data
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("[weekly-fortune] error")
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 # ── 運勢日曆 API ───────────────────────────────────────────────
