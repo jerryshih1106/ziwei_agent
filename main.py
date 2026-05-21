@@ -726,12 +726,14 @@ async def api_chat_stream(body: ChatRequest):
             yield f'data: {json.dumps({"token": f"⏳ 正在幫 {label} 排命盤，請稍候…"})}\n\n'
             try:
                 from chat_bot.node.save_profile_intent import execute_save_profile
-                reply = await run_in_threadpool(execute_save_profile, _save_data_snap, _save_session_snap)
+                reply, profile_id = await run_in_threadpool(execute_save_profile, _save_data_snap, _save_session_snap)
             except Exception:
                 logger.exception("[save_profile_stream] execute failed")
-                reply = "⚠️ 排盤時發生錯誤，請稍後再試。"
+                reply, profile_id = "⚠️ 排盤時發生錯誤，請稍後再試。", None
             yield f'data: {json.dumps({"clear": True})}\n\n'
             yield f'data: {json.dumps({"token": reply})}\n\n'
+            if profile_id:
+                yield f'data: {json.dumps({"profile_saved": {"id": profile_id, "name": label}})}\n\n'
             yield f'data: {json.dumps({"done": True})}\n\n'
 
         return StreamingResponse(_save_profile_stream(), media_type="text/event-stream")

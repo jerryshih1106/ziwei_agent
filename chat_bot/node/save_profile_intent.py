@@ -51,11 +51,11 @@ def detect_save_intent(msg: str, llm) -> dict | None:
     return data
 
 
-def execute_save_profile(data: dict, session_id: str) -> str:
+def execute_save_profile(data: dict, session_id: str) -> tuple[str, int | None]:
     """
     Generate chart and save to profile library.
     Slow: runs 12 parallel LLM calls for palace analysis.
-    Returns a user-facing confirmation message.
+    Returns (user-facing message, profile_id or None).
     """
     from ziweidoushu.kernel import ZiweiChart
     from ziweidoushu.base import ZiWeiConfig
@@ -77,7 +77,7 @@ def execute_save_profile(data: dict, session_id: str) -> str:
     if is_male is None: missing.append("性別")
 
     if missing:
-        return f"想幫 **{label}** 存入命盤庫，但還缺少：{'、'.join(missing)}，請補充後再說一次。"
+        return f"想幫 **{label}** 存入命盤庫，但還缺少：{'、'.join(missing)}，請補充後再說一次。", None
 
     hour = _ZHI_TO_HOUR.get(hour_zhi, 0)
 
@@ -93,18 +93,19 @@ def execute_save_profile(data: dict, session_id: str) -> str:
         }
     except Exception:
         logger.exception("[save_profile_intent] chart generation failed for label=%s", label)
-        return "⚠️ 排盤時發生錯誤，請確認出生日期是否正確。"
+        return "⚠️ 排盤時發生錯誤，請確認出生日期是否正確。", None
 
     try:
         profile_id = save_profile(session_id, label, horoscope, chart_table, birth_info)
         if profile_id:
             gender = "男" if is_male else "女"
-            return (
-                f"✅ 已將 **{label}** 的命盤存入命盤庫！\n\n"
+            msg = (
+                f"✅ 已將 **{label}** 的命盤存入命盤庫，並自動切換為目前使用中的命盤！\n\n"
                 f"生辰：{year}年{month}月{day}日{hour_zhi}時，{gender}生\n\n"
-                f"可點右上角「👥 命盤庫」查看或載入。"
+                f"現在可以直接提問關於 **{label}** 命盤的問題。"
             )
-        return "⚠️ 儲存命盤時發生錯誤，請稍後再試。"
+            return msg, profile_id
+        return "⚠️ 儲存命盤時發生錯誤，請稍後再試。", None
     except Exception:
         logger.exception("[save_profile_intent] save_profile failed")
-        return "⚠️ 儲存命盤時發生錯誤，請稍後再試。"
+        return "⚠️ 儲存命盤時發生錯誤，請稍後再試。", None
