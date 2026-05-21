@@ -696,8 +696,20 @@ async def api_chat_stream(body: ChatRequest):
         # ── 已有命盤，串流 chat 回應 ──────────────────────────────────
         from chat_bot.node.chat import chat_stream
 
-        SESSION_STATS.setdefault(session_id, []).append(HumanMessage(content=msg))
-        _trim_history(session_id)
+        # ── 偵測「幫別人存命盤」意圖（快速單次 LLM 呼叫）────────────
+        _save_intent_data = None
+        if _llm is not None:
+            from chat_bot.node.save_profile_intent import detect_save_intent
+            _save_intent_data = await run_in_threadpool(detect_save_intent, msg, _llm)
+
+        if _save_intent_data is not None:
+            # 意圖命中：走儲存流程（lock 內只做快速偵測，耗時排盤在 lock 外執行）
+            _save_data_snap = _save_intent_data
+            _save_session_snap = session_id
+
+        else:
+            SESSION_STATS.setdefault(session_id, []).append(HumanMessage(content=msg))
+            _trim_history(session_id)
 
         import datetime as _dt_now
         messages_snapshot = list(SESSION_STATS[session_id])
@@ -705,6 +717,24 @@ async def api_chat_stream(body: ChatRequest):
         chart_table_snapshot = CHART_TABLE.get(session_id, "")
         current_year_snapshot = _dt_now.datetime.now().year
         user_profile_snapshot = user_profile
+
+    # ── 儲存命盤流程（lock 已釋放，耗時排盤在這裡執行）─────────────
+    if _save_intent_data is not None:
+        label = (_save_data_snap.get("label") or "命盤").strip()
+
+        async def _save_profile_stream():
+            yield f'data: {json.dumps({"token": f"⏳ 正在幫 {label} 排命盤，請稍候…"})}\n\n'
+            try:
+                from chat_bot.node.save_profile_intent import execute_save_profile
+                reply = await run_in_threadpool(execute_save_profile, _save_data_snap, _save_session_snap)
+            except Exception:
+                logger.exception("[save_profile_stream] execute failed")
+                reply = "⚠️ 排盤時發生錯誤，請稍後再試。"
+            yield f'data: {json.dumps({"clear": True})}\n\n'
+            yield f'data: {json.dumps({"token": reply})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+
+        return StreamingResponse(_save_profile_stream(), media_type="text/event-stream")
 
     # lock 釋放後才開串流，避免 lock 被長時間持有（串流期間可接受下一個請求排隊）
     token_q: _queue.Queue = _queue.Queue()
