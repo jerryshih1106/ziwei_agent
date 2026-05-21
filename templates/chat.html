@@ -1060,6 +1060,25 @@
       border-radius: 10px;
       padding: 14px;
     }
+    .compat-from-lib {
+      display: block; width: 100%; margin-bottom: 10px;
+      background: rgba(201,162,39,0.08); border: 1px dashed rgba(201,162,39,0.35);
+      border-radius: 7px; padding: 6px 10px; color: var(--gold);
+      font-size: 0.78rem; cursor: pointer; text-align: center; transition: background 0.2s;
+    }
+    .compat-from-lib:hover { background: rgba(201,162,39,0.18); }
+    .compat-lib-dropdown {
+      background: #1e1035; border: 1px solid rgba(201,162,39,0.3);
+      border-radius: 8px; margin-bottom: 10px; overflow: hidden; display: none;
+    }
+    .compat-lib-dropdown.open { display: block; }
+    .compat-lib-item {
+      padding: 8px 12px; cursor: pointer; font-size: 0.82rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05); transition: background 0.15s;
+    }
+    .compat-lib-item:last-child { border-bottom: none; }
+    .compat-lib-item:hover { background: rgba(201,162,39,0.15); }
+    .compat-lib-empty { padding: 10px 12px; font-size: 0.78rem; color: var(--text-muted); text-align: center; }
     .compat-person-title {
       font-family: 'Noto Serif TC', serif;
       font-weight: 700;
@@ -1725,6 +1744,8 @@
         <!-- 甲方 -->
         <div class="compat-person">
           <div class="compat-person-title">甲方</div>
+          <button class="compat-from-lib" onclick="toggleCompatLibDropdown('a')">👥 從命盤庫選取 ▾</button>
+          <div class="compat-lib-dropdown" id="compat-lib-a"></div>
           <label class="compat-label">代稱（儲存用）</label>
           <input class="compat-input" id="ca-name" type="text" placeholder="例：小明、自己" maxlength="20">
           <label class="compat-label">出生年</label>
@@ -1748,6 +1769,8 @@
         <!-- 乙方 -->
         <div class="compat-person">
           <div class="compat-person-title">乙方</div>
+          <button class="compat-from-lib" onclick="toggleCompatLibDropdown('b')">👥 從命盤庫選取 ▾</button>
+          <div class="compat-lib-dropdown" id="compat-lib-b"></div>
           <label class="compat-label">代稱（儲存用）</label>
           <input class="compat-input" id="cb-name" type="text" placeholder="例：小花、對象" maxlength="20">
           <label class="compat-label">出生年</label>
@@ -3031,10 +3054,57 @@
   }
 
   // ── Compatibility ─────────────────────────────────────────────
+  let _compatProfiles = null;
+
+  async function _ensureCompatProfiles() {
+    if (_compatProfiles) return _compatProfiles;
+    try {
+      const res = await fetch(`/api/profiles?session_id=${encodeURIComponent(SESSION_ID)}`);
+      const data = await res.json();
+      _compatProfiles = data.profiles || [];
+    } catch { _compatProfiles = []; }
+    return _compatProfiles;
+  }
+
+  async function toggleCompatLibDropdown(side) {
+    const el = document.getElementById(`compat-lib-${side}`);
+    if (el.classList.contains('open')) { el.classList.remove('open'); return; }
+    el.innerHTML = '<div class="compat-lib-empty">載入中…</div>';
+    el.classList.add('open');
+    const profiles = await _ensureCompatProfiles();
+    if (!profiles.length) {
+      el.innerHTML = '<div class="compat-lib-empty">命盤庫尚無儲存的命盤</div>';
+      return;
+    }
+    el.innerHTML = profiles.map(p => {
+      const bi = p.birth_info || {};
+      const zhi = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+      const hourLabel = bi.hour != null ? zhi[bi.hour / 2] + '時' : '';
+      const genderLabel = bi.is_male != null ? (bi.is_male ? '男' : '女') : '';
+      const detail = [bi.year && `${bi.year}年`, bi.month && `${bi.month}月`, bi.day && `${bi.day}日`, hourLabel, genderLabel].filter(Boolean).join('');
+      return `<div class="compat-lib-item" onclick="_fillCompatFromProfile('${side}',${JSON.stringify(p).replace(/'/g,"&#39;")})">
+        <strong>${p.profile_name}</strong>${detail ? ' · ' + detail : ''}
+      </div>`;
+    }).join('');
+  }
+
+  function _fillCompatFromProfile(side, profile) {
+    const bi = profile.birth_info || {};
+    const pfx = side === 'a' ? 'ca' : 'cb';
+    document.getElementById(`${pfx}-name`).value = profile.profile_name || '';
+    if (bi.year)  document.getElementById(`${pfx}-year`).value  = bi.year;
+    if (bi.month) document.getElementById(`${pfx}-month`).value = bi.month;
+    if (bi.day)   document.getElementById(`${pfx}-day`).value   = bi.day;
+    if (bi.hour != null) document.getElementById(`${pfx}-hour`).value = bi.hour;
+    if (bi.is_male != null) document.getElementById(`${pfx}-gender`).value = bi.is_male ? '1' : '0';
+    document.getElementById(`compat-lib-${side}`).classList.remove('open');
+  }
+
   function openCompat() {
     document.getElementById('compat-modal').classList.add('open');
     document.getElementById('compat-result').classList.remove('visible');
     document.getElementById('compat-result').innerHTML = '';
+    _compatProfiles = null; // 每次開啟重新載入命盤庫
   }
   function closeCompat() { document.getElementById('compat-modal').classList.remove('open'); }
   function closeCompatOnOverlay(e) {
