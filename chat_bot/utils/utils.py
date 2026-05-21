@@ -1,3 +1,5 @@
+import logging
+import os
 import re
 import time
 from functools import wraps
@@ -6,23 +8,54 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel as BaseLLM
 from ..global_config import GlobalConfig
 
-def build_llm(model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.7) -> BaseLLM:
-    """
-    根據 model_name 回傳對應的 LLM 物件
+logger = logging.getLogger(__name__)
 
-    支援的 model_name: "gpt-3.5", "gpt-4o", "llama3", "gemini-2"
-    """
+_langfuse_handler = None
+
+def _get_langfuse_handler():
+    global _langfuse_handler
+    if _langfuse_handler is not None:
+        return _langfuse_handler
+    if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
+        return None
+    try:
+        from langfuse.langchain import CallbackHandler
+        _langfuse_handler = CallbackHandler()
+        logger.info("Langfuse tracing enabled")
+        return _langfuse_handler
+    except ImportError:
+        try:
+            from langfuse.callback import CallbackHandler
+            _langfuse_handler = CallbackHandler()
+            logger.info("Langfuse tracing enabled")
+            return _langfuse_handler
+        except Exception as e:
+            logger.warning("Langfuse init failed: %s", e)
+            return None
+    except Exception as e:
+        logger.warning("Langfuse init failed: %s", e)
+        return None
+
+
+def build_llm(model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.7) -> BaseLLM:
+    callbacks = []
+    handler = _get_langfuse_handler()
+    if handler:
+        callbacks.append(handler)
+
+    kwargs: dict = {"temperature": temperature}
+    if callbacks:
+        kwargs["callbacks"] = callbacks
 
     model_name = model_name.lower()
 
     if model_name == "gpt-3.5":
-        llm: BaseLLM = ChatOpenAI(model="gpt-3.5-turbo", temperature=temperature)
-
+        llm: BaseLLM = ChatOpenAI(model="gpt-3.5-turbo", **kwargs)
     elif model_name == "gpt-4o":
-        llm: BaseLLM = ChatOpenAI(model="gpt-4o", temperature=temperature)
+        llm: BaseLLM = ChatOpenAI(model="gpt-4o", **kwargs)
     else:
         try:
-            llm: BaseLLM = ChatGoogleGenerativeAI(model=model_name, temperature=temperature)
+            llm: BaseLLM = ChatGoogleGenerativeAI(model=model_name, **kwargs)
         except Exception as e:
             raise ValueError(f"Unsupported model_name: {model_name}, {e}")
 
