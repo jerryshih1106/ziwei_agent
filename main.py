@@ -712,7 +712,7 @@ async def api_chat_stream(body: ChatRequest):
             _trim_history(session_id)
 
         import datetime as _dt_now
-        messages_snapshot = list(SESSION_STATS[session_id])
+        messages_snapshot = list(SESSION_STATS.get(session_id, []))
         horoscope_snapshot = HOROSCOPE[session_id]
         chart_table_snapshot = CHART_TABLE.get(session_id, "")
         current_year_snapshot = _dt_now.datetime.now().year
