@@ -264,6 +264,43 @@ def _playbook_conv(session_id: str, n: int = 5) -> str:
     return "\n".join(f"用戶: {t}" for t in user_texts)
 
 
+def _auto_save_self_profile(session_id: str, horoscope: str, chart_table: str, birth_info: "dict | None") -> None:
+    """新命盤排好後，若命盤庫中尚無「我」，自動以「我」為名存入命盤庫。"""
+    from chat_bot.auth.auth import save_profile, load_profiles
+    try:
+        existing = load_profiles(session_id)
+        if not any(p["profile_name"] == "我" for p in existing):
+            save_profile(session_id, "我", horoscope, chart_table, birth_info)
+            logger.info("[auto_save_self] session=%s saved as '我'", session_id)
+    except Exception:
+        logger.warning("[auto_save_self] failed for session=%s", session_id, exc_info=True)
+
+
+def _restore_session_from_db(session_id: str, limit: int = 20) -> None:
+    """
+    伺服器重啟後的記憶體恢復：從 chat_history DB 將最近 N 則對話
+    重新載入 SESSION_STATS，讓 LLM 取得上下文，避免重啟即失憶。
+    只在 session_id 尚未存在於 SESSION_STATS 時執行。
+    """
+    if session_id in SESSION_STATS:
+        return
+    from chat_bot.auth.auth import load_chat_history
+    try:
+        rows = load_chat_history(session_id, limit=limit)
+    except Exception:
+        SESSION_STATS[session_id] = []
+        return
+    msgs = []
+    for r in rows:
+        if r["role"] == "user":
+            msgs.append(HumanMessage(content=r["content"]))
+        else:
+            msgs.append(AIMessage(content=r["content"]))
+    SESSION_STATS[session_id] = msgs
+    if msgs:
+        logger.info("[session_restore] %s: recovered %d messages from DB", session_id, len(msgs))
+
+
 # ── 行銷首頁 ──────────────────────────────────────────────────
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request):
@@ -387,6 +424,8 @@ async def api_chat(body: ChatRequest):
                     CHART_TABLE[session_id] = _ct or ""
                     if _bi:
                         BIRTH_INFO[session_id] = _bi
+                    # 伺服器重啟後同步恢復對話上下文
+                    await run_in_threadpool(_restore_session_from_db, session_id)
 
             if GlobalConfig.USE_AGENT_SKILL:
                 if is_reset or session_id not in AGENT_THREAD:
@@ -432,11 +471,13 @@ async def api_chat(body: ChatRequest):
                         BIRTH_INFO[session_id] = _bi
                     if HOROSCOPE[session_id]:
                         from chat_bot.auth.auth import save_horoscope
-                        threading.Thread(
-                            target=save_horoscope,
-                            args=(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id)),
-                            daemon=True,
-                        ).start()
+                        _h_snap = HOROSCOPE[session_id]
+                        _ct_snap = CHART_TABLE.get(session_id, "")
+                        _bi_snap = BIRTH_INFO.get(session_id)
+                        def _save_new_chart(sid=session_id, h=_h_snap, ct=_ct_snap, bi=_bi_snap):
+                            save_horoscope(sid, h, ct, bi)
+                            _auto_save_self_profile(sid, h, ct, bi)
+                        threading.Thread(target=_save_new_chart, daemon=True).start()
 
                 reply = _extract_last_message(output)
                 SESSION_STATS[session_id].append(AIMessage(content=reply))
@@ -588,6 +629,8 @@ async def api_chat_stream(body: ChatRequest):
                 CHART_TABLE[session_id] = _ct or ""
                 if _bi:
                     BIRTH_INFO[session_id] = _bi
+                # 伺服器重啟後同步恢復對話上下文
+                await run_in_threadpool(_restore_session_from_db, session_id)
 
         horoscope_ready = (
             session_id in HOROSCOPE
@@ -646,6 +689,7 @@ async def api_chat_stream(body: ChatRequest):
                             if HOROSCOPE[session_id]:
                                 from chat_bot.auth.auth import save_horoscope
                                 save_horoscope(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id))
+                                _auto_save_self_profile(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id))
                         r = _extract_last_message(output)
                         SESSION_STATS[session_id].append(AIMessage(content=r))
                         return r
@@ -1798,6 +1842,448 @@ async def api_life_events(session_id: str = "web_default"):
     except Exception:
         logger.exception("[life-events] error")
         raise HTTPException(status_code=500, detail="人生節點分析失敗，請稍後再試")
+
+
+# ── 流年 / 流月分析 API ────────────────────────────────────────
+_ANNUAL_FORTUNE_PROMPT = """你是資深紫微斗數命理師。請根據命主命盤，為{year}年做完整的流年分析。
+
+命盤資料：
+{horoscope}
+
+請以嚴格的 JSON 格式回傳（不含 markdown 代碼塊）：
+{{"year_summary":"流年整體分析（3-4句，繁體中文）","overall_score":75,"key_advice":"今年最重要建議（一句話）","months":[{{"month":1,"score":82,"note":"本月概述（15字以內）"}},...]}}
+
+overall_score 與 score 均為 1-100 整數。共需包含 12 個月（month 1-12）。各月分數差異要明顯，分佈自然。"""
+
+_MONTHLY_DETAIL_PROMPT = """你是資深紫微斗數命理師。請根據命主命盤，為{year}年{month}月做詳細的流月分析。
+
+命盤資料：
+{horoscope}
+
+請按以下格式回答（繁體中文，內容詳盡）：
+
+## {year}年{month}月流月分析 {stars}
+
+**本月整體概述：** （2-3句說明本月主要氣場與機遇）
+
+| 面向 | 運勢 | 本月重點 |
+|------|------|---------|
+| 💕 感情 | ★★★★☆ | 一句重點 |
+| 💼 事業 | ★★★☆☆ | 一句重點 |
+| 💰 財運 | ★★★★☆ | 一句重點 |
+| ❤️ 健康 | ★★★☆☆ | 一句重點 |
+
+**本月吉日：** 列出3-5個吉日（僅日期數字，例：3、9、17）
+
+**注意事項：** 1-2件本月需特別留意的事
+
+**行動建議：** 具體的月度建議（2-3條）"""
+
+
+@app.get("/api/annual-fortune")
+async def api_annual_fortune(session_id: str = "web_default", year: int = None):
+    """回傳流年分析 JSON（同年同 session 快取）。"""
+    import datetime as _dt, json as _json, re as _re
+    session_id = (session_id or "").strip() or "web_default"
+    if year is None:
+        year = _dt.date.today().year
+    if not (1900 <= year <= 2200):
+        raise HTTPException(status_code=400, detail="年份需在 1900–2200 之間")
+
+    cache_key = f"annual:{year}"
+    from chat_bot.auth.auth import get_annual_fortune, save_annual_fortune, load_horoscope
+
+    cached = await run_in_threadpool(get_annual_fortune, session_id, cache_key)
+    if cached:
+        try:
+            return _json.loads(cached)
+        except Exception:
+            pass
+
+    horoscope = HOROSCOPE.get(session_id, "")
+    if not horoscope:
+        _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
+        horoscope = _h or ""
+    if not horoscope:
+        raise HTTPException(status_code=400, detail="尚未建立命盤，請先排盤")
+    if _llm is None:
+        raise HTTPException(status_code=503, detail="AI 服務未就緒")
+
+    from langchain_core.prompts import PromptTemplate
+    prompt = PromptTemplate.from_template(_ANNUAL_FORTUNE_PROMPT)
+    chain = prompt | _llm
+    try:
+        result = await chain.ainvoke({"year": year, "horoscope": horoscope[:2500]})
+        content = result.content if hasattr(result, "content") else str(result)
+        match = _re.search(r'\{[\s\S]*\}', content)
+        if not match:
+            raise HTTPException(status_code=500, detail="AI 回傳格式錯誤")
+        data = _json.loads(match.group())
+        data["year"] = year
+        threading.Thread(
+            target=save_annual_fortune,
+            args=(session_id, cache_key, _json.dumps(data, ensure_ascii=False)),
+            daemon=True,
+        ).start()
+        return data
+    except HTTPException:
+        raise
+    except Exception:
+        logger.exception("[annual-fortune] error")
+        raise HTTPException(status_code=500, detail="流年分析失敗，請稍後再試")
+
+
+@app.get("/api/monthly-detail")
+async def api_monthly_detail(session_id: str = "web_default", year: int = None, month: int = None):
+    """SSE 串流：流月詳細分析（同年月同 session 快取）。"""
+    import datetime as _dt
+    session_id = (session_id or "").strip() or "web_default"
+    today = _dt.date.today()
+    if year is None:
+        year = today.year
+    if month is None:
+        month = today.month
+    if not (1900 <= year <= 2200):
+        raise HTTPException(status_code=400, detail="年份需在 1900–2200 之間")
+    if not (1 <= month <= 12):
+        raise HTTPException(status_code=400, detail="月份需在 1–12 之間")
+
+    cache_key = f"monthly_detail:{year}-{month:02d}"
+    from chat_bot.auth.auth import get_annual_fortune, save_annual_fortune, load_horoscope
+
+    async def _stream():
+        cached = await run_in_threadpool(get_annual_fortune, session_id, cache_key)
+        if cached:
+            yield f'data: {json.dumps({"token": cached})}\n\n'
+            yield f'data: {json.dumps({"done": True, "cached": True})}\n\n'
+            return
+
+        horoscope = HOROSCOPE.get(session_id, "")
+        if not horoscope:
+            _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
+            horoscope = _h or ""
+        if not horoscope:
+            yield f'data: {json.dumps({"token": "⚠️ 尚未建立命盤，請先輸入出生資料排盤。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+        if _llm is None:
+            yield f'data: {json.dumps({"token": "⚠️ AI 服務尚未就緒，請稍後再試。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        import random
+        stars_options = ["★★★★☆", "★★★☆☆", "★★★★★", "★★★☆☆", "★★★★☆"]
+        stars = random.choice(stars_options)
+        from langchain_core.prompts import PromptTemplate
+        prompt = PromptTemplate.from_template(_MONTHLY_DETAIL_PROMPT)
+        chain = prompt | _llm
+        _inputs = {"year": year, "month": month, "horoscope": horoscope[:2500], "stars": stars}
+        accumulated = []
+        _max_retries = 3
+        for _attempt in range(_max_retries):
+            _attempt_tokens: list[str] = []
+            try:
+                async for chunk in chain.astream(_inputs):
+                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if token:
+                        _attempt_tokens.append(token)
+                        yield f'data: {json.dumps({"token": token})}\n\n'
+                accumulated = _attempt_tokens
+                break
+            except Exception as exc:
+                _err = str(exc)
+                _is_busy = any(k in _err for k in ["503", "high demand", "overloaded", "UNAVAILABLE", "Resource has been exhausted"])
+                if _attempt < _max_retries - 1 and _is_busy:
+                    _wait = 5 * (2 ** _attempt)
+                    yield f'data: {json.dumps({"clear": True})}\n\n'
+                    yield f'data: {json.dumps({"token": f"⚠️ AI 服務繁忙，{_wait} 秒後自動重試（第 {_attempt + 2}/{_max_retries} 次）…"})}\n\n'
+                    await asyncio.sleep(_wait)
+                    yield f'data: {json.dumps({"clear": True})}\n\n'
+                else:
+                    logger.exception("[monthly-detail] generate error")
+                    yield f'data: {json.dumps({"token": "⚠️ 生成失敗，請稍後再試。"})}\n\n'
+                    yield f'data: {json.dumps({"done": True})}\n\n'
+                    return
+
+        full_content = "".join(accumulated)
+        threading.Thread(
+            target=save_annual_fortune,
+            args=(session_id, cache_key, full_content),
+            daemon=True,
+        ).start()
+        yield f'data: {json.dumps({"done": True})}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# ── 八字排盤 API ──────────────────────────────────────────────
+_BAZI_INTERPRET_PROMPT = """你是資深八字命理師（BaZi / Four Pillars）。以下是命主的八字命盤，請做精要的命盤解析。
+
+【八字命盤】
+年柱：{year_gz}　月柱：{month_gz}　日柱：{day_gz}　時柱：{hour_gz}
+
+日主（命主）：{day_master}（{day_master_element}）
+五行分佈：{wuxing}
+
+出生時間：{birth_dt}（真太陽時：{solar_time}，校正 {correction} 分鐘）
+時辰：{shichen}
+
+請依以下架構分析（繁體中文，精簡有力）：
+
+## 🔯 八字命盤 {day_master}日主
+
+**日主特質：** （一句描述日主天干的個性）
+
+**五行喜忌：**
+- 旺相衰弱分析（一句）
+- 喜用神建議（一句）
+
+| 面向 | 分析 |
+|------|------|
+| 💼 事業財運 | 一句重點 |
+| 💕 感情婚姻 | 一句重點 |
+| ❤️ 健康養生 | 一句重點 |
+| 🌟 人生建議 | 一句重點 |
+
+**命盤亮點：** 2-3個最突出的命盤特徵或人生主題
+
+**開運建議：** 1-2條具體可行的建議（顏色、方位、行業等）"""
+
+
+class BaziRequest(BaseModel):
+    year: int
+    month: int
+    day: int
+    hour: int = 0
+    minute: int = 0
+    longitude: float = 121.5
+    is_male: int = 1          # 1=男, 0=女
+    name: str = "命主"
+    session_id: str = "web_default"
+
+    @field_validator("year")
+    @classmethod
+    def year_range(cls, v):
+        if not (1900 <= v <= 2100):
+            raise ValueError("出生年份需在 1900–2100 之間")
+        return v
+
+    @field_validator("month")
+    @classmethod
+    def month_range(cls, v):
+        if not (1 <= v <= 12):
+            raise ValueError("月份需在 1–12 之間")
+        return v
+
+    @field_validator("day")
+    @classmethod
+    def day_range(cls, v):
+        if not (1 <= v <= 31):
+            raise ValueError("日期需在 1–31 之間")
+        return v
+
+    @field_validator("hour")
+    @classmethod
+    def hour_range(cls, v):
+        if not (0 <= v <= 23):
+            raise ValueError("小時需在 0–23 之間")
+        return v
+
+    @field_validator("minute")
+    @classmethod
+    def minute_range(cls, v):
+        if not (0 <= v <= 59):
+            raise ValueError("分鐘需在 0–59 之間")
+        return v
+
+    @field_validator("longitude")
+    @classmethod
+    def lon_range(cls, v):
+        if not (-180 <= v <= 180):
+            raise ValueError("經度需在 -180–180 之間")
+        return v
+
+    @field_validator("name")
+    @classmethod
+    def name_len(cls, v):
+        return (v or "命主").strip()[:20] or "命主"
+
+
+@app.post("/api/bazi/chart")
+async def api_bazi_chart(body: BaziRequest):
+    """計算八字命盤（純算法，無 AI），立即回傳 JSON。"""
+    from chat_bot.utils.bazi import compute_bazi, wuxing_count, day_master
+    try:
+        result = await run_in_threadpool(
+            compute_bazi,
+            body.year, body.month, body.day,
+            body.hour, body.minute, body.longitude,
+        )
+        result["wuxing"] = wuxing_count(result)
+        result["day_master"] = day_master(result)
+        return result
+    except Exception as exc:
+        logger.exception("[bazi-chart] error")
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/bazi/dayun")
+async def api_bazi_dayun(body: BaziRequest):
+    """計算大運（10年大運）。"""
+    from chat_bot.utils.bazi import compute_dayun
+    try:
+        result = await run_in_threadpool(
+            compute_dayun,
+            body.year, body.month, body.day,
+            body.hour, body.minute,
+            bool(body.is_male),
+            body.longitude,
+        )
+        return result
+    except Exception as exc:
+        logger.exception("[bazi-dayun] error")
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+class BaziProfileRequest(BaseModel):
+    session_id: str = "web_default"
+    profile_name: str
+    year: int
+    month: int
+    day: int
+    hour: int = 0
+    minute: int = 0
+    longitude: float = 121.5
+    is_male: int = 1
+    bazi_json: str = "{}"
+
+    @field_validator("profile_name")
+    @classmethod
+    def name_len(cls, v):
+        v = (v or "").strip()[:20]
+        if not v:
+            raise ValueError("命盤名稱不得為空")
+        return v
+
+
+@app.post("/api/bazi/profiles")
+async def api_bazi_profile_save(body: BaziProfileRequest):
+    session_id = (body.session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import save_bazi_profile
+    pid = await run_in_threadpool(
+        save_bazi_profile,
+        session_id, body.profile_name,
+        body.year, body.month, body.day,
+        body.hour, body.minute, body.longitude,
+        body.is_male, body.bazi_json,
+    )
+    if pid < 0:
+        raise HTTPException(status_code=500, detail="儲存失敗")
+    return {"id": pid, "status": "ok"}
+
+
+@app.get("/api/bazi/profiles")
+async def api_bazi_profile_list(session_id: str = "web_default"):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import load_bazi_profiles
+    profiles = await run_in_threadpool(load_bazi_profiles, session_id)
+    return {"profiles": profiles}
+
+
+@app.delete("/api/bazi/profiles/{profile_id}")
+async def api_bazi_profile_delete(profile_id: int, session_id: str = "web_default"):
+    session_id = (session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import delete_bazi_profile
+    ok = await run_in_threadpool(delete_bazi_profile, profile_id, session_id)
+    return {"status": "ok" if ok else "not_found"}
+
+
+class BaziSaveHistoryRequest(BaseModel):
+    session_id: str = "web_default"
+    name: str = "命主"
+    bazi_summary: str
+
+
+@app.post("/api/bazi/save-to-history")
+async def api_bazi_save_history(body: BaziSaveHistoryRequest):
+    session_id = (body.session_id or "").strip() or "web_default"
+    from chat_bot.auth.auth import save_chat_message
+    content = body.bazi_summary[:3000]
+    await run_in_threadpool(save_chat_message, session_id, "ai", content)
+    return {"status": "ok"}
+
+
+@app.post("/api/bazi/interpret")
+async def api_bazi_interpret(body: BaziRequest):
+    """SSE 串流：AI 解盤八字命盤。"""
+    from chat_bot.utils.bazi import compute_bazi, wuxing_count, day_master, _STEM_ELEMENT
+
+    if _llm is None:
+        raise HTTPException(status_code=503, detail="AI 服務未就緒")
+
+    try:
+        bazi = await run_in_threadpool(
+            compute_bazi,
+            body.year, body.month, body.day,
+            body.hour, body.minute, body.longitude,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    dm = day_master(bazi)
+    dm_elem = _STEM_ELEMENT[bazi["day_pillar"]["stem_idx"]]
+    wx = wuxing_count(bazi)
+    wx_str = " ".join(f"{k}{v}個" for k, v in wx.items() if v > 0)
+    solar_time = f"{bazi['solar_hour']:02d}:{bazi['solar_minute']:02d}"
+    birth_dt = f"{body.year}年{body.month}月{body.day}日 {body.hour:02d}:{body.minute:02d}"
+
+    _inputs = {
+        "year_gz":   bazi["year_pillar"]["ganzhi"],
+        "month_gz":  bazi["month_pillar"]["ganzhi"],
+        "day_gz":    bazi["day_pillar"]["ganzhi"],
+        "hour_gz":   bazi["hour_pillar"]["ganzhi"],
+        "day_master": dm,
+        "day_master_element": dm_elem,
+        "wuxing": wx_str,
+        "birth_dt": birth_dt,
+        "solar_time": solar_time,
+        "correction": bazi["correction_minutes"],
+        "shichen": bazi["shichen"],
+    }
+
+    async def _stream():
+        from langchain_core.prompts import PromptTemplate
+        prompt = PromptTemplate.from_template(_BAZI_INTERPRET_PROMPT)
+        chain = prompt | _llm
+        accumulated = []
+        _max_retries = 3
+        for _attempt in range(_max_retries):
+            _tokens: list[str] = []
+            try:
+                async for chunk in chain.astream(_inputs):
+                    tok = chunk.content if hasattr(chunk, "content") else str(chunk)
+                    if tok:
+                        _tokens.append(tok)
+                        yield f'data: {json.dumps({"token": tok})}\n\n'
+                accumulated = _tokens
+                break
+            except Exception as exc:
+                _err = str(exc)
+                _busy = any(k in _err for k in ["503", "high demand", "overloaded", "UNAVAILABLE", "Resource has been exhausted"])
+                if _attempt < _max_retries - 1 and _busy:
+                    _wait = 5 * (2 ** _attempt)
+                    yield f'data: {json.dumps({"clear": True})}\n\n'
+                    yield f'data: {json.dumps({"token": f"⚠️ AI 服務繁忙，{_wait} 秒後重試…"})}\n\n'
+                    await asyncio.sleep(_wait)
+                    yield f'data: {json.dumps({"clear": True})}\n\n'
+                else:
+                    logger.exception("[bazi-interpret] error")
+                    yield f'data: {json.dumps({"token": "⚠️ 解盤失敗，請稍後再試。"})}\n\n'
+                    yield f'data: {json.dumps({"done": True})}\n\n'
+                    return
+        yield f'data: {json.dumps({"done": True, "bazi": bazi})}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
 
 
 if __name__ == "__main__":

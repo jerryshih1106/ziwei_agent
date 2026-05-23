@@ -11,9 +11,12 @@ from ..global_config import GlobalConfig
 logger = logging.getLogger(__name__)
 
 _langfuse_handler = None
+_LANGFUSE_FAILED = object()  # sentinel: tried but unavailable
 
 def _get_langfuse_handler():
     global _langfuse_handler
+    if _langfuse_handler is _LANGFUSE_FAILED:
+        return None
     if _langfuse_handler is not None:
         return _langfuse_handler
     if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
@@ -31,9 +34,11 @@ def _get_langfuse_handler():
             return _langfuse_handler
         except Exception as e:
             logger.warning("Langfuse init failed: %s", e)
+            _langfuse_handler = _LANGFUSE_FAILED
             return None
     except Exception as e:
         logger.warning("Langfuse init failed: %s", e)
+        _langfuse_handler = _LANGFUSE_FAILED
         return None
 
 

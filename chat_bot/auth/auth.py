@@ -15,7 +15,12 @@ WHITELIST_PATH = Path(__file__).parent.parent.parent / "whitelist.md"
 
 import jwt
 
-DB_PATH = Path(__file__).parent.parent.parent / "users.db"
+# DATA_DIR 可透過環境變數指定持久化掛載目錄（Zeabur Volume）。
+# 未設定時沿用舊行為（project root），本地開發無感。
+_DATA_DIR = Path(os.environ["DATA_DIR"]) if os.environ.get("DATA_DIR") else Path(__file__).parent.parent.parent
+_DATA_DIR.mkdir(parents=True, exist_ok=True)
+
+DB_PATH = _DATA_DIR / "users.db"
 _JWT_SECRET: Optional[str] = None
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRE_DAYS = 30
@@ -34,7 +39,7 @@ def get_db() -> sqlite3.Connection:
     return conn
 
 
-_HOROSCOPE_DIR = Path(__file__).parent.parent.parent / "horoscope"
+_HOROSCOPE_DIR = _DATA_DIR / "horoscope"
 
 
 def _safe_sid(session_id: str) -> str:
@@ -135,6 +140,34 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_reactions_session ON message_reactions(session_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS annual_fortune (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                key TEXT NOT NULL,
+                content TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                UNIQUE(session_id, key)
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_annual_fortune_session ON annual_fortune(session_id)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS bazi_profiles (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                session_id TEXT NOT NULL,
+                profile_name TEXT NOT NULL,
+                year INTEGER NOT NULL,
+                month INTEGER NOT NULL,
+                day INTEGER NOT NULL,
+                hour INTEGER NOT NULL DEFAULT 0,
+                minute INTEGER NOT NULL DEFAULT 0,
+                longitude REAL NOT NULL DEFAULT 121.5,
+                is_male INTEGER NOT NULL DEFAULT 1,
+                bazi_json TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_bazi_profiles_session ON bazi_profiles(session_id)")
         conn.commit()
 
 
@@ -511,6 +544,80 @@ def save_monthly_fortune(session_id: str, year_month: str, content: str) -> None
             conn.commit()
     except Exception:
         logger.warning("[monthly_fortune] 儲存失敗: %s %s", session_id, year_month)
+
+
+# ── Annual fortune cache ──────────────────────────────────────
+
+def get_annual_fortune(session_id: str, key: str) -> "str | None":
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT content FROM annual_fortune WHERE session_id=? AND key=?",
+                (session_id, key),
+            ).fetchone()
+        return row["content"] if row else None
+    except Exception:
+        return None
+
+
+def save_annual_fortune(session_id: str, key: str, content: str) -> None:
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO annual_fortune (session_id, key, content, created_at) VALUES (?,?,?,?)",
+                (session_id, key, content, now),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[annual_fortune] 儲存失敗: %s %s", session_id, key)
+
+
+# ── BaZi profiles ────────────────────────────────────────────
+
+def save_bazi_profile(session_id: str, profile_name: str, year: int, month: int,
+                      day: int, hour: int, minute: int, longitude: float,
+                      is_male: int, bazi_json: str) -> int:
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                """INSERT INTO bazi_profiles
+                   (session_id,profile_name,year,month,day,hour,minute,longitude,is_male,bazi_json,created_at)
+                   VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+                (session_id, profile_name, year, month, day, hour, minute,
+                 longitude, is_male, bazi_json, now),
+            )
+            conn.commit()
+            return cur.lastrowid
+    except Exception:
+        logger.warning("[bazi_profiles] 儲存失敗: %s", session_id)
+        return -1
+
+
+def load_bazi_profiles(session_id: str) -> list:
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT * FROM bazi_profiles WHERE session_id=? ORDER BY id DESC",
+                (session_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        return []
+
+
+def delete_bazi_profile(profile_id: int, session_id: str) -> bool:
+    try:
+        with get_db() as conn:
+            cur = conn.execute(
+                "DELETE FROM bazi_profiles WHERE id=? AND session_id=?",
+                (profile_id, session_id),
+            )
+            conn.commit()
+        return cur.rowcount > 0
+    except Exception:
+        return False
 
 
 def count_users() -> int:

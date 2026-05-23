@@ -1,0 +1,5 @@
+1990-03-15: JDN=2447966 offset39_idx=5 (¤v¤x) | day=¤v¤x hour=¤B¥f
+2000-01-01: JDN=2451545 offset39_idx=44 (¥³¥Ó) | day=¥³¥Ó hour=¥³¤È
+1984-02-04: JDN=2445735 offset39_idx=54 (¥³¤È) | day=¥³¤È hour=¥³¤È
+2024-01-01: JDN=2460311 offset39_idx=50 (¥Ò±G) | day=¥Ò±G hour=¥³¨°
+2026-05-23: JDN=2461184 offset39_idx=23 (¤B¥è) | day=¤B¥è hour=¤þ¤È

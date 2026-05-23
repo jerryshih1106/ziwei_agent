@@ -1,11 +1,13 @@
 import json
 import logging
+import os
 import re
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-_MEMORY_DIR = Path("memory")
+_MEMORY_DIR = (Path(os.environ["DATA_DIR"]) / "memory") if os.environ.get("DATA_DIR") else Path("memory")
+_MEMORY_DIR.mkdir(parents=True, exist_ok=True)
 
 _FIELD_LABELS = {
     "name": "姓名/稱呼",
