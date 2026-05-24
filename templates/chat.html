@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#060e1c">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
@@ -334,10 +334,11 @@
       color: var(--gold);
       background: rgba(201,162,39,0.1);
     }
-    /* Regenerate & Reaction buttons */
+    /* Regenerate & Reaction buttons — Fix 3: 44px touch target */
     .regen-btn {
       background:none; border:none; color:var(--text-muted); cursor:pointer;
-      font-size:0.8rem; padding:2px 6px; border-radius:6px; transition:all 0.2s; opacity:0.6;
+      font-size:0.8rem; padding:8px 10px; border-radius:6px; transition:all 0.2s; opacity:0.6;
+      min-height: 36px;
     }
     .regen-btn:hover { color:var(--gold); opacity:1; }
     /* Voice button */
@@ -497,10 +498,17 @@
       .bot-status { font-size: 0.68rem; }
       .topbar-btn-reset { display: none; }
       .topbar-username { max-width: 60px; font-size: 0.75rem; }
-      .topbar-logout { font-size: 0.72rem; padding: 4px 7px; }
+      /* Fix 2: 登出按鈕觸控目標 >= 36px */
+      .topbar-logout { font-size: 0.75rem; padding: 7px 10px; min-height: 36px; }
+      /* Fix 3: 返回按鈕觸控區域 >= 44px */
+      .back-btn { padding: 10px 12px; font-size: 1.4rem; }
+      /* Fix 4: topbar 橫向捲動漸層提示 */
       .topbar-actions {
         overflow-x: auto; flex-wrap: nowrap;
         scrollbar-width: none; -webkit-overflow-scrolling: touch;
+        -webkit-mask-image: linear-gradient(to right, black 82%, transparent 100%);
+        mask-image: linear-gradient(to right, black 82%, transparent 100%);
+        padding-right: 20px;
       }
       .topbar-actions::-webkit-scrollbar { display: none; }
       .topbar-btn { flex-shrink: 0; font-size: 0.72rem; padding: 4px 9px; }
@@ -512,8 +520,11 @@
       .msg-bubble { max-width: 88%; font-size: 0.95rem; padding: 10px 14px; }
       .msg-time { font-size: 0.72rem; }
 
-      /* Input area */
-      .input-area { padding: 8px 10px; }
+      /* Input area — Fix 1: iOS Safe Area bottom inset */
+      .input-area {
+        padding: 8px 10px;
+        padding-bottom: max(8px, env(safe-area-inset-bottom));
+      }
       .input-hint { display: none; }
       #user-input { font-size: 1rem; } /* >= 16px 避免 iOS 自動縮放 */
 
@@ -526,6 +537,18 @@
         scrollbar-width: none;
       }
       .quick-questions::-webkit-scrollbar { display: none; }
+      /* Fix 5: chip 捲動漸層提示 */
+      #qq-chips {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+        -webkit-mask-image: linear-gradient(to right, black 80%, transparent 100%);
+        mask-image: linear-gradient(to right, black 80%, transparent 100%);
+        padding-right: 28px;
+        padding-bottom: 4px;
+      }
+      #qq-chips::-webkit-scrollbar { display: none; }
       .qq-chip { font-size: 0.88rem; padding: 7px 12px; flex-shrink: 0; }
     }
 
@@ -641,17 +664,48 @@
       color: var(--text-muted);
     }
 
+    /* Fix 6: 命盤格子字體提升 + tap 互動 */
     @media (max-width: 600px) {
       .palace-grid { min-height: 280px; gap: 2px; }
-      .palace-cell { padding: 4px 3px; gap: 1px; }
-      .palace-name { font-size: 0.72rem; }
-      .palace-ganzhi { font-size: 0.6rem; }
-      .palace-stars { font-size: 0.62rem; }
-      .palace-hua, .palace-limits { font-size: 0.58rem; }
+      .palace-cell {
+        padding: 5px 3px; gap: 1px; cursor: pointer;
+        -webkit-tap-highlight-color: rgba(201,162,39,0.2);
+        transition: background 0.15s;
+      }
+      .palace-cell:active { background: rgba(201,162,39,0.15) !important; }
+      .palace-name { font-size: 0.76rem; }
+      .palace-ganzhi { font-size: 0.64rem; }
+      .palace-stars { font-size: 0.67rem; }
+      .palace-hua, .palace-limits { font-size: 0.62rem; }
       .palace-center-title { font-size: 0.85rem; }
       .palace-center-date { font-size: 0.72rem; }
       .palace-center-sub { font-size: 0.68rem; }
     }
+    /* Fix 6: 宮位詳細彈窗 */
+    .palace-detail-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 2000;
+      align-items: flex-end; justify-content: center;
+    }
+    .palace-detail-overlay.open { display: flex; }
+    .palace-detail-sheet {
+      background: var(--bg-card);
+      border: 1px solid rgba(201,162,39,0.35);
+      border-radius: 20px 20px 0 0;
+      width: 100%; max-width: 480px;
+      padding: 20px 20px max(20px, env(safe-area-inset-bottom));
+      animation: slideUp 0.25s ease;
+    }
+    .palace-detail-title {
+      font-family: 'Noto Serif TC', serif; font-size: 1.1rem;
+      color: var(--gold); font-weight: 700; margin-bottom: 12px;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .palace-detail-close {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 1.3rem; cursor: pointer; padding: 4px 8px; border-radius: 6px;
+    }
+    .palace-detail-body { font-size: 0.95rem; color: var(--text-light); line-height: 1.8; }
 
     /* ── Chart Modal ── */
     .modal-overlay {
@@ -703,6 +757,7 @@
     }
     .modal-export-btn:hover { background: rgba(201,162,39,0.2); }
 
+    /* Fix 1: 關閉按鈕觸控目標 >= 40px */
     .modal-close {
       background: none;
       border: none;
@@ -710,13 +765,17 @@
       font-size: 1.4rem;
       cursor: pointer;
       line-height: 1;
-      padding: 2px 6px;
-      border-radius: 6px;
+      padding: 8px 10px;
+      border-radius: 8px;
       transition: color 0.2s, background 0.2s;
+      min-width: 40px; min-height: 40px;
+      display: inline-flex; align-items: center; justify-content: center;
     }
     .modal-close:hover { color: var(--gold); background: rgba(201,162,39,0.1); }
+    /* Fix 6: 模態框底部 Safe Area，防止 Home Indicator 遮擋按鈕 */
     .modal-body {
       padding: 20px;
+      padding-bottom: max(20px, env(safe-area-inset-bottom));
       overflow-y: auto;
       flex: 1;
     }
@@ -778,28 +837,33 @@
       color: var(--gold);
     }
     .history-actions { display: flex; gap: 8px; align-items: center; }
+    /* Fix 3: 清除歷史按鈕觸控目標放大 */
     .history-clear-btn {
       background: none;
       border: 1px solid rgba(201,162,39,0.2);
       color: var(--text-muted);
-      padding: 3px 8px;
+      padding: 7px 12px;
       border-radius: 8px;
-      font-size: 0.75rem;
+      font-size: 0.78rem;
       cursor: pointer;
       transition: all 0.2s;
+      min-height: 36px;
     }
     .history-clear-btn:hover { color: #e74c3c; border-color: #e74c3c; }
+    /* Fix 1: 抽屜關閉按鈕觸控目標 >= 40px */
     .history-close {
       background: none;
       border: none;
       color: var(--text-muted);
       font-size: 1.3rem;
       cursor: pointer;
-      padding: 2px 6px;
-      border-radius: 6px;
-      transition: color 0.2s;
+      padding: 8px 10px;
+      border-radius: 8px;
+      transition: color 0.2s, background 0.2s;
+      min-width: 40px; min-height: 40px;
+      display: inline-flex; align-items: center; justify-content: center;
     }
-    .history-close:hover { color: var(--gold); }
+    .history-close:hover { color: var(--gold); background: rgba(201,162,39,0.08); }
     .history-body {
       flex: 1;
       overflow-y: auto;
@@ -881,13 +945,22 @@
     .history-msg-content.expanded::after { display: none; }
 
     /* ── Da Xian Timeline ── */
+    /* Fix 7: 大限時間軸加入右側漸層提示可橫向捲動 */
     .timeline-wrap {
       overflow-x: auto;
       padding: 8px 4px 16px;
       -webkit-overflow-scrolling: touch;
+      position: relative;
     }
     .timeline-wrap::-webkit-scrollbar { height: 4px; }
     .timeline-wrap::-webkit-scrollbar-thumb { background: rgba(201,162,39,0.3); border-radius: 2px; }
+    @media (max-width: 768px) {
+      .timeline-wrap {
+        -webkit-mask-image: linear-gradient(to right, black 78%, transparent 100%);
+        mask-image: linear-gradient(to right, black 78%, transparent 100%);
+        padding-right: 32px;
+      }
+    }
     .timeline-track {
       display: flex;
       gap: 0;
@@ -1121,7 +1194,7 @@
     .bazi-input {
       background: rgba(255,255,255,0.06); border: 1px solid rgba(201,162,39,0.3);
       color: var(--text-light); border-radius: 7px; padding: 6px 10px;
-      font-size: 0.9rem; width: 100%;
+      font-size: 1rem; width: 100%; /* Fix 2: >=16px 避免 iOS zoom */
     }
     .bazi-input:focus { outline: none; border-color: var(--gold); }
     .bazi-gender-row { display: flex; gap: 16px; padding: 6px 0; }
@@ -1138,30 +1211,72 @@
       padding: 4px 12px; font-size: 0.82rem; cursor: pointer; white-space: nowrap;
     }
     .bazi-save-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-    .bazi-pillars { display: grid; grid-template-columns: repeat(4,1fr); gap: 8px; margin-bottom: 10px; }
-    .bazi-pillar {
-      background: rgba(13,28,50,0.7); border: 1px solid rgba(201,162,39,0.2);
-      border-radius: 10px; padding: 10px 6px; text-align: center;
+    /* ── BaZi Table ── */
+    .bazi-pillars { margin-bottom: 12px; overflow-x: auto; }
+    .bazi-tbl {
+      width: 100%; border-collapse: collapse; table-layout: fixed;
+      border: 1px solid rgba(201,162,39,0.3); border-radius: 10px; overflow: hidden;
     }
-    .bazi-pillar-title { font-size: 0.68rem; color: var(--text-muted); margin-bottom: 5px; }
-    .bazi-char { font-family: 'Noto Serif TC', serif; font-size: 1.55rem; font-weight: 700; display: block; }
-    .bazi-elem { font-size: 0.62rem; color: var(--text-muted); margin-top: 2px; }
-    @media (max-width: 360px) {
-      .bazi-char { font-size: 1.25rem; }
-      .bazi-pillar { padding: 8px 4px; }
-      .bazi-pillars { gap: 5px; }
+    .bazi-tbl th, .bazi-tbl td {
+      padding: 8px 3px; text-align: center; vertical-align: middle;
+      border-bottom: 1px solid rgba(201,162,39,0.12);
+      border-right: 1px solid rgba(201,162,39,0.08);
+    }
+    .bazi-tbl th:last-child, .bazi-tbl td:last-child { border-right: none; }
+    .bazi-th-row { background: linear-gradient(180deg,rgba(13,34,68,0.9),rgba(6,14,28,0.9)); }
+    .bazi-th-label { width: 26px; }
+    .bazi-th-pillar {
+      font-family: 'Noto Serif TC', serif; font-size: 0.82rem;
+      color: var(--gold); font-weight: 600; padding: 11px 4px; letter-spacing: 3px;
+    }
+    .bazi-day-th {
+      background: rgba(201,162,39,0.14) !important;
+      border-left: 2px solid rgba(201,162,39,0.55) !important;
+      border-right: 2px solid rgba(201,162,39,0.55) !important;
+    }
+    .bazi-day-td {
+      background: rgba(201,162,39,0.055) !important;
+      border-left: 2px solid rgba(201,162,39,0.35) !important;
+      border-right: 2px solid rgba(201,162,39,0.35) !important;
+    }
+    .bazi-row-label {
+      width: 26px; font-size: 0.66rem; color: var(--text-muted);
+      writing-mode: vertical-rl; letter-spacing: 1px; padding: 8px 3px !important;
+      background: rgba(6,14,28,0.55);
+      border-right: 1px solid rgba(201,162,39,0.18) !important;
+    }
+    .bazi-tr-gan td:not(.bazi-row-label) { background: rgba(13,28,50,0.5); }
+    .bazi-tr-zhi td:not(.bazi-row-label) { background: rgba(10,22,42,0.5); }
+    .bazi-tr-cang td:not(.bazi-row-label) { background: rgba(6,14,28,0.4); }
+    .bazi-tr-di   td:not(.bazi-row-label) { background: rgba(13,28,50,0.3); }
+    .bazi-tr-na   td:not(.bazi-row-label) { background: rgba(6,14,28,0.35); }
+    .bazi-tr-shen td:not(.bazi-row-label) { background: rgba(10,22,42,0.3); vertical-align: top; }
+    .bazi-char-cell {
+      font-family: 'Noto Serif TC', serif; font-size: 1.7rem;
+      font-weight: 700; line-height: 1.1; padding: 10px 3px !important;
+    }
+    .bazi-elem-sub { font-size: 0.6rem; color: var(--text-muted); display: block; margin-top: 3px; opacity: 0.85; }
+    .bazi-tr-cang td { font-size: 0.75rem; color: var(--text-muted); letter-spacing: 1px; padding: 7px 3px; }
+    .bazi-tr-di   td { font-size: 0.8rem;  color: #8ec4e8; font-weight: 500; padding: 7px 3px; }
+    .bazi-tr-na   td { font-size: 0.7rem;  color: var(--text-muted); padding: 6px 3px; }
+    .bazi-tr-shen td { padding: 6px 3px; }
+    .bazi-shen-wrap { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 16px; }
+    .bazi-shen-tag {
+      font-size: 0.6rem; background: rgba(201,162,39,0.08);
+      border: 1px solid rgba(201,162,39,0.22); border-radius: 3px;
+      padding: 1px 5px; color: var(--text-muted); white-space: nowrap; line-height: 1.65;
+    }
+    @media (max-width: 380px) {
+      .bazi-char-cell { font-size: 1.4rem; padding: 8px 2px !important; }
+      .bazi-tr-di td { font-size: 0.72rem; }
+      .bazi-tr-na td { font-size: 0.62rem; }
+      .bazi-shen-tag { font-size: 0.54rem; }
+      .bazi-row-label { font-size: 0.6rem; }
     }
     .bazi-meta-row { display: flex; justify-content: center; gap: 14px; margin-bottom: 7px; font-size: 0.84rem; flex-wrap: wrap; }
     .bazi-wuxing { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 7px; }
     .bazi-wx-chip { font-size: 0.76rem; padding: 2px 9px; border-radius: 12px; border: 1px solid; }
     .bazi-correction { font-size: 0.7rem; color: var(--text-muted); text-align: center; margin-bottom: 10px; }
-    .bazi-extra-row { margin-top: 5px; }
-    .bazi-extra-label { font-size: 0.52rem; color: var(--text-muted); opacity: 0.6; margin-bottom: 1px; }
-    .bazi-canggan { font-size: 0.62rem; color: var(--text-muted); letter-spacing: 1px; }
-    .bazi-dizhi { font-size: 0.62rem; color: #a0c4e8; }
-    .bazi-nayin { font-size: 0.58rem; color: var(--text-muted); opacity: 0.85; }
-    .bazi-shen-list { margin-top: 4px; display: flex; flex-direction: column; gap: 2px; }
-    .bazi-shen-tag { font-size: 0.56rem; background: rgba(201,162,39,0.07); border: 1px solid rgba(201,162,39,0.2); border-radius: 3px; padding: 1px 4px; color: var(--text-muted); text-align: center; white-space: nowrap; }
     .bazi-tabs { display: flex; border-bottom: 1px solid rgba(201,162,39,0.2); margin-bottom: 12px; }
     .bazi-tab {
       flex: 1; padding: 8px 4px; background: none; border: none;
@@ -1210,17 +1325,19 @@
     .bazi-lib-del:hover { color: #e74c3c; }
     .bazi-placeholder { text-align: center; color: var(--text-muted); font-size: 0.88rem; padding: 24px 0; }
 
-    /* ── Bookmark Drawer ── */
+    /* ── Bookmark Drawer — Fix 3: 44px touch target ── */
     .bookmark-btn {
       background: none;
       border: none;
       color: var(--text-muted);
       font-size: 0.95rem;
       cursor: pointer;
-      padding: 2px 5px;
+      padding: 8px 8px;
       border-radius: 4px;
       transition: color 0.2s, transform 0.15s;
       line-height: 1;
+      min-height: 36px; min-width: 36px;
+      display: inline-flex; align-items: center; justify-content: center;
     }
     .bookmark-btn:hover { color: var(--gold); transform: scale(1.2); }
     .bookmark-btn.saved { color: var(--gold); }
@@ -1285,7 +1402,7 @@
       border: 1px solid rgba(201,162,39,0.2);
       border-radius: 6px;
       color: var(--text-light);
-      font-size: 0.88rem;
+      font-size: 1rem; /* Fix 2: >=16px 避免 iOS zoom */
       margin-bottom: 10px;
       outline: none;
       transition: border-color 0.2s;
@@ -1298,7 +1415,7 @@
       border: 1px solid rgba(201,162,39,0.2);
       border-radius: 6px;
       color: var(--text-light);
-      font-size: 0.88rem;
+      font-size: 1rem; /* Fix 2: >=16px 避免 iOS zoom */
       margin-bottom: 10px;
       outline: none;
     }
@@ -1331,9 +1448,11 @@
     .compat-result.visible { display: block; }
 
     /* ── PWA Install Banner ── */
+    /* Fix 8: PWA 橫幅底部位置考量 Safe Area（Home Indicator）*/
     .pwa-banner {
       position: fixed;
-      bottom: 80px; left: 12px; right: 12px;
+      bottom: max(80px, calc(60px + env(safe-area-inset-bottom)));
+      left: 12px; right: 12px;
       background: var(--bg-card);
       border: 1px solid rgba(201,162,39,0.35);
       border-radius: 14px;
@@ -1441,6 +1560,17 @@
       font-size: 0.8rem; font-weight: 700; padding: 5px 12px;
       cursor: pointer; flex-shrink: 0;
     }
+
+    /* ── Unified Library Tabs ── */
+    .lib-tabs { display: flex; border-bottom: 1px solid rgba(201,162,39,0.2); margin-bottom: 14px; gap: 2px; }
+    .lib-tab {
+      flex: 1; padding: 9px 4px; background: none; border: none; border-bottom: 2px solid transparent;
+      color: var(--text-muted); font-size: 0.88rem; cursor: pointer; transition: all 0.2s;
+      font-family: 'Noto Sans TC', sans-serif;
+    }
+    .lib-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+    .lib-pane { display: none; }
+    .lib-pane.active { display: block; }
 
     /* ── Profile Manager ── */
     .profile-list { display: flex; flex-direction: column; gap: 10px; padding: 4px 0; }
@@ -1663,7 +1793,7 @@
       background: rgba(45,27,84,0.6);
       border: 1px solid rgba(201,162,39,0.25);
       border-radius: 8px; color: var(--text-light);
-      font-size: 0.95rem; margin-bottom: 16px;
+      font-size: 1rem; /* Fix 2: >=16px 避免 iOS zoom */ margin-bottom: 16px;
       outline: none; transition: border-color 0.2s;
     }
     .auth-input:focus { border-color: var(--gold); }
@@ -1805,6 +1935,17 @@
   </div>
 </div>
 
+<!-- Fix 6: 宮位詳細 bottom sheet (mobile tap) -->
+<div class="palace-detail-overlay" id="palace-detail-overlay" onclick="closePalaceDetail(event)">
+  <div class="palace-detail-sheet" id="palace-detail-sheet">
+    <div class="palace-detail-title">
+      <span id="palace-detail-name"></span>
+      <button class="palace-detail-close" onclick="closePalaceDetail()">✕</button>
+    </div>
+    <div class="palace-detail-body" id="palace-detail-body"></div>
+  </div>
+</div>
+
 <!-- PWA Install Banner -->
 <div class="pwa-banner hidden" id="pwa-banner">
   <div class="pwa-banner-icon">🔯</div>
@@ -1911,11 +2052,11 @@
           <label class="compat-label">代稱（儲存用）</label>
           <input class="compat-input" id="ca-name" type="text" placeholder="例：小明、自己" maxlength="20">
           <label class="compat-label">出生年</label>
-          <input class="compat-input" id="ca-year" type="number" placeholder="例：1990" min="1900" max="2099">
+          <input class="compat-input" id="ca-year" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="例：1990" min="1900" max="2099">
           <label class="compat-label">出生月</label>
-          <input class="compat-input" id="ca-month" type="number" placeholder="1-12" min="1" max="12">
+          <input class="compat-input" id="ca-month" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1-12" min="1" max="12">
           <label class="compat-label">出生日</label>
-          <input class="compat-input" id="ca-day" type="number" placeholder="1-31" min="1" max="31">
+          <input class="compat-input" id="ca-day" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1-31" min="1" max="31">
           <label class="compat-label">出生時辰</label>
           <select class="compat-select" id="ca-hour">
             {% for item in time_table %}
@@ -1936,11 +2077,11 @@
           <label class="compat-label">代稱（儲存用）</label>
           <input class="compat-input" id="cb-name" type="text" placeholder="例：小花、對象" maxlength="20">
           <label class="compat-label">出生年</label>
-          <input class="compat-input" id="cb-year" type="number" placeholder="例：1992" min="1900" max="2099">
+          <input class="compat-input" id="cb-year" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="例：1992" min="1900" max="2099">
           <label class="compat-label">出生月</label>
-          <input class="compat-input" id="cb-month" type="number" placeholder="1-12" min="1" max="12">
+          <input class="compat-input" id="cb-month" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1-12" min="1" max="12">
           <label class="compat-label">出生日</label>
-          <input class="compat-input" id="cb-day" type="number" placeholder="1-31" min="1" max="31">
+          <input class="compat-input" id="cb-day" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1-31" min="1" max="31">
           <label class="compat-label">出生時辰</label>
           <select class="compat-select" id="cb-hour">
             {% for item in time_table %}
@@ -1965,7 +2106,7 @@
   </div>
 </div>
 
-<!-- Profile Manager Modal -->
+<!-- Unified Library Modal -->
 <div class="modal-overlay" id="profiles-modal" onclick="closeProfilesOnOverlay(event)">
   <div class="modal-box" style="max-width:540px">
     <div class="modal-header">
@@ -1973,14 +2114,27 @@
       <button class="modal-close" onclick="closeProfiles()">✕</button>
     </div>
     <div class="modal-body">
-      <div class="profile-save-bar">
-        <input class="profile-name-input" id="profile-name-input" type="text" placeholder="輸入命盤名稱（例如：媽媽、老公、2024年自己）" maxlength="30">
-        <button class="profile-save-submit" onclick="saveCurrentProfile()">💾 儲存目前命盤</button>
+      <div class="lib-tabs">
+        <button class="lib-tab active" id="lib-tab-ziwei" onclick="switchLibTab('ziwei')">⭐ 紫微</button>
+        <button class="lib-tab" id="lib-tab-bazi"  onclick="switchLibTab('bazi')">🀄 八字</button>
       </div>
-      <div id="profile-list-body"><div class="profile-empty">載入中…</div></div>
-      <div class="profile-multi-bar" id="profile-multi-bar">
-        <span class="profile-multi-label" id="profile-multi-label">已選 0 個命盤</span>
-        <button class="profile-multi-btn" onclick="activateMultiProfiles()">✨ 使用選取命盤詢問</button>
+
+      <!-- 紫微 pane -->
+      <div class="lib-pane active" id="lib-pane-ziwei">
+        <div class="profile-save-bar">
+          <input class="profile-name-input" id="profile-name-input" type="text" placeholder="輸入命盤名稱（例如：媽媽、老公、2024年自己）" maxlength="30">
+          <button class="profile-save-submit" onclick="saveCurrentProfile()">💾 儲存目前命盤</button>
+        </div>
+        <div id="profile-list-body"><div class="profile-empty">載入中…</div></div>
+        <div class="profile-multi-bar" id="profile-multi-bar">
+          <span class="profile-multi-label" id="profile-multi-label">已選 0 個命盤</span>
+          <button class="profile-multi-btn" onclick="activateMultiProfiles()">✨ 使用選取命盤詢問</button>
+        </div>
+      </div>
+
+      <!-- 八字 pane -->
+      <div class="lib-pane" id="lib-pane-bazi">
+        <div id="lib-bazi-list"><div class="profile-empty">載入中…</div></div>
       </div>
     </div>
   </div>
@@ -2039,7 +2193,7 @@
       <div class="modal-header">
         <span class="modal-title">🀄 八字排盤</span>
         <div style="display:flex;gap:8px;align-items:center">
-          <button class="topbar-btn" onclick="showBaziScreen('library')" style="font-size:0.8rem;padding:4px 10px">📚 命盤庫</button>
+          <button class="topbar-btn" onclick="openProfiles('bazi')" style="font-size:0.8rem;padding:4px 10px">📚 命盤庫</button>
           <button class="modal-close" onclick="closeBazi()">✕</button>
         </div>
       </div>
@@ -2064,23 +2218,23 @@
           </div>
           <div class="bazi-field">
             <label>出生年</label>
-            <input type="number" id="bazi-year" class="bazi-input" min="1900" max="2100" placeholder="例：1990">
+            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-year" class="bazi-input" min="1900" max="2100" placeholder="例：1990">
           </div>
           <div class="bazi-field">
             <label>月</label>
-            <input type="number" id="bazi-month" class="bazi-input" min="1" max="12" placeholder="1-12">
+            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-month" class="bazi-input" min="1" max="12" placeholder="1-12">
           </div>
           <div class="bazi-field">
             <label>日</label>
-            <input type="number" id="bazi-day" class="bazi-input" min="1" max="31" placeholder="1-31">
+            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-day" class="bazi-input" min="1" max="31" placeholder="1-31">
           </div>
           <div class="bazi-field">
             <label>時（24h）</label>
-            <input type="number" id="bazi-hour" class="bazi-input" min="0" max="23" value="0" placeholder="0-23">
+            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-hour" class="bazi-input" min="0" max="23" value="0" placeholder="0-23">
           </div>
           <div class="bazi-field">
             <label>分</label>
-            <input type="number" id="bazi-minute" class="bazi-input" min="0" max="59" value="0">
+            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-minute" class="bazi-input" min="0" max="59" value="0">
           </div>
           <div class="bazi-field" style="grid-column:1/-1">
             <label>出生地經度
@@ -2126,20 +2280,6 @@
         <div class="bazi-tab-pane" id="bpane-dayun">
           <div class="bazi-content-box" id="bazi-dayun-box"></div>
         </div>
-      </div>
-    </div>
-
-    <!-- ── SCREEN: LIBRARY ── -->
-    <div id="bazi-screen-library" style="display:none">
-      <div class="modal-header">
-        <div style="display:flex;align-items:center;gap:10px">
-          <button class="cal-nav-btn" onclick="showBaziScreen('form')" title="返回">◀</button>
-          <span class="modal-title">📚 八字命盤庫</span>
-        </div>
-        <button class="modal-close" onclick="closeBazi()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div id="bazi-library-list"></div>
       </div>
     </div>
 
@@ -3549,6 +3689,13 @@
     if (e.target === document.getElementById('history-overlay')) closeHistory();
   }
 
+  // Fix 6: 宮位詳細彈窗關閉
+  function closePalaceDetail(e) {
+    if (!e || e.target === document.getElementById('palace-detail-overlay')) {
+      document.getElementById('palace-detail-overlay').classList.remove('open');
+    }
+  }
+
   async function clearHistory() {
     if (!confirm('確定要清除所有對話歷史嗎？此操作無法復原。')) return;
     try {
@@ -3603,13 +3750,22 @@
     }
   }
 
-  // ── Profile Manager ──────────────────────────────────────────
-  function openProfiles() {
+  // ── Unified Library ───────────────────────────────────────────
+  function openProfiles(tab) {
     document.getElementById('profiles-modal').classList.add('open');
+    switchLibTab(tab || 'ziwei');
     _loadProfiles();
+    _loadBaziLibrary();
   }
   function closeProfiles() { document.getElementById('profiles-modal').classList.remove('open'); }
   function closeProfilesOnOverlay(e) { if (e.target === document.getElementById('profiles-modal')) closeProfiles(); }
+
+  function switchLibTab(tab) {
+    ['ziwei','bazi'].forEach(t => {
+      document.getElementById('lib-tab-'  + t).classList.toggle('active', t === tab);
+      document.getElementById('lib-pane-' + t).classList.toggle('active', t === tab);
+    });
+  }
 
 
   function _updateMultiBar() {
@@ -4574,7 +4730,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
 
   // ── Screens ───────────────────────────────────────────────────
   function showBaziScreen(screen) {
-    ['form','result','library'].forEach(s =>
+    ['form','result'].forEach(s =>
       document.getElementById(`bazi-screen-${s}`).style.display = (s===screen) ? '' : 'none'
     );
     if (screen === 'library') _renderBaziLibrary();
@@ -4605,6 +4761,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
       if (res.ok) { _baziLibrary = (await res.json()).profiles || []; }
     } catch {}
     _renderBaziQuickPick();
+    _renderBaziLibrary();
   }
 
   function _renderBaziQuickPick() {
@@ -4618,9 +4775,10 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   }
 
   function _renderBaziLibrary() {
-    const el = document.getElementById('bazi-library-list');
+    const el = document.getElementById('lib-bazi-list');
+    if (!el) return;
     if (!_baziLibrary.length) {
-      el.innerHTML = '<div class="bazi-placeholder">命盤庫為空<br><small>排盤後按「💾 儲存」加入</small></div>';
+      el.innerHTML = '<div class="profile-empty">尚無儲存的八字命盤<br><small>排盤後按「💾 儲存」即可保存</small></div>';
       return;
     }
     el.innerHTML = _baziLibrary.map(p => {
@@ -4639,8 +4797,10 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   }
 
   async function loadBaziProfile(profileId) {
+    closeProfiles();  // close unified library if open
     const profile = _baziLibrary.find(p => p.id === profileId);
     if (!profile) return;
+    document.getElementById('bazi-modal').classList.add('open');
     // Fill form fields
     document.getElementById('bazi-name').value   = profile.profile_name;
     document.getElementById('bazi-year').value   = profile.year;
@@ -4678,7 +4838,6 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     try {
       await fetch(`/api/bazi/profiles/${profileId}?session_id=${encodeURIComponent(SESSION_ID)}`, {method:'DELETE'});
       await _loadBaziLibrary();
-      _renderBaziLibrary();
     } catch {}
   }
 
@@ -4732,31 +4891,68 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     const canggan  = data.canggan  || {};
     const dizhi    = data.dizhi    || {};
     const nayin    = data.nayin    || {};
-    grid.innerHTML = '';
-    keys.forEach((k, i) => {
-      const p  = data[k];
-      const se = _ELEM_STEM[p.stem_idx], be = _ELEM_BRANCH[p.branch_idx];
-      const sc = _WX_COLOR[se]||'var(--gold)', bc = _WX_COLOR[be]||'var(--gold)';
-      const hl = k === 'day_pillar' ? 'border-color:var(--gold);border-width:2px;' : '';
-      const cg = (canggan[k] || []).join(' ');
-      const dz = dizhi[k] || '';
-      const ny = nayin[k] || '';
-      const pillarShens = shenshas[k] || [];
-      const shenHtml = pillarShens.length
-        ? `<div class="bazi-extra-row"><div class="bazi-extra-label">神煞</div><div class="bazi-shen-list">${pillarShens.map(s=>`<span class="bazi-shen-tag">${s}</span>`).join('')}</div></div>`
-        : '';
-      grid.innerHTML +=
-        `<div class="bazi-pillar" style="${hl}">` +
-        `<div class="bazi-pillar-title">${titles[i]}</div>` +
-        `<span class="bazi-char" style="color:${sc}">${p.stem}</span>` +
-        `<span class="bazi-char" style="color:${bc}">${p.branch}</span>` +
-        `<div class="bazi-elem">${se}/${be}</div>` +
-        (cg ? `<div class="bazi-extra-row"><div class="bazi-extra-label">藏幹</div><div class="bazi-canggan">${cg}</div></div>` : '') +
-        (dz ? `<div class="bazi-extra-row"><div class="bazi-extra-label">地勢</div><div class="bazi-dizhi">${dz}</div></div>` : '') +
-        (ny ? `<div class="bazi-extra-row"><div class="bazi-extra-label">納音</div><div class="bazi-nayin">${ny}</div></div>` : '') +
-        shenHtml +
-        `</div>`;
+
+    // Build table
+    const pillarData = keys.map((k, i) => ({
+      k, title: titles[i], p: data[k],
+      se: _ELEM_STEM[data[k].stem_idx],
+      be: _ELEM_BRANCH[data[k].branch_idx],
+      isDay: k === 'day_pillar',
+    }));
+
+    function _dc(col) { return col.isDay ? ' bazi-day-td' : ''; }
+    function _dt(col) { return col.isDay ? ' bazi-day-th' : ''; }
+
+    // Header row
+    let thead = `<tr class="bazi-th-row"><th class="bazi-th-label"></th>`;
+    pillarData.forEach(col =>
+      thead += `<th class="bazi-th-pillar${_dt(col)}">${col.title}</th>`);
+    thead += `</tr>`;
+
+    // 天干 row
+    let rGan = `<tr class="bazi-tr-gan"><td class="bazi-row-label">天干</td>`;
+    pillarData.forEach(col => {
+      const sc = _WX_COLOR[col.se] || 'var(--gold)';
+      rGan += `<td class="bazi-char-cell${_dc(col)}" style="color:${sc}">${col.p.stem}<span class="bazi-elem-sub">${col.se}</span></td>`;
     });
+    rGan += `</tr>`;
+
+    // 地支 row
+    let rZhi = `<tr class="bazi-tr-zhi"><td class="bazi-row-label">地支</td>`;
+    pillarData.forEach(col => {
+      const bc = _WX_COLOR[col.be] || 'var(--gold)';
+      rZhi += `<td class="bazi-char-cell${_dc(col)}" style="color:${bc}">${col.p.branch}<span class="bazi-elem-sub">${col.be}</span></td>`;
+    });
+    rZhi += `</tr>`;
+
+    // 藏幹 row
+    let rCang = `<tr class="bazi-tr-cang"><td class="bazi-row-label">藏幹</td>`;
+    pillarData.forEach(col =>
+      rCang += `<td class="${_dc(col).trim()}">${(canggan[col.k]||[]).join('·')}</td>`);
+    rCang += `</tr>`;
+
+    // 地勢 row
+    let rDi = `<tr class="bazi-tr-di"><td class="bazi-row-label">地勢</td>`;
+    pillarData.forEach(col =>
+      rDi += `<td class="${_dc(col).trim()}">${dizhi[col.k]||''}</td>`);
+    rDi += `</tr>`;
+
+    // 納音 row
+    let rNa = `<tr class="bazi-tr-na"><td class="bazi-row-label">納音</td>`;
+    pillarData.forEach(col =>
+      rNa += `<td class="${_dc(col).trim()}">${nayin[col.k]||''}</td>`);
+    rNa += `</tr>`;
+
+    // 神煞 row
+    let rShen = `<tr class="bazi-tr-shen"><td class="bazi-row-label">神煞</td>`;
+    pillarData.forEach(col => {
+      const tags = (shenshas[col.k]||[]).map(s=>`<span class="bazi-shen-tag">${s}</span>`).join('');
+      rShen += `<td class="${_dc(col).trim()}"><div class="bazi-shen-wrap">${tags}</div></td>`;
+    });
+    rShen += `</tr>`;
+
+    grid.innerHTML =
+      `<table class="bazi-tbl"><thead>${thead}</thead><tbody>${rGan}${rZhi}${rCang}${rDi}${rNa}${rShen}</tbody></table>`;
 
     const dm = data.day_master || data.day_pillar.stem, dmE = _ELEM_STEM[data.day_pillar.stem_idx];
     document.getElementById('bazi-day-master').innerHTML =
@@ -5098,6 +5294,67 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     ['reg-username','reg-password','reg-confirm'].forEach(id => {
       document.getElementById(id).addEventListener('keydown', e => {
         if (e.key === 'Enter') { e.preventDefault(); doRegister(); }
+      });
+    });
+
+    // ── Fix 6: 命盤格子手機 tap 展開詳細 ──────────────────────────
+    function _attachPalaceTap() {
+      if (window.innerWidth > 600) return;
+      document.querySelectorAll('.palace-cell:not(.palace-center)').forEach(cell => {
+        if (cell.dataset.tapBound) return;
+        cell.dataset.tapBound = '1';
+        cell.addEventListener('click', () => {
+          const name = cell.querySelector('.palace-name')?.textContent || '';
+          const ganzhi = cell.querySelector('.palace-ganzhi')?.textContent || '';
+          const stars = cell.querySelector('.palace-stars')?.textContent || '';
+          const hua = cell.querySelector('.palace-hua')?.textContent || '';
+          const limits = cell.querySelector('.palace-limits')?.textContent || '';
+          document.getElementById('palace-detail-name').textContent = name;
+          let body = '';
+          if (ganzhi) body += `<div style="color:var(--text-muted);font-size:0.85rem;margin-bottom:6px">${ganzhi}</div>`;
+          if (stars) body += `<div style="margin-bottom:6px"><strong style="color:var(--gold-light)">主星：</strong>${stars.trim()}</div>`;
+          if (hua) body += `<div style="margin-bottom:6px"><strong style="color:var(--gold-light)">化曜：</strong>${hua.trim()}</div>`;
+          if (limits) body += `<div><strong style="color:var(--gold-light)">大限：</strong>${limits.trim()}</div>`;
+          document.getElementById('palace-detail-body').innerHTML = body || '（無詳細資料）';
+          document.getElementById('palace-detail-overlay').classList.add('open');
+        });
+      });
+    }
+    // 命盤開啟後重新綁定
+    const _origShowChart = window.showChart;
+    if (_origShowChart) {
+      window.showChart = function(...args) {
+        _origShowChart(...args);
+        setTimeout(_attachPalaceTap, 400);
+      };
+    }
+    // 頁面載入時也嘗試一次
+    setTimeout(_attachPalaceTap, 1000);
+
+    // ── Fix 7: Drawer 手勢滑動關閉 ──────────────────────────────
+    function _addSwipeClose(overlayId, closeFn) {
+      const overlay = document.getElementById(overlayId);
+      if (!overlay) return;
+      const drawer = overlay.querySelector('.history-drawer');
+      if (!drawer) return;
+      let startX = 0, startY = 0;
+      drawer.addEventListener('touchstart', e => {
+        startX = e.touches[0].clientX;
+        startY = e.touches[0].clientY;
+      }, { passive: true });
+      drawer.addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - startX;
+        const dy = Math.abs(e.changedTouches[0].clientY - startY);
+        if (dx > 60 && dy < 80) closeFn();
+      }, { passive: true });
+    }
+    _addSwipeClose('history-overlay', () => closeHistory && closeHistory());
+    _addSwipeClose('bookmark-overlay', () => closeBookmarks && closeBookmarks());
+
+    // ── Fix 10: 模態框輸入時自動 scroll into view ────────────────
+    document.querySelectorAll('.modal-body input, .modal-body select, .auth-input').forEach(el => {
+      el.addEventListener('focus', () => {
+        setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 320);
       });
     });
   });

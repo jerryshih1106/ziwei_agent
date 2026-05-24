@@ -456,16 +456,19 @@ def _nayin(stem_idx: int, branch_idx: int) -> str:
 # 天干神煞 (indexed by day-stem index 0-9; values are DI_ZHI chars)
 _TIANGAN_SHEN: dict = {
     '天乙貴人': (('丑','未'),('子','申'),('亥','酉'),('亥','酉'),('丑','未'),('子','申'),('丑','未'),('午','寅'),('卯','巳'),('卯','巳')),
-    '干祿':    ('寅','卯','巳','午','巳','午','申','酉','亥','子'),
-    '羊刃':    ('卯','辰','午','未','午','未','酉','戌','子','丑'),
     '紅艷煞':  (('午','申'),('午','申'),('寅',),('未',),('辰',),('辰',),('戌',),('酉',),('子',),('申',)),
     '金輿':    ('辰','巳','未','申','未','申','戌','亥','丑','寅'),
+    '祿神':    ('寅','卯','巳','午','巳','午','申','酉','亥','子'),
 }
 
-# 年干神煞 (indexed by year-stem index 0-9)
+# 年干神煞 (indexed by year-stem index 0-9; values may be str or tuple of str)
 _NIANGAN_SHEN: dict = {
-    '福星貴人': ('寅','丑','子','亥','酉','申','未','午','巳','辰'),
+    '福星貴人': ('寅','丑','子','亥','酉','申','午','巳','卯','寅'),
     '文昌貴人': ('巳','午','申','酉','申','酉','亥','子','寅','卯'),
+    '金輿':    ('辰','巳','未','申','未','申','戌','亥','丑','寅'),
+    '太極貴人': (('子','午'),('子','午'),('卯','酉'),('卯','酉'),('丑','未'),('丑','未'),('辰','戌'),('辰','戌'),('寅','申'),('寅','申')),
+    '國印貴人': (('辰','戌'),('巳','亥'),('午',),('卯','午'),('辰','戌'),('卯',),('辰',),('丑',),('巳',),('亥',)),
+    '天官貴人': ('未','申','酉','亥','子','亥','卯','寅','子','卯'),
 }
 
 # 時干神煞 (indexed by hour-stem index 0-9)
@@ -476,11 +479,10 @@ _SHIGAN_SHEN: dict = {
 # 日支神煞 (indexed by day-branch index 0-11)
 _RIZHI_SHEN: dict = {
     '驛馬': ('寅','亥','申','巳','寅','亥','申','巳','寅','亥','申','巳'),
-    '華蓋': ('戌','丑','戌','未','戌','丑','戌','未','戌','未','戌','未'),
     '桃花': ('酉','午','卯','子','酉','午','卯','子','酉','午','卯','子'),
     '劫煞': ('巳','寅','亥','申','巳','寅','亥','申','巳','寅','亥','申'),
     '亡神': ('亥','申','巳','寅','亥','申','巳','寅','亥','申','巳','寅'),
-    '將星': ('子','酉','午','卯','子','酉','午','卯','子','酉','午','卯'),
+    '流霞': ('酉','戌','亥','午','未','申','子','申','酉','辰','巳','子'),
 }
 
 # 月支神煞 (keyed by month-branch index; value may be TIAN_GAN or DI_ZHI char)
@@ -493,9 +495,7 @@ _YUEZHI_SHEN: dict = {
 
 # 年支神煞 (indexed by year-branch index 0-11)
 _NIANZHI_SHEN: dict = {
-    '將星': ('子','酉','午','卯','子','酉','午','卯','子','酉','午','卯'),
     '驛馬': ('寅','亥','申','巳','寅','亥','申','巳','寅','亥','申','巳'),
-    '華蓋': ('戌','丑','戌','未','戌','丑','戌','未','戌','丑','戌','未'),
     '劫煞': ('巳','寅','亥','申','巳','寅','亥','申','巳','寅','亥','申'),
     '災煞': ('午','卯','子','酉','午','卯','子','酉','午','卯','子','酉'),
     '桃花': ('酉','午','卯','子','酉','午','卯','子','酉','午','卯','子'),
@@ -505,13 +505,16 @@ _NIANZHI_SHEN: dict = {
     '寡宿': ('戌','戌','丑','丑','丑','辰','辰','辰','未','未','未','戌'),
     '元辰': ('未','申','酉','戌','亥','子','丑','寅','卯','辰','巳','午'),
     '弔客': ('戌','亥','子','丑','寅','卯','辰','巳','午','未','申','酉'),
-    '流霞': ('申','酉','戌','亥','子','丑','寅','卯','辰','巳','午','未'),
+    '六厄': ('亥','子','丑','寅','卯','辰','巳','午','未','申','酉','戌'),
+    '喪門': ('寅','卯','辰','巳','午','未','申','酉','戌','亥','子','丑'),
 }
 
 # 特殊日格 (checked against day ganzhi stem/branch index pair)
 _YINCHA_YANGCUO = {(2,0),(3,1),(4,2),(7,3),(8,4),(9,5),
                    (2,6),(3,7),(4,8),(7,9),(8,10),(9,11)}
-_LIUXIU = {(2,6),(3,7),(4,0),(4,6),(5,1),(5,7)}
+_LIUXIU  = {(2,6),(3,7),(4,0),(4,6),(5,1),(5,7)}
+_BAZHAN  = {(0,2),(1,3),(4,6),(5,7),(6,8),(7,9),(8,0),(9,11),(3,7)}
+_JIUCHOU = {(6,6),(6,0),(4,6),(4,0),(0,6),(0,0),(8,6),(8,0),(5,3)}
 
 
 def compute_shenshas(bazi: dict) -> dict:
@@ -554,9 +557,13 @@ def compute_shenshas(bazi: dict) -> dict:
         for t in targets:
             _by_branch(shen, t)
 
-    # 年干神煞 (by year stem)
+    # 年干神煞 (by year stem; values may be str or tuple)
     for shen, tbl in _NIANGAN_SHEN.items():
-        _by_branch(shen, tbl[year_stem_idx])
+        targets = tbl[year_stem_idx]
+        if isinstance(targets, str):
+            targets = (targets,)
+        for t in targets:
+            _by_branch(shen, t)
 
     # 時干神煞 (by hour stem)
     for shen, tbl in _SHIGAN_SHEN.items():
@@ -574,14 +581,34 @@ def compute_shenshas(bazi: dict) -> dict:
     for shen, tbl in _NIANZHI_SHEN.items():
         _by_branch(shen, tbl[year_branch_idx])
 
+    # 將星 (by day branch → 三合帝旺; fires on non-day pillars)
+    _SANHEJIE = [0, 9, 6, 3, 0, 9, 6, 3, 0, 9, 6, 3]
+    jiangxing_target = _SANHEJIE[day_branch_idx]
+    for i, b in enumerate(p_branches):
+        if i == 2:
+            continue
+        if b == jiangxing_target and '將星' not in out[pk[i]]:
+            out[pk[i]].append('將星')
+
+    # 童子煞 (year branch in 四墓 → day/hour branch in 四正)
+    _SIMO   = {1, 4, 7, 10}
+    _SIZHENG = {0, 3, 6, 9}
+    if year_branch_idx in _SIMO:
+        if bazi['day_pillar']['branch_idx'] in _SIZHENG:
+            out['day_pillar'].append('童子煞')
+        if bazi['hour_pillar']['branch_idx'] in _SIZHENG:
+            out['hour_pillar'].append('童子煞')
+
     # 特殊日格 (applies to day pillar)
     day_pair = (day_stem_idx, day_branch_idx)
     if day_pair in _YINCHA_YANGCUO:
         out['day_pillar'].append('陰差陽錯')
     if day_pair in _LIUXIU:
         out['day_pillar'].append('六秀日')
-    if day_stem_idx % 2 == day_branch_idx % 2:
+    if day_pair in _BAZHAN:
         out['day_pillar'].append('八專日')
+    if day_pair in _JIUCHOU:
+        out['day_pillar'].append('九醜日')
 
     # 六甲空亡 (based on year pillar's 旬)
     year_gz_idx  = _GANZHI60_IDX[(year_stem_idx, year_branch_idx)]
@@ -590,6 +617,14 @@ def compute_shenshas(bazi: dict) -> dict:
     for i, b in enumerate(p_branches):
         if b in kongwang and '六甲空亡' not in out[pk[i]]:
             out[pk[i]].append('六甲空亡')
+
+    # 德秀貴人: if 天德貴人 or 月德貴人 appears anywhere in the chart,
+    # all pillars receive this blessing
+    has_de = any('天德貴人' in out[k] or '月德貴人' in out[k] for k in pk)
+    if has_de:
+        for k in pk:
+            if '德秀貴人' not in out[k]:
+                out[k].append('德秀貴人')
 
     return out
 

@@ -103,6 +103,13 @@
       text-align: center;
       padding: 120px 5% 80px;
     }
+    /* Fix 5: 手機版 Hero 頂部間距縮減，讓 CTA 在 fold 以上 */
+    @media (max-width: 768px) {
+      #hero { padding: 90px 5% 60px; min-height: 100svh; }
+    }
+    @media (max-width: 480px) {
+      #hero { padding: 80px 4% 48px; }
+    }
 
     .hero-badge {
       display: inline-flex;
@@ -231,10 +238,20 @@
       z-index: 1;
       padding: 100px 5%;
     }
+    /* Fix 4: 手機版 section 留白縮減 */
+    @media (max-width: 768px) {
+      section { padding: 60px 5%; }
+    }
+    @media (max-width: 480px) {
+      section { padding: 48px 4%; }
+    }
 
     .section-header {
       text-align: center;
       margin-bottom: 64px;
+    }
+    @media (max-width: 768px) {
+      .section-header { margin-bottom: 40px; }
     }
     .section-label {
       font-size: 0.8rem;
@@ -529,6 +546,11 @@
       gap: 28px;
       margin-bottom: 64px;
     }
+    /* Fix 9: 手機版定價卡片頂部留空，讓 popular-badge 不被截斷 */
+    @media (max-width: 768px) {
+      .pricing-grid { padding-top: 20px; gap: 32px; }
+      .pricing-card { padding: 28px 20px; }
+    }
 
     .pricing-card {
       background: linear-gradient(180deg, rgba(45, 27, 84, 0.5), rgba(28, 16, 53, 0.7));
@@ -712,6 +734,7 @@
       border-bottom: 1px solid rgba(201, 162, 39, 0.15);
       padding: 20px 0;
     }
+    /* Fix 10: FAQ 點擊區域放大，手機容易展開 */
     .faq-question {
       display: flex;
       justify-content: space-between;
@@ -721,14 +744,25 @@
       font-size: 1rem;
       color: var(--text-light);
       gap: 16px;
+      padding: 10px 8px;
+      margin: -10px -8px;
+      border-radius: 8px;
+      -webkit-tap-highlight-color: rgba(201,162,39,0.1);
+      transition: color 0.2s, background 0.2s;
     }
-    .faq-question:hover { color: var(--gold); }
+    .faq-question:hover { color: var(--gold); background: rgba(201,162,39,0.05); }
+    @media (max-width: 768px) {
+      .faq-question { padding: 14px 10px; margin: -14px -10px; }
+      .faq-item { padding: 24px 0; }
+    }
     .faq-toggle {
       color: var(--gold);
       font-size: 1.4rem;
       flex-shrink: 0;
       transition: transform 0.3s;
       line-height: 1;
+      min-width: 36px; min-height: 36px;
+      display: inline-flex; align-items: center; justify-content: center;
     }
     .faq-item.open .faq-toggle { transform: rotate(45deg); }
     .faq-answer {
@@ -824,9 +858,58 @@
       box-shadow: 0 8px 28px rgba(0, 185, 0, 0.65);
     }
 
+    /* ── Fix 8: 漢堡選單 ── */
+    .nav-hamburger {
+      display: none;
+      flex-direction: column;
+      gap: 5px;
+      cursor: pointer;
+      padding: 8px;
+      border-radius: 8px;
+      border: none;
+      background: none;
+      transition: background 0.2s;
+    }
+    .nav-hamburger:hover { background: rgba(201,162,39,0.1); }
+    .nav-hamburger span {
+      display: block; width: 22px; height: 2px;
+      background: var(--gold); border-radius: 2px;
+      transition: transform 0.25s, opacity 0.25s;
+    }
+    .nav-hamburger.open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+    .nav-hamburger.open span:nth-child(2) { opacity: 0; }
+    .nav-hamburger.open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+
+    .mobile-nav-overlay {
+      display: none;
+      position: fixed; inset: 0; top: 64px;
+      background: rgba(6,14,28,0.97);
+      z-index: 99;
+      flex-direction: column;
+      padding: 20px;
+      gap: 4px;
+      border-top: 1px solid rgba(201,162,39,0.2);
+    }
+    .mobile-nav-overlay.open { display: flex; }
+    .mobile-nav-overlay a {
+      display: block; padding: 14px 16px;
+      color: var(--text-muted); text-decoration: none;
+      font-size: 1.05rem; border-radius: 10px;
+      transition: color 0.2s, background 0.2s;
+      border-bottom: 1px solid rgba(201,162,39,0.08);
+    }
+    .mobile-nav-overlay a:hover { color: var(--gold); background: rgba(201,162,39,0.07); }
+    .mobile-nav-overlay .nav-cta {
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      color: var(--bg-dark) !important; font-weight: 700;
+      border-radius: 50px; text-align: center; margin-top: 10px;
+      border-bottom: none;
+    }
+
     /* ── Responsive ── */
     @media (max-width: 768px) {
       .nav-links { display: none; }
+      .nav-hamburger { display: flex; }
       .howto-methods { grid-template-columns: 1fr; }
       .line-container { grid-template-columns: 1fr; }
       .line-qr-card { display: none; }
@@ -895,7 +978,8 @@
     .compat-field label { display:block; font-size:0.8rem; color:var(--text-muted); margin-bottom:4px; }
     .compat-field input, .compat-field select {
       width:100%; background:rgba(6,14,28,0.7); border:1px solid rgba(201,162,39,0.25);
-      border-radius:8px; color:var(--text-light); padding:8px 12px; font-size:0.9rem;
+      border-radius:8px; color:var(--text-light); padding:8px 12px;
+      font-size:1rem; /* Fix 2: >=16px 避免 iOS zoom */
       font-family:'Noto Sans TC',sans-serif; outline:none;
     }
     .compat-field input:focus, .compat-field select:focus { border-color:var(--gold); }
@@ -940,7 +1024,22 @@
     <li><a href="#faq">常見問題</a></li>
     <li><a href="/chat" class="nav-cta">立即算命 →</a></li>
   </ul>
+  <!-- Fix 8: 漢堡選單按鈕 -->
+  <button class="nav-hamburger" id="nav-hamburger" onclick="toggleMobileNav()" aria-label="選單">
+    <span></span><span></span><span></span>
+  </button>
 </nav>
+
+<!-- Fix 8: 手機版導覽選單 -->
+<div class="mobile-nav-overlay" id="mobile-nav-overlay">
+  <a href="#features" onclick="closeMobileNav()">✨ 特色功能</a>
+  <a href="#howto" onclick="closeMobileNav()">📖 使用說明</a>
+  <a href="#line-bot" onclick="closeMobileNav()">💬 LINE 機器人</a>
+  <a href="#compat" onclick="closeMobileNav()">💕 感情合盤</a>
+  <a href="#pricing" onclick="closeMobileNav()">💳 方案定價</a>
+  <a href="#faq" onclick="closeMobileNav()">❓ 常見問題</a>
+  <a href="/chat" class="nav-cta">✨ 立即免費算命 →</a>
+</div>
 
 <!-- ── Hero ── -->
 <section id="hero">
@@ -1328,15 +1427,15 @@
           </div>
           <div class="compat-field">
             <label>出生年</label>
-            <input id="ic-a-year" type="number" placeholder="例：1990" min="1900" max="2099">
+            <input id="ic-a-year" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="例：1990" min="1900" max="2099">
           </div>
           <div class="compat-field">
             <label>出生月</label>
-            <input id="ic-a-month" type="number" placeholder="1–12" min="1" max="12">
+            <input id="ic-a-month" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1–12" min="1" max="12">
           </div>
           <div class="compat-field">
             <label>出生日</label>
-            <input id="ic-a-day" type="number" placeholder="1–31" min="1" max="31">
+            <input id="ic-a-day" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1–31" min="1" max="31">
           </div>
           <div class="compat-field">
             <label>出生時辰</label>
@@ -1363,15 +1462,15 @@
           </div>
           <div class="compat-field">
             <label>出生年</label>
-            <input id="ic-b-year" type="number" placeholder="例：1992" min="1900" max="2099">
+            <input id="ic-b-year" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="例：1992" min="1900" max="2099">
           </div>
           <div class="compat-field">
             <label>出生月</label>
-            <input id="ic-b-month" type="number" placeholder="1–12" min="1" max="12">
+            <input id="ic-b-month" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1–12" min="1" max="12">
           </div>
           <div class="compat-field">
             <label>出生日</label>
-            <input id="ic-b-day" type="number" placeholder="1–31" min="1" max="31">
+            <input id="ic-b-day" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1–31" min="1" max="31">
           </div>
           <div class="compat-field">
             <label>出生時辰</label>
@@ -1636,6 +1735,20 @@ async function runIndexCompat() {
   }
 }
 
+// ── Fix 8: 漢堡選單 ──
+function toggleMobileNav() {
+  const overlay = document.getElementById('mobile-nav-overlay');
+  const btn = document.getElementById('nav-hamburger');
+  const isOpen = overlay.classList.toggle('open');
+  btn.classList.toggle('open', isOpen);
+  document.body.style.overflow = isOpen ? 'hidden' : '';
+}
+function closeMobileNav() {
+  document.getElementById('mobile-nav-overlay').classList.remove('open');
+  document.getElementById('nav-hamburger').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
 // ── Smooth scroll for nav links ──
 document.querySelectorAll('a[href^="#"]').forEach(a => {
   a.addEventListener('click', e => {
@@ -1643,6 +1756,7 @@ document.querySelectorAll('a[href^="#"]').forEach(a => {
     const target = document.getElementById(id);
     if (target) {
       e.preventDefault();
+      closeMobileNav();
       target.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   });
