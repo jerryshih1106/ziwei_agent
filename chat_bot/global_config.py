@@ -27,4 +27,4 @@ class GlobalConfig:
     VAPID_PUBLIC_KEY: str = os.environ.get("VAPID_PUBLIC_KEY", "")
     VAPID_PRIVATE_KEY: str = os.environ.get("VAPID_PRIVATE_KEY", "")
     VAPID_CLAIMS_EMAIL: str = os.environ.get("VAPID_CLAIMS_EMAIL", "admin@example.com")
-    TOKEN_NUM: str = os.environ.get("TOKEN_NUM", 5000)
+    TOKEN_NUM: str = os.environ.get("TOKEN_NUM", 2500)

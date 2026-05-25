@@ -753,3 +753,289 @@ def get_message_reaction(session_id: str, msg_id: str) -> "str | None":
         return row["reaction"] if row else None
     except Exception:
         return None
+
+
+# ── Plan & subscription management ────────────────────────────
+
+_PLAN_DAILY_LIMITS: dict = {"free": 20, "standard": 200, "pro": 9999}
+_PLAN_PRICES: dict = {"standard": 199, "pro": 1490}
+_PLAN_DURATIONS: dict = {"standard": 30, "pro": 365}
+
+
+def _ensure_user_plan_columns() -> None:
+    """為舊資料庫補上 plan 相關欄位（idempotent）。"""
+    cols = [
+        ("email",                 "TEXT"),
+        ("email_verified",        "INTEGER NOT NULL DEFAULT 0"),
+        ("email_verify_token",    "TEXT"),
+        ("plan",                  "TEXT NOT NULL DEFAULT 'free'"),
+        ("plan_expires_at",       "TEXT"),
+        ("api_calls_today",       "INTEGER NOT NULL DEFAULT 0"),
+        ("api_calls_reset_at",    "TEXT"),
+        ("password_reset_token",  "TEXT"),
+        ("password_reset_expires","TEXT"),
+    ]
+    with get_db() as conn:
+        existing = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
+        for col_name, col_def in cols:
+            if col_name not in existing:
+                try:
+                    conn.execute(f"ALTER TABLE users ADD COLUMN {col_name} {col_def}")
+                except Exception:
+                    pass
+        # orders table
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id TEXT UNIQUE NOT NULL,
+                session_id TEXT NOT NULL,
+                plan TEXT NOT NULL,
+                amount INTEGER NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                trade_no TEXT,
+                created_at TEXT NOT NULL,
+                paid_at TEXT
+            )
+        """)
+        conn.commit()
+
+
+# 在模組載入時自動補欄位
+try:
+    _ensure_user_plan_columns()
+except Exception:
+    pass
+
+
+def get_user_by_session(session_id: str) -> "dict | None":
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT username, session_id, email, email_verified FROM users WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def get_user_by_email(email: str) -> "dict | None":
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT username, session_id, email, email_verified FROM users WHERE email=?",
+                (email,),
+            ).fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
+def update_user_email(session_id: str, email: str) -> "str | None":
+    """設定 email 並產生驗證 token，回傳 token（發送驗證信用）。"""
+    token = secrets.token_urlsafe(32)
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE users SET email=?, email_verified=0, email_verify_token=? WHERE session_id=?",
+                (email, token, session_id),
+            )
+            conn.commit()
+        return token
+    except Exception:
+        logger.warning("[email] update_user_email 失敗: %s", session_id)
+        return None
+
+
+def verify_email_token(token: str) -> bool:
+    """驗證 email token，成功後清除 token 並標記已驗證。"""
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT session_id FROM users WHERE email_verify_token=?", (token,)
+            ).fetchone()
+            if not row:
+                return False
+            conn.execute(
+                "UPDATE users SET email_verified=1, email_verify_token=NULL WHERE email_verify_token=?",
+                (token,),
+            )
+            conn.commit()
+        return True
+    except Exception:
+        return False
+
+
+def create_password_reset_token(email: str) -> "tuple[str, str] | None":
+    """為持有此 email 的帳號產生重設密碼 token。
+    回傳 (raw_token, username) 或 None（若 email 不存在）。
+    """
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT username, session_id FROM users WHERE email=?", (email,)
+            ).fetchone()
+        if not row:
+            return None
+        raw_token = secrets.token_urlsafe(32)
+        import datetime as _dt
+        expires = (_dt.datetime.now() + _dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE users SET password_reset_token=?, password_reset_expires=? WHERE email=?",
+                (raw_token, expires, email),
+            )
+            conn.commit()
+        return raw_token, row["username"]
+    except Exception:
+        logger.warning("[reset] create_password_reset_token 失敗: %s", email)
+        return None
+
+
+def verify_and_consume_reset_token(raw_token: str, new_password: str) -> bool:
+    """驗證重設密碼 token，成功後更新密碼並清除 token。"""
+    if len(new_password) < 6:
+        return False
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT session_id, password_reset_expires FROM users WHERE password_reset_token=?",
+                (raw_token,),
+            ).fetchone()
+            if not row:
+                return False
+            if row["password_reset_expires"] and row["password_reset_expires"] < now_str:
+                return False
+            new_hash = _make_password_entry(new_password)
+            conn.execute(
+                "UPDATE users SET password_hash=?, password_reset_token=NULL, password_reset_expires=NULL WHERE password_reset_token=?",
+                (new_hash, raw_token),
+            )
+            conn.commit()
+        return True
+    except Exception:
+        return False
+
+
+def get_user_plan(session_id: str) -> dict:
+    """回傳此 session 的方案資訊 dict。"""
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT plan, plan_expires_at, api_calls_today, api_calls_reset_at, email, email_verified FROM users WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+        if not row:
+            return {"plan": "free", "expires_at": None, "calls_today": 0, "limit": 10, "email": None, "email_verified": False}
+        plan = row["plan"] or "free"
+        now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        if plan != "free" and row["plan_expires_at"] and row["plan_expires_at"] < now_str:
+            plan = "free"
+            with get_db() as conn:
+                conn.execute("UPDATE users SET plan='free', plan_expires_at=NULL WHERE session_id=?", (session_id,))
+                conn.commit()
+        today = time.strftime("%Y-%m-%d")
+        reset_date = (row["api_calls_reset_at"] or "")[:10]
+        calls_today = row["api_calls_today"] or 0
+        if reset_date != today:
+            calls_today = 0
+        limit = _PLAN_DAILY_LIMITS.get(plan, 10)
+        return {
+            "plan": plan,
+            "expires_at": row["plan_expires_at"],
+            "calls_today": calls_today,
+            "limit": limit,
+            "email": row["email"],
+            "email_verified": bool(row["email_verified"]),
+        }
+    except Exception:
+        return {"plan": "free", "expires_at": None, "calls_today": 0, "limit": 10, "email": None, "email_verified": False}
+
+
+def check_and_increment_api_calls(session_id: str) -> "tuple[bool, int]":
+    """檢查速率限制並原子性遞增計數器。回傳 (allowed, remaining)。"""
+    today = time.strftime("%Y-%m-%d")
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT plan, plan_expires_at, api_calls_today, api_calls_reset_at FROM users WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+            if not row:
+                return True, 9999
+            plan = row["plan"] or "free"
+            if plan != "free" and row["plan_expires_at"] and row["plan_expires_at"] < now_str:
+                plan = "free"
+                conn.execute("UPDATE users SET plan='free', plan_expires_at=NULL WHERE session_id=?", (session_id,))
+            limit = _PLAN_DAILY_LIMITS.get(plan, 10)
+            reset_date = (row["api_calls_reset_at"] or "")[:10]
+            calls_today = row["api_calls_today"] or 0
+            if reset_date != today:
+                calls_today = 0
+            if calls_today >= limit:
+                conn.commit()
+                return False, 0
+            new_calls = calls_today + 1
+            conn.execute(
+                "UPDATE users SET api_calls_today=?, api_calls_reset_at=? WHERE session_id=?",
+                (new_calls, now_str, session_id),
+            )
+            conn.commit()
+        return True, limit - new_calls
+    except Exception:
+        logger.warning("[rate_limit] check 失敗: %s", session_id)
+        return True, 9999
+
+
+def activate_plan(session_id: str, plan: str, duration_days: int) -> bool:
+    import datetime as _dt
+    expires_str = (_dt.datetime.now() + _dt.timedelta(days=duration_days)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE users SET plan=?, plan_expires_at=? WHERE session_id=?",
+                (plan, expires_str, session_id),
+            )
+            conn.commit()
+        return True
+    except Exception:
+        return False
+
+
+def create_payment_order(order_id: str, session_id: str, plan: str, amount: int) -> bool:
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "INSERT INTO orders (order_id, session_id, plan, amount, status, created_at) VALUES (?,?,?,?,?,?)",
+                (order_id, session_id, plan, amount, "pending", now),
+            )
+            conn.commit()
+        return True
+    except Exception:
+        logger.warning("[orders] 建立失敗: %s", order_id)
+        return False
+
+
+def complete_payment_order(order_id: str, trade_no: str) -> "dict | None":
+    """將訂單標記為 paid，回傳 {plan, session_id} 供後續 activate_plan 使用。"""
+    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT session_id, plan, status FROM orders WHERE order_id=?",
+                (order_id,),
+            ).fetchone()
+            if not row or row["status"] == "paid":
+                return None
+            conn.execute(
+                "UPDATE orders SET status='paid', trade_no=?, paid_at=? WHERE order_id=?",
+                (trade_no, now, order_id),
+            )
+            conn.commit()
+        return {"plan": row["plan"], "session_id": row["session_id"]}
+    except Exception:
+        logger.warning("[orders] complete 失敗: %s", order_id)
+        return None

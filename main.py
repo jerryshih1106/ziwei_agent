@@ -3,6 +3,7 @@ import json
 import logging
 import os
 import queue as _queue
+import re
 import threading
 import time
 import uuid
@@ -21,7 +22,7 @@ load_dotenv()
 
 from fastapi import Depends, FastAPI, HTTPException, Request, Security, status
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from fastapi.security.api_key import APIKeyHeader
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -59,6 +60,7 @@ SESSION_STATS: dict = {}
 HOROSCOPE: dict = {}
 CHART_TABLE: dict = {}
 BIRTH_INFO: dict = {}
+BAZI_DOC: dict = {}    # session_id → 格式化八字文件，注入 CHAT_PROMPT
 AGENT_THREAD: dict = {}
 NON_AGENT_THREAD: dict = {}    # Bug #1 Fix: non-agent 模式的 LangGraph thread_id，重置時換新 UUID
 _SESSION_LAST_SEEN: dict = {}  # Fix #5: session 最後活躍時間戳
@@ -264,6 +266,42 @@ def _playbook_conv(session_id: str, n: int = 5) -> str:
     return "\n".join(f"用戶: {t}" for t in user_texts)
 
 
+def _auto_activate_bazi(session_id: str, birth_info: "dict | None") -> None:
+    """排好紫微命盤後，用相同出生資料自動計算八字並存入 BAZI_DOC。"""
+    if not birth_info or BAZI_DOC.get(session_id):
+        return  # 若用戶已從八字 modal 手動設定，不覆蓋
+    try:
+        from chat_bot.utils.bazi import compute_bazi, wuxing_count, day_master, _STEM_ELEMENT
+        year, month, day = birth_info.get("year"), birth_info.get("month"), birth_info.get("day")
+        hour = birth_info.get("hour", 0)
+        is_male = birth_info.get("is_male", 1)
+        if not all([year, month, day]):
+            return
+        bazi = compute_bazi(int(year), int(month), int(day), int(hour), 0, 120)
+        dm = day_master(bazi)
+        dm_elem = _STEM_ELEMENT[bazi["day_pillar"]["stem_idx"]]
+        wx = wuxing_count(bazi)
+        wx_str = " ".join(f"{k}{v}個" for k, v in wx.items() if v > 0)
+        cg = bazi.get("canggan", {})
+        cang_str = " ".join(
+            f"{'年月日時'[i]}[{'/'.join(cg.get(k, [])) or '—'}]"
+            for i, k in enumerate(["year_pillar", "month_pillar", "day_pillar", "hour_pillar"])
+        )
+        gender = "男" if is_male else "女"
+        doc = (
+            f"（{gender}）\n"
+            f"年柱：{bazi['year_pillar']['ganzhi']}　月柱：{bazi['month_pillar']['ganzhi']}　"
+            f"日柱：{bazi['day_pillar']['ganzhi']}　時柱：{bazi['hour_pillar']['ganzhi']}\n"
+            f"日主：{dm}（{dm_elem}）　時辰：{bazi['shichen']}\n"
+            f"五行：{wx_str}\n"
+            f"藏幹：{cang_str}"
+        )
+        BAZI_DOC[session_id] = doc
+        logger.info("[auto_activate_bazi] session=%s bazi activated", session_id)
+    except Exception:
+        logger.warning("[auto_activate_bazi] failed for session=%s", session_id, exc_info=True)
+
+
 def _auto_save_self_profile(session_id: str, horoscope: str, chart_table: str, birth_info: "dict | None") -> None:
     """新命盤排好後，若命盤庫中尚無「我」，自動以「我」為名存入命盤庫。"""
     from chat_bot.auth.auth import save_profile, load_profiles
@@ -426,6 +464,7 @@ async def api_chat(body: ChatRequest):
                         BIRTH_INFO[session_id] = _bi
                     # 伺服器重啟後同步恢復對話上下文
                     await run_in_threadpool(_restore_session_from_db, session_id)
+                    _auto_activate_bazi(session_id, _bi)
 
             if GlobalConfig.USE_AGENT_SKILL:
                 if is_reset or session_id not in AGENT_THREAD:
@@ -477,6 +516,7 @@ async def api_chat(body: ChatRequest):
                         def _save_new_chart(sid=session_id, h=_h_snap, ct=_ct_snap, bi=_bi_snap):
                             save_horoscope(sid, h, ct, bi)
                             _auto_save_self_profile(sid, h, ct, bi)
+                            _auto_activate_bazi(sid, bi)
                         threading.Thread(target=_save_new_chart, daemon=True).start()
 
                 reply = _extract_last_message(output)
@@ -611,6 +651,16 @@ async def api_chat_stream(body: ChatRequest):
     # Bug #3 Fix: 精確匹配避免一般訊息含 "/reset" 誤觸重置
     is_reset = msg.strip() == "/reset"
 
+    # ── API 用量速率限制（免費方案每日10次）──────────────────────
+    if not is_reset:
+        from chat_bot.auth.auth import check_and_increment_api_calls as _check_rate
+        _allowed, _remaining = await run_in_threadpool(_check_rate, session_id)
+        if not _allowed:
+            async def _rate_limited():
+                yield f'data: {json.dumps({"token": "⚠️ 今日免費使用次數已達上限（10次）。升級付費方案即可無限使用！", "rate_limited": True})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+            return StreamingResponse(_rate_limited(), media_type="text/event-stream")
+
     from chat_bot.utils.user_playbook import load_playbook, update_playbook
     user_profile = USER_PROFILES.get(session_id) or load_playbook(session_id)
     USER_PROFILES[session_id] = user_profile
@@ -631,6 +681,7 @@ async def api_chat_stream(body: ChatRequest):
                     BIRTH_INFO[session_id] = _bi
                 # 伺服器重啟後同步恢復對話上下文
                 await run_in_threadpool(_restore_session_from_db, session_id)
+                _auto_activate_bazi(session_id, _bi)
 
         horoscope_ready = (
             session_id in HOROSCOPE
@@ -660,6 +711,7 @@ async def api_chat_stream(body: ChatRequest):
                     HOROSCOPE.pop(session_id, None)
                     CHART_TABLE.pop(session_id, None)
                     BIRTH_INFO.pop(session_id, None)
+                    BAZI_DOC.pop(session_id, None)
                     _reset_msg = "✅ 對話與命盤已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你排盤。"
                 elif session_id not in HOROSCOPE:
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
@@ -690,6 +742,7 @@ async def api_chat_stream(body: ChatRequest):
                                 from chat_bot.auth.auth import save_horoscope
                                 save_horoscope(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id))
                                 _auto_save_self_profile(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id))
+                                _auto_activate_bazi(session_id, BIRTH_INFO.get(session_id))
                         r = _extract_last_message(output)
                         SESSION_STATS[session_id].append(AIMessage(content=r))
                         return r
@@ -761,6 +814,7 @@ async def api_chat_stream(body: ChatRequest):
         chart_table_snapshot = CHART_TABLE.get(session_id, "")
         current_year_snapshot = _dt_now.datetime.now().year
         user_profile_snapshot = user_profile
+        bazi_doc_snapshot = BAZI_DOC.get(session_id, "")
 
     # ── 儲存命盤流程（lock 已釋放，耗時排盤在這裡執行）─────────────
     if _save_intent_data is not None:
@@ -806,7 +860,7 @@ async def api_chat_stream(body: ChatRequest):
             if _llm is None:
                 token_q.put("⚠️ 服務尚未就緒，請稍後再試。")
                 return
-            for token in chat_stream(messages_snapshot, horoscope_snapshot, _llm, chart_table_snapshot, current_year_snapshot, user_profile_snapshot):  # Bug #5 Fix: reuse singleton
+            for token in chat_stream(messages_snapshot, horoscope_snapshot, _llm, chart_table_snapshot, current_year_snapshot, user_profile_snapshot, bazi_doc_snapshot):  # Bug #5 Fix: reuse singleton
                 if cancel_event.is_set():
                     break
                 token_q.put(token)
@@ -1790,6 +1844,232 @@ async def api_change_password(body: ChangePasswordRequest, request: Request):
     return {"status": "ok"}
 
 
+# ── 密碼重置 & 電子郵件 API ────────────────────────────────────
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def email_format(cls, v: str) -> str:
+        import re as _re
+        v = v.strip().lower()
+        if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("請輸入有效的電子郵件地址")
+        return v
+
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    new_password: str
+
+
+class UpdateEmailRequest(BaseModel):
+    email: str
+
+    @field_validator("email")
+    @classmethod
+    def email_format(cls, v: str) -> str:
+        import re as _re
+        v = v.strip().lower()
+        if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("請輸入有效的電子郵件地址")
+        return v
+
+
+@app.get("/reset-password", response_class=HTMLResponse)
+async def reset_password_page(request: Request):
+    return templates.TemplateResponse(request, "reset_password.html", {"request": request})
+
+
+@app.post("/api/auth/forgot-password")
+async def api_forgot_password(body: ForgotPasswordRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_login_rate(f"forgot:{client_ip}"):
+        raise HTTPException(status_code=429, detail="請求過於頻繁，請 5 分鐘後再試")
+    from chat_bot.auth.auth import create_password_reset_token
+    result = await run_in_threadpool(create_password_reset_token, body.email)
+    if result:
+        raw_token, username = result
+        import threading as _thr
+        from chat_bot.email_service import send_password_reset_email
+        _thr.Thread(
+            target=send_password_reset_email,
+            args=(body.email, username, raw_token),
+            daemon=True,
+        ).start()
+    # Always return OK to prevent email enumeration
+    return {"status": "ok", "message": "若此電子郵件地址已註冊，您將在幾分鐘內收到重置郵件"}
+
+
+@app.post("/api/auth/reset-password")
+async def api_reset_password(body: ResetPasswordRequest, request: Request):
+    client_ip = request.client.host if request.client else "unknown"
+    if not _check_login_rate(f"reset:{client_ip}"):
+        raise HTTPException(status_code=429, detail="請求過於頻繁，請稍後再試")
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="新密碼至少需要 6 個字元")
+    from chat_bot.auth.auth import verify_and_consume_reset_token
+    ok = await run_in_threadpool(verify_and_consume_reset_token, body.token.strip(), body.new_password)
+    if not ok:
+        raise HTTPException(status_code=400, detail="重置連結無效或已過期，請重新申請")
+    return {"status": "ok", "message": "密碼已成功重置，請使用新密碼登入"}
+
+
+@app.post("/api/auth/update-email")
+async def api_update_email(body: UpdateEmailRequest, request: Request):
+    from chat_bot.auth.auth import verify_token, update_user_email, get_user_by_email
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="未登入")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Token 無效")
+    # Check email not taken by another user
+    existing = await run_in_threadpool(get_user_by_email, body.email)
+    if existing and existing["session_id"] != user["session_id"]:
+        raise HTTPException(status_code=409, detail="此電子郵件已被其他帳號使用")
+    verify_token_val = await run_in_threadpool(update_user_email, user["session_id"], body.email)
+    if not verify_token_val:
+        raise HTTPException(status_code=500, detail="更新失敗，請稍後再試")
+    import threading as _thr
+    from chat_bot.email_service import send_email_verification
+    from chat_bot.auth.auth import get_user_by_session as _get_u
+    u_info = await run_in_threadpool(_get_u, user["session_id"])
+    uname = u_info["username"] if u_info else user["username"]
+    _thr.Thread(
+        target=send_email_verification,
+        args=(body.email, uname, verify_token_val),
+        daemon=True,
+    ).start()
+    return {"status": "ok", "message": "驗證郵件已發送，請查收並點擊驗證連結"}
+
+
+@app.get("/api/auth/verify-email")
+async def api_verify_email(token: str, request: Request):
+    from chat_bot.auth.auth import verify_email_token
+    ok = await run_in_threadpool(verify_email_token, token.strip())
+    if not ok:
+        return HTMLResponse("<h3>驗證連結無效或已過期</h3><a href='/chat'>返回主頁</a>", status_code=400)
+    return HTMLResponse("<h3>✅ 電子郵件驗證成功！</h3><a href='/chat'>返回主頁</a>")
+
+
+@app.get("/api/auth/plan")
+async def api_get_plan(request: Request):
+    from chat_bot.auth.auth import verify_token, get_user_plan
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="未登入")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Token 無效")
+    plan_info = await run_in_threadpool(get_user_plan, user["session_id"])
+    return plan_info
+
+
+# ── 綠界金流 API ───────────────────────────────────────────────
+
+class CreateOrderRequest(BaseModel):
+    plan: str
+
+    @field_validator("plan")
+    @classmethod
+    def plan_valid(cls, v: str) -> str:
+        if v not in ("standard", "pro"):
+            raise ValueError("方案必須為 standard 或 pro")
+        return v
+
+
+@app.post("/api/payment/create-order")
+async def api_create_order(body: CreateOrderRequest, request: Request):
+    from chat_bot.auth.auth import verify_token, create_payment_order
+    from chat_bot.payment.ecpay import create_order_params, is_configured, PLAN_ITEMS, CHECKOUT_URL
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="未登入")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=401, detail="Token 無效")
+    if not is_configured():
+        raise HTTPException(status_code=503, detail="金流服務尚未設定")
+
+    # Generate unique order ID (max 20 chars: ZW + 10-digit timestamp + 8 random)
+    import secrets as _sec
+    order_id = f"ZW{int(time.time())}{_sec.token_hex(4).upper()}"[:20]
+    amount = PLAN_ITEMS[body.plan]["amount"]
+
+    base_url = str(request.base_url).rstrip("/")
+    notify_url = f"{base_url}/api/payment/callback"
+    return_url = f"{base_url}/api/payment/return"
+
+    params = create_order_params(order_id, body.plan, notify_url, return_url)
+    if not params:
+        raise HTTPException(status_code=500, detail="建立訂單失敗")
+
+    await run_in_threadpool(create_payment_order, order_id, user["session_id"], body.plan, amount)
+    return {"checkout_url": CHECKOUT_URL, "params": params, "order_id": order_id}
+
+
+@app.post("/api/payment/callback")
+async def api_payment_callback(request: Request):
+    """ECPay server-to-server callback (no JWT)."""
+    from chat_bot.payment.ecpay import verify_callback
+    from chat_bot.auth.auth import complete_payment_order, activate_plan, get_user_plan, _PLAN_DURATIONS
+    form = await request.form()
+    data = dict(form)
+    if not verify_callback(data):
+        return PlainTextResponse("0|CheckMacValue Error", status_code=400)
+    rtn_code = data.get("RtnCode", "0")
+    order_id = data.get("MerchantTradeNo", "")
+    trade_no = data.get("TradeNo", "")
+    if rtn_code != "1" or not order_id:
+        return PlainTextResponse("1|OK")
+    order = await run_in_threadpool(complete_payment_order, order_id, trade_no)
+    if order:
+        plan = order["plan"]
+        session_id = order["session_id"]
+        duration = _PLAN_DURATIONS.get(plan, 30)
+        await run_in_threadpool(activate_plan, session_id, plan, duration)
+        # Send receipt email in background if email available
+        plan_info = await run_in_threadpool(get_user_plan, session_id)
+        if plan_info.get("email") and plan_info.get("email_verified"):
+            from chat_bot.auth.auth import get_user_by_session as _get_u
+            from chat_bot.payment.ecpay import PLAN_ITEMS
+            from chat_bot.email_service import send_payment_receipt
+            import threading as _thr
+            u_info = await run_in_threadpool(_get_u, session_id)
+            if u_info:
+                amount = PLAN_ITEMS.get(plan, {}).get("amount", 0)
+                _thr.Thread(
+                    target=send_payment_receipt,
+                    args=(plan_info["email"], u_info["username"], plan, amount, plan_info["expires_at"] or ""),
+                    daemon=True,
+                ).start()
+    return PlainTextResponse("1|OK")
+
+
+@app.get("/api/payment/return")
+async def api_payment_return(request: Request):
+    rtn_code = request.query_params.get("RtnCode", "0")
+    order_id = request.query_params.get("MerchantTradeNo", "")
+    if rtn_code == "1":
+        html = f"""<html><head><meta http-equiv="refresh" content="3;url=/chat?payment=success"></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px;background:#060e1c;color:#e8dcc8">
+<h2 style="color:#c9a227">✅ 付款成功！</h2>
+<p>訂單編號：{order_id}</p>
+<p>正在跳轉回主頁…</p></body></html>"""
+    else:
+        html = f"""<html><head><meta http-equiv="refresh" content="3;url=/chat?payment=fail"></head>
+<body style="font-family:sans-serif;text-align:center;padding:40px;background:#060e1c;color:#e8dcc8">
+<h2 style="color:#ff7b7b">❌ 付款未完成</h2>
+<p>若有疑問請聯絡客服</p>
+<p>正在跳轉回主頁…</p></body></html>"""
+    return HTMLResponse(html)
+
+
 # ── 關鍵人生節點 API ──────────────────────────────────────────
 _LIFE_EVENTS_PROMPT = """你是資深紫微斗數命理師。請根據以下命主的命盤，分析並找出3-5個最重要的人生關鍵節點（大限轉換點或重要流年）。
 
@@ -2017,8 +2297,126 @@ async def api_monthly_detail(session_id: str = "web_default", year: int = None, 
 
 
 # ── 八字排盤 API ──────────────────────────────────────────────
-_BAZI_INTERPRET_PROMPT = """你是資深八字命理師（BaZi / Four Pillars）。以下是命主的八字命盤，請做精要的命盤解析。
+_BAZI_KNOWLEDGE_FILE = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "knowledge", "bazi.md"
+)
 
+# Names returned by compute_shenshas() that differ from their bazi.md entry names
+_SHENSHA_ALIASES: dict[str, str] = {
+    "六甲空亡": "空亡",    # bazi.md entry: 空亡煞 (contains "空亡" substring)
+    "八專日":   "八專",    # bazi.md entry: 八專 (no 日 suffix)
+    "六秀日":   "六秀",    # bazi.md entry: 六秀 (no 日 suffix)
+    "德秀貴人": "天德貴人", # derived; falls back to 天德貴人 entry
+    "陰差陽錯": "陰陽差錯", # bazi.md entry: 陰陽差錯
+}
+
+# Module-level RAG cache: (core_text, {name: entry_text})
+_BAZI_RAG_CACHE: tuple[str, dict[str, str]] | None = None
+
+
+def _build_bazi_rag() -> tuple[str, dict[str, str]]:
+    """Parse bazi.md into (core_text, {shensha_name: entry_text}).
+
+    core_text: 核心 + 定義 sections — always injected (small, foundational).
+    index: each numbered 神煞 entry keyed by its name.
+    Cached after first call.
+    """
+    global _BAZI_RAG_CACHE
+    if _BAZI_RAG_CACHE is not None:
+        return _BAZI_RAG_CACHE
+
+    core_text = ""
+    index: dict[str, str] = {}
+    try:
+        with open(_BAZI_KNOWLEDGE_FILE, encoding="utf-8") as f:
+            raw = f.read()
+
+        # Split 核心/定義 sections from 神煞要義
+        m = re.search(r"###\s*神煞要義", raw)
+        core_text = raw[: m.start()].strip() if m else raw.strip()
+        shenshas_raw = raw[m.end() :] if m else ""
+
+        if shenshas_raw:
+            # Split into numbered entries; each starts with digits + Chinese/Western punct
+            chunks = re.split(r"\n(?=\d+[，,、\. ])", shenshas_raw)
+            for chunk in chunks:
+                chunk = chunk.strip().rstrip(",，")
+                if not chunk:
+                    continue
+                # Extract name: strip numeric prefix, capture pure CJK characters only
+                # so punctuation like 、 in "天德貴人、天德合" doesn't contaminate the name
+                nm = re.match(r"^\d+[，,、\. ]+([一-鿿]{2,8})", chunk)
+                if not nm:
+                    continue
+                name = nm.group(1)
+                # Cap each entry at 500 chars to stay within token budget
+                entry = chunk if len(chunk) <= 500 else chunk[:500] + "…"
+                index[name] = entry
+
+        logger.info("BaZi RAG index built: core=%d chars, %d entries", len(core_text), len(index))
+    except Exception:
+        logger.warning("Failed to build BaZi RAG index", exc_info=True)
+
+    _BAZI_RAG_CACHE = (core_text, index)
+    return _BAZI_RAG_CACHE
+
+
+def _load_bazi_knowledge_for_chart(bazi_data: dict) -> str:
+    """Return bazi.md sections relevant to this chart's 神煞 — Ziwei-style RAG.
+
+    Mirrors how Ziwei RAG works: extract which 神煞 are present in the chart
+    (from compute_shenshas), look them up in the bazi.md index, inject only
+    those entries.  Reduces tokens by ~90 % compared to injecting the full file.
+    """
+    core_text, index = _build_bazi_rag()
+
+    # Collect all shensha names present across the four pillars
+    names: set[str] = set()
+    for pillar_list in bazi_data.get("shenshas", {}).values():
+        names.update(pillar_list)
+
+    if not names:
+        return core_text
+
+    matched: list[str] = []
+    seen_ids: set[int] = set()   # deduplicate entries shared by multiple name lookups
+
+    for name in sorted(names):
+        lookup = _SHENSHA_ALIASES.get(name, name)
+
+        # 1. Exact key match
+        entry = index.get(lookup)
+
+        # 2. Substring match: lookup ⊆ key  or  key ⊆ lookup  (e.g. 元辰 ↔ 元辰之歲)
+        if entry is None:
+            entry = next(
+                (v for k, v in index.items() if lookup in k or k in lookup),
+                None,
+            )
+
+        # 3. Entry-text match: lookup appears in the first 300 chars of any entry
+        #    (catches cases like 天德合 found inside the 天德貴人 entry body)
+        if entry is None:
+            entry = next(
+                (v for v in index.values() if lookup in v[:300]),
+                None,
+            )
+
+        if entry is not None:
+            eid = id(entry)
+            if eid not in seen_ids:
+                seen_ids.add(eid)
+                matched.append(entry)
+        else:
+            logger.debug("BaZi RAG: no entry found for %r (lookup=%r)", name, lookup)
+
+    if not matched:
+        return core_text
+
+    return core_text + "\n\n【命盤相關神煞知識】\n" + "\n\n".join(matched)
+
+_BAZI_INTERPRET_PROMPT = """你是資深八字命理師（BaZi / Four Pillars）。以下是命主的八字命盤，請做精要的命盤解析。
+{knowledge_doc}
 【八字命盤】
 年柱：{year_gz}　月柱：{month_gz}　日柱：{day_gz}　時柱：{hour_gz}
 
@@ -2045,7 +2443,7 @@ _BAZI_INTERPRET_PROMPT = """你是資深八字命理師（BaZi / Four Pillars）
 | ❤️ 健康養生 | 一句重點 |
 | 🌟 人生建議 | 一句重點 |
 
-**命盤亮點：** 2-3個最突出的命盤特徵或人生主題
+**命盤亮點：** 2-3個最突出的命盤特徵；若上方神煞知識中有吉神（如貴人、文昌）或凶煞（如劫煞、桃花），各點出最重要的1-2個並說明對命主的影響。
 
 **開運建議：** 1-2條具體可行的建議（顏色、方位、行業等）"""
 
@@ -2125,6 +2523,43 @@ async def api_bazi_chart(body: BaziRequest):
     except Exception as exc:
         logger.exception("[bazi-chart] error")
         raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/bazi/activate")
+async def api_bazi_activate(body: BaziRequest):
+    """將八字命盤存入 session，之後的對話會自動帶入 bazi_doc 上下文。"""
+    from chat_bot.utils.bazi import compute_bazi, wuxing_count, day_master, _STEM_ELEMENT
+    try:
+        bazi = await run_in_threadpool(
+            compute_bazi,
+            body.year, body.month, body.day,
+            body.hour, body.minute, body.longitude,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    dm = day_master(bazi)
+    dm_elem = _STEM_ELEMENT[bazi["day_pillar"]["stem_idx"]]
+    wx = wuxing_count(bazi)
+    wx_str = " ".join(f"{k}{v}個" for k, v in wx.items() if v > 0)
+    cg = bazi.get("canggan", {})
+    cang_str = " ".join(
+        f"{'年月日時'[i]}[{'/'.join(cg.get(k, [])) or '—'}]"
+        for i, k in enumerate(["year_pillar","month_pillar","day_pillar","hour_pillar"])
+    )
+    gender = "男" if body.is_male else "女"
+
+    doc = (
+        f"姓名：{body.name}（{gender}）\n"
+        f"年柱：{bazi['year_pillar']['ganzhi']}　月柱：{bazi['month_pillar']['ganzhi']}　"
+        f"日柱：{bazi['day_pillar']['ganzhi']}　時柱：{bazi['hour_pillar']['ganzhi']}\n"
+        f"日主：{dm}（{dm_elem}）　時辰：{bazi['shichen']}\n"
+        f"五行：{wx_str}\n"
+        f"藏幹：{cang_str}\n"
+        f"真太陽時：{bazi['solar_hour']:02d}:{bazi['solar_minute']:02d}"
+    )
+    BAZI_DOC[body.session_id] = doc
+    return {"status": "ok"}
 
 
 @app.post("/api/bazi/dayun")
@@ -2237,7 +2672,11 @@ async def api_bazi_interpret(body: BaziRequest):
     solar_time = f"{bazi['solar_hour']:02d}:{bazi['solar_minute']:02d}"
     birth_dt = f"{body.year}年{body.month}月{body.day}日 {body.hour:02d}:{body.minute:02d}"
 
+    knowledge = await run_in_threadpool(_load_bazi_knowledge_for_chart, bazi)
+    knowledge_doc = f"\n【八字命理知識（精選）】\n{knowledge}\n\n" if knowledge else ""
+
     _inputs = {
+        "knowledge_doc": knowledge_doc,
         "year_gz":   bazi["year_pillar"]["ganzhi"],
         "month_gz":  bazi["month_pillar"]["ganzhi"],
         "day_gz":    bazi["day_pillar"]["ganzhi"],

@@ -51,6 +51,8 @@
       gap: 12px;
       flex-shrink: 0;
       backdrop-filter: blur(8px);
+      position: relative;
+      z-index: 100;
     }
     .back-btn {
       color: var(--text-muted);
@@ -96,7 +98,62 @@
     }
     @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
 
-    .topbar-actions { display: flex; gap: 8px; }
+    /* ── Hamburger menu ── */
+    .topbar-menu { position: relative; }
+    .menu-btn {
+      background: rgba(201,162,39,0.1);
+      border: 1px solid rgba(201,162,39,0.25);
+      color: var(--gold);
+      width: 42px; height: 42px;
+      border-radius: 10px;
+      font-size: 1.3rem;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.2s;
+      flex-shrink: 0;
+    }
+    .menu-btn:hover { background: rgba(201,162,39,0.22); }
+    .topbar-dropdown {
+      position: absolute;
+      top: calc(100% + 8px);
+      right: 0;
+      background: rgba(6, 14, 28, 0.97);
+      border: 1px solid rgba(201,162,39,0.3);
+      border-radius: 14px;
+      padding: 6px;
+      min-width: 192px;
+      display: none;
+      flex-direction: column;
+      gap: 2px;
+      z-index: 9000;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.55);
+      backdrop-filter: blur(14px);
+    }
+    .topbar-dropdown.open { display: flex; }
+    .dd-user {
+      padding: 10px 14px 8px;
+      color: var(--gold);
+      font-weight: 600;
+      font-size: 0.85rem;
+      border-bottom: 1px solid rgba(201,162,39,0.18);
+      margin-bottom: 2px;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .dd-btn {
+      display: flex; align-items: center; gap: 10px;
+      width: 100%; padding: 10px 14px;
+      border-radius: 8px;
+      background: none; border: none;
+      color: var(--text-light);
+      font-size: 0.88rem;
+      cursor: pointer; text-align: left;
+      transition: background 0.15s, color 0.15s;
+    }
+    .dd-btn:hover { background: rgba(201,162,39,0.12); color: var(--gold); }
+    .dd-sep { height: 1px; background: rgba(201,162,39,0.15); margin: 4px 6px; }
+    .dd-logout { color: var(--text-muted) !important; }
+    .dd-logout:hover { color: #e57373 !important; background: rgba(229,115,115,0.08) !important; }
+    /* keep .topbar-btn for any stray usages */
     .topbar-btn {
       background: rgba(201,162,39,0.1);
       border: 1px solid rgba(201,162,39,0.25);
@@ -487,6 +544,35 @@
       transition: transform 0.2s;
     }
     .welcome-start-btn:hover { transform: translateY(-2px); }
+    .welcome-choice-row {
+      display: flex;
+      gap: 16px;
+      margin-top: 8px;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+    .welcome-choice-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      width: 140px;
+      padding: 20px 12px;
+      border-radius: 14px;
+      border: 1.5px solid rgba(201,162,39,0.35);
+      background: rgba(201,162,39,0.06);
+      cursor: pointer;
+      transition: transform 0.18s, border-color 0.18s, background 0.18s;
+      font-family: 'Noto Serif TC', serif;
+    }
+    .welcome-choice-card:hover {
+      transform: translateY(-4px);
+      border-color: var(--gold);
+      background: rgba(201,162,39,0.14);
+    }
+    .welcome-choice-icon { font-size: 2.4rem; }
+    .welcome-choice-title { font-size: 1rem; font-weight: 700; color: var(--gold); }
+    .welcome-choice-desc { font-size: 0.75rem; color: var(--text-muted); text-align: center; line-height: 1.5; }
 
     /* ── Responsive ── */
     @media (max-width: 768px) {
@@ -496,22 +582,11 @@
       .topbar { padding: 0 10px; gap: 6px; }
       .bot-name { font-size: 0.88rem; }
       .bot-status { font-size: 0.68rem; }
-      .topbar-btn-reset { display: none; }
-      .topbar-username { max-width: 60px; font-size: 0.75rem; }
-      /* Fix 2: 登出按鈕觸控目標 >= 36px */
-      .topbar-logout { font-size: 0.75rem; padding: 7px 10px; min-height: 36px; }
       /* Fix 3: 返回按鈕觸控區域 >= 44px */
       .back-btn { padding: 10px 12px; font-size: 1.4rem; }
-      /* Fix 4: topbar 橫向捲動漸層提示 */
-      .topbar-actions {
-        overflow-x: auto; flex-wrap: nowrap;
-        scrollbar-width: none; -webkit-overflow-scrolling: touch;
-        -webkit-mask-image: linear-gradient(to right, black 82%, transparent 100%);
-        mask-image: linear-gradient(to right, black 82%, transparent 100%);
-        padding-right: 20px;
-      }
-      .topbar-actions::-webkit-scrollbar { display: none; }
-      .topbar-btn { flex-shrink: 0; font-size: 0.72rem; padding: 4px 9px; }
+      .menu-btn { width: 44px; height: 44px; }
+      .topbar-dropdown { right: 0; min-width: 200px; }
+      .dd-btn { padding: 12px 16px; font-size: 0.92rem; }
 
       /* Messages */
       .messages { padding: 14px 10px; }
@@ -558,11 +633,7 @@
       .bot-avatar { width: 32px; height: 32px; font-size: 1rem; }
       .bot-name { font-size: 0.82rem; }
       .bot-status { display: none; }
-      .topbar-username { max-width: 44px; font-size: 0.7rem; }
-      .topbar-logout { font-size: 0.68rem; padding: 3px 6px; }
-      .btn-text { display: none; }
-      .topbar-btn { font-size: 1rem; padding: 5px 8px; }
-      .lang-toggle { font-size: 0.7rem; padding: 4px 6px; }
+      .menu-btn { width: 40px; height: 40px; font-size: 1.2rem; }
       .msg-bubble { font-size: 0.92rem; padding: 9px 12px; }
       .qq-chip { font-size: 0.82rem; padding: 6px 10px; }
     }
@@ -1277,7 +1348,7 @@
     .bazi-wuxing { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 7px; }
     .bazi-wx-chip { font-size: 0.76rem; padding: 2px 9px; border-radius: 12px; border: 1px solid; }
     .bazi-correction { font-size: 0.7rem; color: var(--text-muted); text-align: center; margin-bottom: 10px; }
-    .bazi-tabs { display: flex; border-bottom: 1px solid rgba(201,162,39,0.2); margin-bottom: 12px; }
+.bazi-tabs { display: flex; border-bottom: 1px solid rgba(201,162,39,0.2); margin-bottom: 12px; }
     .bazi-tab {
       flex: 1; padding: 8px 4px; background: none; border: none;
       border-bottom: 2px solid transparent; margin-bottom: -1px;
@@ -1637,6 +1708,14 @@
       padding: 8px 16px; cursor: pointer; font-size: 0.88rem; white-space: nowrap;
     }
     .profile-empty { text-align: center; color: var(--text-muted); padding: 24px 0; font-size: 0.88rem; }
+    .consult-sel-btn {
+      background: rgba(201,162,39,0.1); color: var(--text-main);
+      border: 1px solid rgba(201,162,39,0.35); border-radius: 8px;
+      padding: 8px 16px; font-size: 0.88rem; cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+    .consult-sel-btn:hover:not(:disabled) { background: rgba(201,162,39,0.22); border-color: var(--gold); color: var(--gold); }
+    .consult-sel-both { border-color: rgba(201,162,39,0.6); }
 
     /* ── Fortune Calendar ── */
     .cal-header {
@@ -1858,23 +1937,33 @@
       <div class="bot-status"><span class="status-dot"></span> 線上服務中</div>
     </div>
   </div>
-  <div class="topbar-user" id="topbar-user" style="display:none">
-    <span id="topbar-username" class="topbar-username"></span>
-    <button class="topbar-logout" onclick="logout()">登出</button>
+  <!-- hidden refs kept for JS compatibility -->
+  <div id="topbar-user" style="display:none">
+    <span id="topbar-username"></span>
   </div>
-  <div class="topbar-actions">
-    <button class="topbar-btn" id="bazi-btn" onclick="openBazi()">🀄<span class="btn-text"> 八字</span></button>
-    <button class="topbar-btn" id="annual-btn" onclick="openAnnual()" style="display:none">🗓<span class="btn-text"> 流年流月</span></button>
-    <button class="topbar-btn" id="calendar-btn" onclick="openCalendar()" style="display:none">📅<span class="btn-text"> 本週運勢</span></button>
-    <button class="topbar-btn" id="bookmark-btn" onclick="openBookmarks()" style="display:none">📌<span class="btn-text"> 收藏</span></button>
-    <button class="topbar-btn" id="history-btn" onclick="openHistory()" style="display:none">📜<span class="btn-text"> 歷史</span></button>
-    <button class="topbar-btn" id="chart-btn" onclick="showChart()" style="display:none">📊<span class="btn-text"> 命盤</span></button>
-    <button class="topbar-btn" id="timeline-btn" onclick="openTimeline()" style="display:none">🗺<span class="btn-text"> 人生節點</span></button>
-    <button class="topbar-btn" id="compat-btn" onclick="openCompat()" style="display:none">💕<span class="btn-text"> 合盤</span></button>
-    <button class="topbar-btn" id="profiles-btn" onclick="openProfiles()" style="display:none">👥<span class="btn-text"> 命盤庫</span></button>
-    <button class="topbar-btn" id="settings-btn" onclick="openSettings()" style="display:none">⚙️<span class="btn-text"> 設定</span></button>
-    <button class="lang-toggle" id="lang-toggle" onclick="toggleLang()" title="切換語言">EN</button>
-    <button class="topbar-btn topbar-btn-reset" onclick="resetChat()">🔄</button>
+  <div class="topbar-menu">
+    <button class="menu-btn" id="menu-btn" onclick="toggleMenu()" aria-label="選單">☰</button>
+    <div class="topbar-dropdown" id="topbar-dropdown">
+      <!-- user info (shown when logged in) -->
+      <div class="dd-user" id="dd-user-row" style="display:none"></div>
+      <!-- always visible -->
+      <button class="dd-btn" id="bazi-btn" onclick="openBazi();closeMenu()">🀄 八字</button>
+      <!-- shown after login -->
+      <button class="dd-btn" id="annual-btn" onclick="openAnnual();closeMenu()" style="display:none">🗓 流年流月</button>
+      <button class="dd-btn" id="calendar-btn" onclick="openCalendar();closeMenu()" style="display:none">📅 本週運勢</button>
+      <button class="dd-btn" id="chart-btn" onclick="showChart();closeMenu()" style="display:none">📊 命盤</button>
+      <button class="dd-btn" id="timeline-btn" onclick="openTimeline();closeMenu()" style="display:none">🗺 人生節點</button>
+      <button class="dd-btn" id="compat-btn" onclick="openCompat();closeMenu()" style="display:none">💕 合盤</button>
+      <button class="dd-btn" id="profiles-btn" onclick="openProfiles();closeMenu()" style="display:none">👥 命盤庫</button>
+      <button class="dd-btn" id="bookmark-btn" onclick="openBookmarks();closeMenu()" style="display:none">📌 收藏</button>
+      <button class="dd-btn" id="history-btn" onclick="openHistory();closeMenu()" style="display:none">📜 歷史</button>
+      <button class="dd-btn" id="settings-btn" onclick="openSettings();closeMenu()" style="display:none">⚙️ 設定</button>
+      <div class="dd-sep"></div>
+      <button class="dd-btn" id="lang-toggle" onclick="toggleLang()">🌐 切換語言 <span id="dd-lang-label">EN</span></button>
+      <button class="dd-btn" onclick="resetChat();closeMenu()">🔄 重置對話</button>
+      <div class="dd-sep" id="dd-sep-logout" style="display:none"></div>
+      <button class="dd-btn dd-logout" id="dd-logout-btn" onclick="logout()" style="display:none">⬡ 登出</button>
+    </div>
   </div>
 </div>
 
@@ -1903,11 +1992,25 @@
       <div class="welcome-screen" id="welcome-screen">
         <div class="welcome-icon">🔯</div>
         <div class="welcome-title">紫微AI算命大師</div>
-        <p class="welcome-sub">
-          請告訴我你的<strong style="color:var(--gold)">出生年月日、時辰和性別</strong>，
-          我將立即為你排出專屬紫微斗數命盤，解析感情、事業、財運全方位人生藍圖。
-        </p>
-        <button class="welcome-start-btn" onclick="startChat()">開始算命 →</button>
+        <p class="welcome-sub">請選擇你想要的算命方式，或直接輸入問題開始對話。</p>
+        <div class="welcome-choice-row">
+          <div class="welcome-choice-card" onclick="startChatZiwei()">
+            <div class="welcome-choice-icon">🔯</div>
+            <div class="welcome-choice-title">紫微斗數</div>
+            <div class="welcome-choice-desc">排完整命盤<br>分析宮位星曜</div>
+          </div>
+          <div class="welcome-choice-card" onclick="startChatBazi()">
+            <div class="welcome-choice-icon">🀄</div>
+            <div class="welcome-choice-title">八字命理</div>
+            <div class="welcome-choice-desc">四柱八字排盤<br>五行旺弱分析</div>
+          </div>
+          <div class="welcome-choice-card" onclick="startChatBoth()">
+            <div class="welcome-choice-icon">✨</div>
+            <div class="welcome-choice-title">兩個都算</div>
+            <div class="welcome-choice-desc">紫微＋八字<br>雙盤完整解析</div>
+          </div>
+        </div>
+        <button class="welcome-start-btn" style="margin-top:20px;font-size:0.88rem;padding:9px 22px;opacity:0.75" onclick="startChat()">直接開始對話 →</button>
       </div>
     </div>
 
@@ -1974,6 +2077,7 @@
       <label class="auth-label">密碼</label>
       <input class="auth-input" id="login-password" type="password" placeholder="請輸入密碼" maxlength="100" autocomplete="current-password">
       <button class="auth-submit" onclick="doLogin()">登入</button>
+      <div style="text-align:right;margin-top:6px"><a href="/reset-password" style="font-size:0.8rem;color:var(--text-muted);text-decoration:none" onmouseover="this.style.color='var(--gold)'" onmouseout="this.style.color='var(--text-muted)'">忘記密碼？</a></div>
     </div>
     <!-- Register Form -->
     <div class="auth-form" id="form-register">
@@ -2198,52 +2302,45 @@
         </div>
       </div>
       <div class="modal-body">
-        <!-- Quick-pick from library -->
-        <div id="bazi-quickpick" style="display:none;margin-bottom:12px">
-          <div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:6px">快速選擇</div>
-          <div class="bazi-quickpick-row" id="bazi-quickpick-list"></div>
-        </div>
         <!-- Input form -->
-        <div class="bazi-form-grid">
-          <div class="bazi-field" style="grid-column:1/-1">
-            <label>姓名/稱呼</label>
-            <input type="text" id="bazi-name" class="bazi-input" placeholder="例：自己、老公、媽媽" maxlength="20">
+        <div id="bfpane-form">
+          <!-- Quick-pick from library -->
+          <div id="bazi-quickpick" style="display:none;margin-bottom:12px">
+            <div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:6px">快速選擇</div>
+            <div class="bazi-quickpick-row" id="bazi-quickpick-list"></div>
           </div>
-          <div class="bazi-field">
-            <label>性別</label>
-            <div class="bazi-gender-row">
-              <label class="bazi-gender-opt"><input type="radio" name="bazi-gender" value="1" checked> 男</label>
-              <label class="bazi-gender-opt"><input type="radio" name="bazi-gender" value="0"> 女</label>
+          <!-- Input form -->
+          <div class="bazi-form-grid">
+            <div class="bazi-field" style="grid-column:1/-1">
+              <label>姓名/稱呼</label>
+              <input type="text" id="bazi-name" class="bazi-input" placeholder="例：自己、老公、媽媽" maxlength="20">
+            </div>
+            <div class="bazi-field">
+              <label>性別</label>
+              <div class="bazi-gender-row">
+                <label class="bazi-gender-opt"><input type="radio" name="bazi-gender" value="1" checked> 男</label>
+                <label class="bazi-gender-opt"><input type="radio" name="bazi-gender" value="0"> 女</label>
+              </div>
+            </div>
+            <div class="bazi-field">
+              <label>出生年</label>
+              <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-year" class="bazi-input" min="1900" max="2100" placeholder="例：1990">
+            </div>
+            <div class="bazi-field">
+              <label>月</label>
+              <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-month" class="bazi-input" min="1" max="12" placeholder="1-12">
+            </div>
+            <div class="bazi-field">
+              <label>日</label>
+              <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-day" class="bazi-input" min="1" max="31" placeholder="1-31">
+            </div>
+            <div class="bazi-field">
+              <label>時（24h）</label>
+              <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-hour" class="bazi-input" min="0" max="23" value="0" placeholder="0-23">
             </div>
           </div>
-          <div class="bazi-field">
-            <label>出生年</label>
-            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-year" class="bazi-input" min="1900" max="2100" placeholder="例：1990">
-          </div>
-          <div class="bazi-field">
-            <label>月</label>
-            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-month" class="bazi-input" min="1" max="12" placeholder="1-12">
-          </div>
-          <div class="bazi-field">
-            <label>日</label>
-            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-day" class="bazi-input" min="1" max="31" placeholder="1-31">
-          </div>
-          <div class="bazi-field">
-            <label>時（24h）</label>
-            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-hour" class="bazi-input" min="0" max="23" value="0" placeholder="0-23">
-          </div>
-          <div class="bazi-field">
-            <label>分</label>
-            <input type="number" inputmode="numeric" pattern="[0-9]*" id="bazi-minute" class="bazi-input" min="0" max="59" value="0">
-          </div>
-          <div class="bazi-field" style="grid-column:1/-1">
-            <label>出生地經度
-              <span style="color:var(--text-muted);font-size:0.7rem">台北121.5｜上海121.4｜北京116.4｜香港114.2</span>
-            </label>
-            <input type="number" id="bazi-lon" class="bazi-input" step="0.1" value="121.5" min="-180" max="180">
-          </div>
+          <button class="bazi-run-btn" id="bazi-run-btn" onclick="runBazi()">🔯 排八字命盤</button>
         </div>
-        <button class="bazi-run-btn" id="bazi-run-btn" onclick="runBazi()">🔯 排八字命盤</button>
       </div>
     </div>
 
@@ -2268,6 +2365,7 @@
         <div class="bazi-wuxing" id="bazi-wuxing"></div>
         <div class="bazi-correction" id="bazi-correction"></div>
         <div style="display:flex;gap:8px;margin-bottom:12px">
+          <button class="fortune-refresh-btn" onclick="baziAppendToPrompt()" id="bazi-append-btn" style="flex:1.4;color:var(--gold);border-color:rgba(201,162,39,0.5)">📋 附加到提問</button>
           <button class="fortune-refresh-btn" onclick="saveBaziToHistory()" id="bazi-to-chat-btn" style="flex:1">💬 存入聊天記錄</button>
         </div>
         <div class="bazi-tabs">
@@ -2365,6 +2463,15 @@
         <div class="settings-label">每日運勢推播</div>
         <button class="profile-save-submit" id="push-toggle-btn" onclick="togglePushSubscription()" style="width:100%">🔔 開啟每日運勢通知</button>
         <div class="settings-msg" id="settings-push-msg"></div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-label">信箱設定</div>
+        <div class="settings-pw-form">
+          <div id="settings-email-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:4px"></div>
+          <input class="settings-pw-input" id="settings-email-input" type="email" placeholder="輸入電子信箱（用於找回密碼）" maxlength="100" autocomplete="email">
+          <button class="settings-pw-submit" onclick="updateEmail()">儲存信箱</button>
+          <div class="settings-msg" id="settings-email-msg"></div>
+        </div>
       </div>
       <div class="settings-section">
         <div class="settings-label">更改密碼</div>
@@ -2498,18 +2605,20 @@
   async function _onAuthSuccess(username, sessionId) {
     SESSION_ID = sessionId;
     document.getElementById('auth-modal').classList.add('hidden');
-    document.getElementById('topbar-user').style.display = 'flex';
+    // topbar-user kept hidden (legacy); show in dropdown instead
     document.getElementById('topbar-username').textContent = username;
+    const ddUser = document.getElementById('dd-user-row');
+    if (ddUser) { ddUser.textContent = '👤 ' + username; ddUser.style.display = ''; }
+    const ddLogout = document.getElementById('dd-logout-btn');
+    const ddSep = document.getElementById('dd-sep-logout');
+    if (ddLogout) ddLogout.style.display = '';
+    if (ddSep) ddSep.style.display = '';
     document.getElementById('history-btn').style.display = '';
     document.getElementById('compat-btn').style.display = '';
     document.getElementById('bookmark-btn').style.display = '';
     document.getElementById('calendar-btn').style.display = '';
     document.getElementById('profiles-btn').style.display = '';
     document.getElementById('settings-btn').style.display = '';
-
-    // 確保 welcome screen 移除，chatStarted 正確
-    document.getElementById('welcome-screen')?.remove();
-    chatStarted = true;
 
     // 查詢是否已有命盤
     let hasChart = false;
@@ -2523,17 +2632,26 @@
     } catch {}
 
     // 嘗試載入最近歷史訊息（在歡迎訊息前顯示）
-    await _loadRecentHistoryToChat(sessionId);
+    const hasHistory = await _loadRecentHistoryToChat(sessionId);
 
     _initQuickChips(hasChart);
     _newFeaturesInit();
 
     if (hasChart) {
+      // 老用戶：有命盤 → 直接進入對話
+      document.getElementById('welcome-screen')?.remove();
+      chatStarted = true;
       const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
       const biStr = bi ? `（${bi.year}年${bi.month}月${bi.day}日 ${_getHourName(bi.hour)}時 ${bi.is_male ? '男' : '女'}）` : '';
       appendAIMessage(`歡迎回來，**${username}**！\n\n你的紫微斗數命盤${biStr}已就緒 📊，可以直接向我提問，例如感情、事業、財運等方向。`);
-    } else {
+    } else if (hasHistory) {
+      // 有歷史對話但尚未排盤 → 進入對話，顯示提示
+      document.getElementById('welcome-screen')?.remove();
+      chatStarted = true;
       appendAIMessage(`你好，**${username}**！我是紫微AI算命大師 🔯\n\n請告訴我你的**出生年月日、時辰和性別**，我就能為你排出完整的紫微斗數命盤！\n\n例如：「我是1990年3月15日卯時出生的女生」`);
+    } else {
+      // 全新用戶：無命盤、無歷史 → 顯示選擇卡片（welcome-screen 保留不刪）
+      chatStarted = false;
     }
     document.getElementById('user-input').focus();
   }
@@ -2541,8 +2659,14 @@
   async function logout() {
     _clearAuth();
     SESSION_ID = null;
-    document.getElementById('topbar-user').style.display = 'none';
     document.getElementById('topbar-username').textContent = '';
+    const ddUser = document.getElementById('dd-user-row');
+    const ddLogout = document.getElementById('dd-logout-btn');
+    const ddSep = document.getElementById('dd-sep-logout');
+    if (ddUser) { ddUser.textContent = ''; ddUser.style.display = 'none'; }
+    if (ddLogout) ddLogout.style.display = 'none';
+    if (ddSep) ddSep.style.display = 'none';
+    closeMenu();
     // Reset chat state (skip confirm) and show auth modal
     await resetChat(true);
     document.getElementById('auth-modal').classList.remove('hidden');
@@ -2624,6 +2748,122 @@
     document.getElementById('user-input').focus();
   }
 
+  function startChatZiwei() {
+    document.getElementById('welcome-screen')?.remove();
+    chatStarted = true;
+    appendAIMessage('HIHI～ 你好！我是紫微AI算命大師 🔯\n\n請告訴我你的**出生年月日、時辰和性別**，我就能為你排出完整的紫微斗數命盤，解析感情、事業、財運！\n\n例如：「我是1990年3月15日卯時出生的女生」');
+    document.getElementById('user-input').focus();
+  }
+
+  function startChatBazi() {
+    document.getElementById('welcome-screen')?.remove();
+    chatStarted = true;
+    appendAIMessage('HIHI～ 你好！我是紫微AI算命大師 🀄\n\n歡迎使用**八字命理**！點選右上角 ☰ 選單中的「🀄 八字」，輸入你的出生年月日時辰，即可排出四柱八字命盤，分析五行旺弱與大運流年。');
+    document.getElementById('user-input').focus();
+    openBazi();
+  }
+
+  function startChatBoth() {
+    document.getElementById('welcome-screen')?.remove();
+    chatStarted = true;
+    _pendingBaziAfterChart = true;
+    appendAIMessage('你好！我會同時幫你排**紫微斗數**和**八字命理** ✨\n\n請告訴我你的**出生年月日、時辰和性別**，我就開始排盤！\n\n例如：「我是1990年3月15日卯時出生的女生」');
+    document.getElementById('user-input').focus();
+  }
+
+  function _sendProgrammatic(text) {
+    const input = document.getElementById('user-input');
+    if (!input) return;
+    input.value = text;
+    sendMessage();
+  }
+
+  // 「兩個都算」─ 紫微排完後，用相同出生資料自動計算八字，儲存兩盤，顯示諮詢選擇卡
+  async function _triggerBaziFromZiweiData() {
+    const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info')||'null'); } catch { return null; } })();
+    if (!bi) return;
+    appendAIMessage('✅ 紫微命盤已排好！正在幫你計算八字命盤…');
+    try {
+      const res = await fetch('/api/bazi/chart', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          year: bi.year, month: bi.month, day: bi.day,
+          hour: bi.hour ?? 0, minute: 0, longitude: 120,
+          is_male: bi.is_male ?? 1, name: '命主', session_id: SESSION_ID,
+        }),
+      });
+      if (!res.ok) throw new Error((await res.json().catch(()=>({}))).detail || res.statusText);
+      _baziData = await res.json();
+      _baziData._req = {year: bi.year, month: bi.month, day: bi.day, hour: bi.hour??0, is_male: bi.is_male??1, name: '命主'};
+      _baziInterpLoaded = false; _baziDayunLoaded = false;
+      await _autoSaveBothProfiles(bi);
+      _showConsultSelectionCard();
+    } catch (e) {
+      appendAIMessage('⚠️ 八字自動排盤失敗，你可以點「🀄 八字」手動排盤。');
+    }
+  }
+
+  async function _autoSaveBothProfiles(bi) {
+    const name = `命主 (${bi.year}/${String(bi.month).padStart(2,'0')}/${String(bi.day).padStart(2,'0')})`;
+    // 儲存紫微命盤
+    try {
+      await fetch('/api/profiles', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ session_id: SESSION_ID, profile_name: name }),
+      });
+    } catch {}
+    // 儲存八字命盤
+    if (_baziData) {
+      try {
+        await fetch('/api/bazi/profiles', {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({
+            session_id: SESSION_ID, profile_name: name,
+            year: bi.year, month: bi.month, day: bi.day,
+            hour: bi.hour ?? 0, minute: 0, longitude: 120,
+            is_male: bi.is_male ?? 1, bazi_json: JSON.stringify(_baziData),
+          }),
+        });
+      } catch {}
+    }
+  }
+
+  function _showConsultSelectionCard() {
+    const msgs = document.getElementById('messages');
+    if (!msgs) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'msg ai';
+    wrap.innerHTML = `
+      <div class="msg-avatar">🔯</div>
+      <div style="flex:1;min-width:0">
+        <div class="msg-bubble" style="padding:14px 16px">
+          <div style="font-weight:700;margin-bottom:6px">✨ 兩個命盤都排好了，已自動存入命盤庫！</div>
+          <div style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px">請選擇本次要諮詢的命盤：</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="consult-sel-btn" onclick="_selectConsultMode('ziwei',this)">🔯 紫微斗數</button>
+            <button class="consult-sel-btn" onclick="_selectConsultMode('bazi',this)">🀄 八字命理</button>
+            <button class="consult-sel-btn consult-sel-both" onclick="_selectConsultMode('both',this)">✨ 兩個都要</button>
+          </div>
+        </div>
+      </div>`;
+    msgs.appendChild(wrap);
+    msgs.scrollTop = msgs.scrollHeight;
+  }
+
+  function _selectConsultMode(mode, btn) {
+    // Disable all buttons in this card after selection
+    btn.closest('.msg-bubble').querySelectorAll('.consult-sel-btn').forEach(b => {
+      b.disabled = true; b.style.opacity = '0.45';
+    });
+    btn.style.opacity = '1'; btn.style.borderColor = 'var(--gold)'; btn.style.color = 'var(--gold)';
+    const msgs = {
+      ziwei: '好的！接下來以**紫微斗數**命盤為主要參考，有任何問題請直接問我。\n\n你也可以隨時點「🀄 八字」查看詳細八字命盤。',
+      bazi:  '好的！接下來以**八字命理**為主要參考，有任何問題請直接問我。\n\n你也可以隨時點「🔯 命盤」查看紫微命盤。',
+      both:  '好的！接下來會**同時參考紫微斗數和八字命理**，幫你做更全面的分析。有任何問題請直接問我！',
+    };
+    appendAIMessage(msgs[mode] || msgs.both);
+  }
+
   function escapeHtml(text) {
     // Fix #5：完整 HTML entity 轉義，防止 XSS
     return text
@@ -2703,6 +2943,8 @@
   let _renderTimer = null;
   let _pendingBubble = null;
   let _pendingText = '';
+  // 「兩個都算」模式：紫微排盤完成後自動開啟八字 modal
+  let _pendingBaziAfterChart = false;
 
   function scheduleRender(bubble, text) {
     _pendingBubble = bubble;
@@ -2855,6 +3097,11 @@
               // No tokens arrived (e.g. pipeline returned full text at once)
               removeTyping();
               appendAIMessage(accumulated || '抱歉，發生了一些問題，請稍後再試。');
+            }
+            // 「兩個都算」模式：紫微排盤完成 → 自動計算八字並儲存
+            if (_streamHadChart && _pendingBaziAfterChart) {
+              _pendingBaziAfterChart = false;
+              setTimeout(() => _triggerBaziFromZiweiData(), 800);
             }
             streamDone = true;
             break;  // 跳出 for 迴圈
@@ -3234,11 +3481,48 @@
         });
       } catch(e) {}
     }
-    const msgs = document.getElementById('messages');
-    if (msgs) { msgs.innerHTML = ''; chatStarted = true; }
-    if (!skipConfirm) {
-      appendAIMessage('✅ 對話與命盤已重置！請重新告訴我你的**出生年月日、時辰和性別**，我來幫你排盤。\n\n> 如要恢復之前的命盤，可點「👥 命盤庫」載入。');
+    if (skipConfirm) {
+      // logout 情境：只清空，由後續登入流程決定顯示什麼
+      const msgs = document.getElementById('messages');
+      if (msgs) { msgs.innerHTML = ''; chatStarted = false; }
+    } else {
+      // 用戶手動重置：重新顯示選擇卡片
+      _showWelcomeCards();
     }
+  }
+
+  function _showWelcomeCards() {
+    const msgs = document.getElementById('messages');
+    if (!msgs) return;
+    msgs.innerHTML = '';
+    const ws = document.createElement('div');
+    ws.id = 'welcome-screen';
+    ws.className = 'welcome-screen';
+    ws.innerHTML = `
+      <div class="welcome-icon">🔯</div>
+      <div class="welcome-title">紫微AI算命大師</div>
+      <p class="welcome-sub">請選擇你想要的算命方式，或直接輸入問題開始對話。</p>
+      <div class="welcome-choice-row">
+        <div class="welcome-choice-card" onclick="startChatZiwei()">
+          <div class="welcome-choice-icon">🔯</div>
+          <div class="welcome-choice-title">紫微斗數</div>
+          <div class="welcome-choice-desc">排完整命盤<br>分析宮位星曜</div>
+        </div>
+        <div class="welcome-choice-card" onclick="startChatBazi()">
+          <div class="welcome-choice-icon">🀄</div>
+          <div class="welcome-choice-title">八字命理</div>
+          <div class="welcome-choice-desc">四柱八字排盤<br>五行旺弱分析</div>
+        </div>
+        <div class="welcome-choice-card" onclick="startChatBoth()">
+          <div class="welcome-choice-icon">✨</div>
+          <div class="welcome-choice-title">兩個都算</div>
+          <div class="welcome-choice-desc">紫微＋八字<br>雙盤完整解析</div>
+        </div>
+      </div>
+      <button class="welcome-start-btn" style="margin-top:20px;font-size:0.88rem;padding:9px 22px;opacity:0.75" onclick="startChat()">直接開始對話 →</button>
+    `;
+    msgs.appendChild(ws);
+    chatStarted = false;
   }
 
   // 只清除命盤資料，保留對話記憶 — 用於「排新命盤」情境
@@ -4100,8 +4384,30 @@
     document.getElementById('settings-modal').classList.add('open');
     document.getElementById('settings-pw-msg').textContent = '';
     document.getElementById('settings-pw-msg').className = 'settings-msg';
+    document.getElementById('settings-email-msg').textContent = '';
+    document.getElementById('settings-email-msg').className = 'settings-msg';
     _loadSettingsBirthInfo();
-    await _loadSettingsStyle();
+    await Promise.all([_loadSettingsStyle(), _loadEmailStatus()]);
+  }
+
+  async function _loadEmailStatus() {
+    const statusEl = document.getElementById('settings-email-status');
+    const inputEl = document.getElementById('settings-email-input');
+    try {
+      const token = _getStoredToken();
+      if (!token) return;
+      const res = await fetch('/api/auth/plan', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data.email) {
+        inputEl.value = data.email;
+        statusEl.innerHTML = data.email_verified
+          ? `目前信箱：<span style="color:#4caf50">✓ ${data.email}（已驗證）</span>`
+          : `目前信箱：${data.email} <span style="color:#e67e22">（未驗證，請檢查收件匣）</span>`;
+      } else {
+        statusEl.textContent = '尚未設定信箱，設定後可用於找回密碼';
+      }
+    } catch {}
   }
   function closeSettings() { document.getElementById('settings-modal').classList.remove('open'); }
   function closeSettingsOnOverlay(e) { if (e.target === document.getElementById('settings-modal')) closeSettings(); }
@@ -4192,6 +4498,26 @@
       document.getElementById('pw-old').value = '';
       document.getElementById('pw-new').value = '';
       document.getElementById('pw-confirm').value = '';
+    } catch { msg.textContent = '網路錯誤，請稍後再試'; msg.className = 'settings-msg err'; }
+  }
+
+  async function updateEmail() {
+    const email = document.getElementById('settings-email-input').value.trim();
+    const msg = document.getElementById('settings-email-msg');
+    msg.textContent = ''; msg.className = 'settings-msg';
+    if (!email) { msg.textContent = '請輸入信箱'; msg.className = 'settings-msg err'; return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { msg.textContent = '信箱格式不正確'; msg.className = 'settings-msg err'; return; }
+    try {
+      const token = _getStoredToken();
+      const res = await fetch('/api/auth/update-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (!res.ok) { msg.textContent = data.detail || '儲存失敗'; msg.className = 'settings-msg err'; return; }
+      msg.textContent = '✓ 已儲存，驗證信已寄出，請確認收件匣'; msg.className = 'settings-msg ok';
+      await _loadEmailStatus();
     } catch { msg.textContent = '網路錯誤，請稍後再試'; msg.className = 'settings-msg err'; }
   }
 
@@ -4807,8 +5133,6 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     document.getElementById('bazi-month').value  = profile.month;
     document.getElementById('bazi-day').value    = profile.day;
     document.getElementById('bazi-hour').value   = profile.hour;
-    document.getElementById('bazi-minute').value = profile.minute;
-    document.getElementById('bazi-lon').value    = profile.longitude;
     document.querySelectorAll('input[name="bazi-gender"]').forEach(r =>
       r.checked = (parseInt(r.value) === profile.is_male)
     );
@@ -4818,7 +5142,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
         _baziData = JSON.parse(profile.bazi_json);
         _baziData._req = {
           year: profile.year, month: profile.month, day: profile.day,
-          hour: profile.hour, minute: profile.minute, longitude: profile.longitude,
+          hour: profile.hour,
           is_male: profile.is_male, name: profile.profile_name,
         };
         _baziInterpLoaded = false; _baziDayunLoaded = false;
@@ -4847,8 +5171,6 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     const month  = parseInt(document.getElementById('bazi-month').value);
     const day    = parseInt(document.getElementById('bazi-day').value);
     const hour   = parseInt(document.getElementById('bazi-hour').value)   || 0;
-    const minute = parseInt(document.getElementById('bazi-minute').value) || 0;
-    const lon    = parseFloat(document.getElementById('bazi-lon').value)  || 121.5;
     const name   = document.getElementById('bazi-name').value.trim() || '命主';
     const isMale = document.querySelector('input[name="bazi-gender"]:checked')?.value === '1';
     if (!year || !month || !day) { alert('請填寫出生年月日'); return; }
@@ -4858,11 +5180,11 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     try {
       const res = await fetch('/api/bazi/chart', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({year, month, day, hour, minute, longitude: lon, is_male: isMale?1:0, name, session_id: SESSION_ID}),
+        body: JSON.stringify({year, month, day, hour, minute: 0, longitude: 120, is_male: isMale?1:0, name, session_id: SESSION_ID}),
       });
       if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail||res.statusText); }
       _baziData = await res.json();
-      _baziData._req = {year, month, day, hour, minute, longitude: lon, is_male: isMale?1:0, name};
+      _baziData._req = {year, month, day, hour, is_male: isMale?1:0, name};
       _baziInterpLoaded = false; _baziDayunLoaded = false;
       _renderBaziResult(name, false);
       showBaziScreen('result');
@@ -4974,9 +5296,73 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     document.getElementById('bazi-dayun-box').innerHTML = '';
     document.getElementById('bazi-to-chat-btn').disabled = false;
     document.getElementById('bazi-to-chat-btn').textContent = '💬 存入聊天記錄';
+
+    // 自動啟用八字對話模式
+    _activateBaziDoc();
   }
 
-  // ── Tabs ──────────────────────────────────────────────────────
+  async function _activateBaziDoc() {
+    if (!_baziData || !SESSION_ID) return;
+    const req = _baziData._req || {};
+    try {
+      await fetch('/api/bazi/activate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          session_id: SESSION_ID,
+          year: req.year, month: req.month, day: req.day,
+          hour: req.hour, minute: 0,
+          longitude: 120,
+          is_male: req.is_male ?? 1,
+          name: req.name || '命主',
+        }),
+      });
+    } catch {}
+  }
+
+
+  // ── APPEND to prompt ──────────────────────────────────────────
+  async function baziAppendToPrompt() {
+    if (!_baziData) return;
+    const req = _baziData._req || {};
+    const name = req.name || '命主';
+    const d = _baziData;
+    const cg = d.canggan || {};
+    const wx = d.wuxing || {};
+    const sh = d.shenshas || {};
+
+    const wxStr = Object.entries(wx).filter(([,v])=>v>0).map(([k,v])=>`${k}×${v}`).join(' ');
+    const shenStr = ['year_pillar','month_pillar','day_pillar','hour_pillar']
+      .flatMap(k => sh[k] || []).filter((v,i,a)=>a.indexOf(v)===i).join('、') || '無';
+    const cangStr = ['year_pillar','month_pillar','day_pillar','hour_pillar']
+      .map((k,i)=>`${'年月日時'[i]}[${(cg[k]||[]).join('·')||'—'}]`).join(' ');
+
+    const dm = d.day_master || d.day_pillar.stem;
+    const dmE = (['木','火','土','金','水','木','火','土','金','水'])[d.day_pillar.stem_idx] || '';
+
+    const doc =
+`## 🀄 八字命盤：${name}（${req.is_male?'男':'女'}）
+- 年柱：${d.year_pillar.ganzhi}　月柱：${d.month_pillar.ganzhi}　日柱：${d.day_pillar.ganzhi}　時柱：${d.hour_pillar.ganzhi}
+- 藏幹：${cangStr}
+- 日主：${dm}（${dmE}）　時辰：${d.shichen}
+- 五行：${wxStr || '—'}
+- 神煞：${shenStr}
+- 真太陽時：${String(d.solar_hour).padStart(2,'0')}:${String(d.solar_minute).padStart(2,'0')}`;
+
+    const prefix = '';
+
+    const inp = document.getElementById('user-input');
+    inp.value = prefix + doc + '\n\n' + inp.value;
+    inp.focus();
+    inp.dispatchEvent(new Event('input'));
+
+    const btn = document.getElementById('bazi-append-btn');
+    btn.textContent = '✅ 已附加'; btn.disabled = true;
+    setTimeout(() => { btn.textContent = '📋 附加到提問'; btn.disabled = false; }, 2000);
+    closeBazi();
+  }
+
+  // ── Result-level Tabs ─────────────────────────────────────────
   function switchBaziTab(tab) {
     ['interpret','dayun'].forEach(t => {
       document.getElementById(`btab-${t}`).classList.toggle('active', t===tab);
@@ -5070,8 +5456,8 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
           session_id: SESSION_ID,
           profile_name: req.name || '命主',
           year: req.year, month: req.month, day: req.day,
-          hour: req.hour, minute: req.minute,
-          longitude: req.longitude, is_male: req.is_male ?? 1,
+          hour: req.hour, minute: 0,
+          longitude: 120, is_male: req.is_male ?? 1,
           bazi_json: JSON.stringify(_baziData),
         }),
       });
@@ -5237,7 +5623,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
       'bookmark-btn': '📌 收藏', 'history-btn': '📜 歷史',
       'chart-btn': '📊 命盤', 'timeline-btn': '🗺 人生節點',
       'compat-btn': '💕 合盤', 'profiles-btn': '👥 命盤庫',
-      'settings-btn': '⚙️ 設定', 'lang-toggle': 'EN',
+      'settings-btn': '⚙️ 設定',
       'send-btn': '➤',
     },
     en: {
@@ -5247,7 +5633,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
       'bookmark-btn': '📌 Saved', 'history-btn': '📜 History',
       'chart-btn': '📊 Chart', 'timeline-btn': '🗺 Life Events',
       'compat-btn': '💕 Compat', 'profiles-btn': '👥 Profiles',
-      'settings-btn': '⚙️ Settings', 'lang-toggle': '中文',
+      'settings-btn': '⚙️ Settings',
       'send-btn': '➤',
     },
   };
@@ -5270,6 +5656,15 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     document.getElementById('user-input').placeholder = _lang === 'en'
       ? 'Enter your birth date, time, and gender (e.g. 1990/3/15, Mao, Female)'
       : '告訴我你的出生年月日、時辰和性別，例如：1990年3月15日卯時女生';
+    const langLabel = document.getElementById('dd-lang-label');
+    if (langLabel) langLabel.textContent = _lang === 'zh' ? 'EN' : '中文';
+  }
+
+  function toggleMenu() {
+    document.getElementById('topbar-dropdown').classList.toggle('open');
+  }
+  function closeMenu() {
+    document.getElementById('topbar-dropdown').classList.remove('open');
   }
 
   function toggleLang() {
@@ -5283,6 +5678,15 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     _initPush();
     _applyLang();
   }
+
+  // Close menu when clicking outside
+  document.addEventListener('click', e => {
+    const menu = document.getElementById('topbar-dropdown');
+    const btn = document.getElementById('menu-btn');
+    if (menu && menu.classList.contains('open') && !menu.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+      menu.classList.remove('open');
+    }
+  });
 
   // Support Enter key in auth inputs
   document.addEventListener('DOMContentLoaded', () => {
