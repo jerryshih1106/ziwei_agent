@@ -15,9 +15,9 @@ _FIELD_NAMES = {
     "hour": "出生時辰",
     "is_male": "性別",
 }
+# is_lunar is derived from context, not asked for explicitly — omitted from _FIELD_NAMES
 
-# Bug #4 Fix: 移到模組層級，避免在迴圈內每次重新建立 dict
-_VALID_RANGES = {"year": (1800, 2100), "month": (1, 12), "day": (1, 31), "hour": (0, 23)}
+_VALID_RANGES = {"year": (1800, 2100), "month": (1, 12), "day": (1, 30), "hour": (0, 23)}
 
 
 def _format_known(birth_info: dict) -> str:
@@ -55,7 +55,7 @@ def get_birth_info(state: ChatState, llm):
 
     # Bug #2 Fix: 在 prompt 中告知 LLM 哪些欄位已知，只需補充缺少的
     already_known_str = _format_known(birth_info)
-    missing_keys = [k for k, v in birth_info.items() if v is None]
+    missing_keys = [k for k, v in birth_info.items() if v is None and k in _FIELD_NAMES]
 
     prompt = f"""
 你是有用的資料整理人員，請從以下對話中抽取出生資訊，回覆 JSON 格式，不包含任何其他字句。
@@ -70,13 +70,14 @@ def get_birth_info(state: ChatState, llm):
 子=0, 丑=2, 寅=4, 卯=6, 辰=8, 巳=10, 午=12, 未=14, 申=16, 酉=18, 戌=20, 亥=22
 
 性別：男生 is_male="1"，女生 is_male="0"
-如果對話中完全未提到某欄位，該欄位請填 null。
+曆法：對話中出現「農曆」「陰曆」「舊曆」或「（農曆）」→ is_lunar="1"；明確說「國曆」「陽曆」或「（國曆）」→ is_lunar="0"；未提及 → is_lunar="0"
+如果對話中完全未提到某欄位，該欄位請填 null（is_lunar 除外，預設填 "0"）。
 
 【對話記錄】
 {conversation_context}
 
 output example（僅回傳 JSON）:
-{{"year":"1998","month":"8","day":"27","hour":"16","is_male":"1"}}
+{{"year":"1998","month":"8","day":"27","hour":"16","is_male":"1","is_lunar":"0"}}
 """
 
     response = llm.invoke(prompt)
@@ -86,22 +87,23 @@ output example（僅回傳 JSON）:
         if match:
             json_str = match.group()
         extracted = json.loads(json_str)
-        for key in ["year", "month", "day", "hour", "is_male"]:
+        for key in ["year", "month", "day", "hour", "is_male", "is_lunar"]:
             val = extracted.get(key)
             if val is not None:
                 try:
-                    # Bug #4 Fix: is_male 可能為字串 "true"/"false"，需先正規化
-                    if key == "is_male" and isinstance(val, str):
+                    if key in ("is_male", "is_lunar") and isinstance(val, str):
                         val_lower = val.strip().lower()
-                        if val_lower in ("true", "1", "male", "男", "男生"):
+                        true_vals  = ("true", "1", "male", "男", "男生") if key == "is_male" else ("true", "1")
+                        false_vals = ("false", "0", "female", "女", "女生") if key == "is_male" else ("false", "0")
+                        if val_lower in true_vals:
                             birth_info[key] = 1
-                        elif val_lower in ("false", "0", "female", "女", "女生"):
+                        elif val_lower in false_vals:
                             birth_info[key] = 0
                         else:
-                            logger.warning("[get_birth_info] is_male 值 %r 無法辨識，略過", val)
+                            logger.warning("[get_birth_info] %s 值 %r 無法辨識，略過", key, val)
                         continue
                     new_val = int(val)
-                    if key in _VALID_RANGES:  # Bug #4 Fix: _VALID_RANGES now at module level
+                    if key in _VALID_RANGES:
                         lo, hi = _VALID_RANGES[key]
                         if not (lo <= new_val <= hi):
                             logger.warning(
@@ -110,7 +112,6 @@ output example（僅回傳 JSON）:
                             )
                             continue
                     birth_info[key] = new_val
-                    # Bug #7 Fix: hour 必須是偶數（時辰以 2 為單位），奇數向下對齊
                     if key == "hour":
                         h = birth_info[key]
                         birth_info[key] = (h // 2) * 2
@@ -121,9 +122,10 @@ output example（僅回傳 JSON）:
     except Exception:
         logger.warning("[get_birth_info] LLM 回傳無法解析為 JSON，略過本次抽取", exc_info=True)
 
-    # Bug #7 Fix: 驗證日期在曆法上是否存在（例如 2 月 30 日在範圍內但無效）
+    # 國曆才做嚴格日期驗證（農曆月可達 30 日，_dt.date 會誤判為無效）
     y, m, d = birth_info.get("year"), birth_info.get("month"), birth_info.get("day")
-    if y is not None and m is not None and d is not None:
+    is_lunar_flag = bool(birth_info.get("is_lunar"))
+    if y is not None and m is not None and d is not None and not is_lunar_flag:
         try:
             _dt.date(y, m, d)
         except ValueError:
@@ -131,7 +133,7 @@ output example（僅回傳 JSON）:
             birth_info["day"] = None
 
     logger.debug("[get_birth_info] parsing 結果: %s", birth_info)
-    missing = [_FIELD_NAMES[k] for k, v in birth_info.items() if v is None]
+    missing = [_FIELD_NAMES[k] for k, v in birth_info.items() if v is None and k in _FIELD_NAMES]
 
     if missing:
         known_str = _format_known(birth_info)

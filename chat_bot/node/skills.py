@@ -57,17 +57,19 @@ def generate_ziwei_chart(
     day: int,
     hour: int,
     is_male: bool,
+    is_lunar: bool = False,
 ) -> str:
     """根據出生年月日時辰和性別，生成紫微斗數命盤並回傳完整解盤報告。
 
     呼叫此工具前，請先向使用者確認以下所有資訊都已提供：
-    - year:    西元出生年份，例如 1995
-    - month:   出生月份 1~12
-    - day:     出生日期 1~31
-    - hour:    出生時辰對應小時數（子=0, 丑=2, 寅=4, 卯=6, 辰=8, 巳=10,
-               午=12, 未=14, 申=16, 酉=18, 戌=20, 亥=22）；
-               若使用者給 24 小時制整數，直接使用該數字
-    - is_male: 性別，男生為 True，女生為 False
+    - year:     西元出生年份，例如 1995
+    - month:    出生月份 1~12
+    - day:      出生日期 1~31
+    - hour:     出生時辰對應小時數（子=0, 丑=2, 寅=4, 卯=6, 辰=8, 巳=10,
+                午=12, 未=14, 申=16, 酉=18, 戌=20, 亥=22）；
+                若使用者給 24 小時制整數，直接使用該數字
+    - is_male:  性別，男生為 True，女生為 False
+    - is_lunar: 生日是否為農曆（陰曆），預設 False（國曆）
 
     若任何欄位尚未確認，請先詢問使用者補全，不要呼叫此工具。
 
@@ -87,7 +89,7 @@ def generate_ziwei_chart(
     # 延遲 import 避免循環依賴
     from .gen_ziwei import get_palace_information, transformed_llm_visualize
 
-    config = ZiWeiConfig(year, month, day, hour, bool(is_male))
+    config = ZiWeiConfig(year, month, day, hour, bool(is_male), is_lunar=bool(is_lunar))
     ziwei_inst = ZiweiChart(config)
     df = ziwei_inst.gen_chart()
 

@@ -10,48 +10,78 @@ from ..global_config import GlobalConfig
 
 logger = logging.getLogger(__name__)
 
-_langfuse_handler = None
-_LANGFUSE_FAILED = object()  # sentinel: tried but unavailable
+# ── Langfuse v4 singleton ─────────────────────────────────────
+_langfuse_client = None
+_LANGFUSE_FAILED = object()
 
-def _get_langfuse_handler():
-    global _langfuse_handler
-    if _langfuse_handler is _LANGFUSE_FAILED:
+
+def _get_langfuse_client():
+    """Return the Langfuse v4 client (lazy init). Returns None if not configured.
+
+    auth_check() is best-effort only — a 401 logs a warning but does NOT
+    disable tracing so that network hiccups or wrong-region errors don't
+    silence all observability.
+    """
+    global _langfuse_client
+    if _langfuse_client is _LANGFUSE_FAILED:
         return None
-    if _langfuse_handler is not None:
-        return _langfuse_handler
+    if _langfuse_client is not None:
+        return _langfuse_client
     if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
         return None
     try:
-        from langfuse.langchain import CallbackHandler
-        _langfuse_handler = CallbackHandler()
-        logger.info("Langfuse tracing enabled")
-        return _langfuse_handler
-    except ImportError:
-        try:
-            from langfuse.callback import CallbackHandler
-            _langfuse_handler = CallbackHandler()
-            logger.info("Langfuse tracing enabled")
-            return _langfuse_handler
-        except Exception as e:
-            logger.warning("Langfuse init failed: %s", e)
-            _langfuse_handler = _LANGFUSE_FAILED
-            return None
+        from langfuse import Langfuse
+        _langfuse_client = Langfuse()
+        logger.info("Langfuse v4 client initialised")
     except Exception as e:
         logger.warning("Langfuse init failed: %s", e)
-        _langfuse_handler = _LANGFUSE_FAILED
+        _langfuse_client = _LANGFUSE_FAILED
         return None
+    # auth_check is optional validation — failure is a warning, not fatal
+    try:
+        _langfuse_client.auth_check()
+        logger.info("Langfuse auth_check OK — tracing active")
+    except Exception as e:
+        logger.warning("Langfuse auth_check failed (check keys/host): %s", e)
+    return _langfuse_client
+
+
+def flush_langfuse():
+    """Flush pending Langfuse traces. Call during app shutdown."""
+    if _langfuse_client and _langfuse_client is not _LANGFUSE_FAILED:
+        try:
+            _langfuse_client.flush()
+            logger.info("Langfuse: traces flushed")
+        except Exception as e:
+            logger.warning("Langfuse flush error: %s", e)
+
+
+# ── @observe helper ───────────────────────────────────────────
+try:
+    from langfuse import observe as _lf_observe
+
+    def langfuse_observe(**kwargs):
+        """Decorator factory: wraps a function with Langfuse @observe.
+        Falls back to no-op if Langfuse is not installed or not configured.
+        """
+        def decorator(func):
+            if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
+                return func
+            return _lf_observe(**kwargs)(func)
+        return decorator
+
+except ImportError:
+    def langfuse_observe(**kwargs):  # type: ignore[misc]
+        def decorator(func):
+            return func
+        return decorator
 
 
 def build_llm(model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.5) -> BaseLLM:
-    callbacks = []
-    handler = _get_langfuse_handler()
-    if handler:
-        callbacks.append(handler)
+    # Ensure Langfuse client is initialised so @observe decorators have a tracer to report to.
+    _get_langfuse_client()
 
     kwargs: dict = {"temperature": temperature}
-    if callbacks:
-        kwargs["callbacks"] = callbacks
-
     model_name = model_name.lower()
 
     if model_name == "gpt-3.5":
@@ -65,6 +95,7 @@ def build_llm(model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.
             raise ValueError(f"Unsupported model_name: {model_name}, {e}")
 
     return llm
+
 
 def process_llm_output(text):
     """parse llm output
@@ -80,6 +111,7 @@ def process_llm_output(text):
         if match:
             return match.group(1).strip()
     return text
+
 
 def sleep_for_tpm(func):
     """Rate-limit decorator: sleeps GlobalConfig.TPM_TIME seconds before each call.

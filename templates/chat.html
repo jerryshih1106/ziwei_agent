@@ -151,6 +151,8 @@
     }
     .dd-btn:hover { background: rgba(201,162,39,0.12); color: var(--gold); }
     .dd-sep { height: 1px; background: rgba(201,162,39,0.15); margin: 4px 6px; }
+    .dd-btn[data-premium].dd-locked { opacity: 0.55; }
+    .dd-btn[data-premium].dd-locked::after { content: ' 🔒'; font-size: 0.78rem; }
     .dd-logout { color: var(--text-muted) !important; }
     .dd-logout:hover { color: #e57373 !important; background: rgba(229,115,115,0.08) !important; }
     /* keep .topbar-btn for any stray usages */
@@ -173,50 +175,6 @@
       overflow: hidden;
     }
 
-    /* ── Quick Info Sidebar ── */
-    .sidebar {
-      width: 280px;
-      border-right: 1px solid rgba(201, 162, 39, 0.15);
-      background: rgba(28, 16, 53, 0.6);
-      padding: 20px 16px;
-      overflow-y: auto;
-      flex-shrink: 0;
-    }
-
-    .sidebar-section { margin-bottom: 24px; }
-    .sidebar-title {
-      font-size: 0.78rem;
-      letter-spacing: 3px;
-      color: var(--gold);
-      text-transform: uppercase;
-      margin-bottom: 12px;
-    }
-
-    .quick-fill {
-      background: rgba(45, 27, 84, 0.5);
-      border: 1px solid rgba(201,162,39,0.2);
-      border-radius: 10px;
-      padding: 12px;
-      margin-bottom: 8px;
-      cursor: pointer;
-      transition: border-color 0.2s, background 0.2s;
-    }
-    .quick-fill:hover { border-color: var(--gold); background: rgba(201,162,39,0.08); }
-    .qf-label { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 4px; }
-    .qf-text { font-size: 0.9rem; color: var(--text-light); line-height: 1.4; }
-
-    .time-table { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-    .time-item {
-      background: rgba(45, 27, 84, 0.4);
-      border: 1px solid rgba(201,162,39,0.12);
-      border-radius: 6px;
-      padding: 7px 8px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .time-item:hover { border-color: rgba(201,162,39,0.4); background: rgba(201,162,39,0.07); }
-    .time-zhi { font-weight: 700; color: var(--gold); font-size: 0.88rem; }
-    .time-range { font-size: 0.72rem; color: var(--text-muted); }
 
     .info-card {
       background: rgba(45, 27, 84, 0.3);
@@ -476,6 +434,35 @@
     #user-input:focus { border-color: var(--gold); }
     #user-input::placeholder { color: var(--text-muted); }
 
+    /* ── 國曆 / 農曆 toggle ── */
+    .calendar-toggle {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: rgba(13,34,68,0.6);
+      border: 1px solid rgba(201,162,39,0.25);
+      border-radius: 20px;
+      padding: 2px;
+      flex-shrink: 0;
+    }
+    .calendar-toggle button {
+      border: none;
+      background: none;
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      padding: 4px 10px;
+      border-radius: 16px;
+      cursor: pointer;
+      transition: all 0.18s;
+      white-space: nowrap;
+      line-height: 1.4;
+    }
+    .calendar-toggle button.active {
+      background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
+      color: var(--bg-dark);
+      font-weight: 600;
+    }
+
     .send-btn {
       width: 44px; height: 44px;
       background: linear-gradient(135deg, var(--gold-light), var(--gold-dark));
@@ -576,7 +563,7 @@
 
     /* ── Responsive ── */
     @media (max-width: 768px) {
-      .sidebar { display: none; }
+
 
       /* Topbar */
       .topbar { padding: 0 10px; gap: 6px; }
@@ -790,6 +777,8 @@
       padding: 16px;
     }
     .modal-overlay.open { display: flex; }
+    /* profiles-modal must float above bazi-modal (later in DOM, same z-index wins) */
+    #profiles-modal { z-index: 1100; }
     .modal-box {
       background: var(--bg-card);
       border: 1px solid rgba(201,162,39,0.3);
@@ -1359,7 +1348,7 @@
     .bazi-tab-pane { display: none; }
     .bazi-tab-pane.active { display: block; }
     .bazi-content-box {
-      font-size: 0.9rem; line-height: 1.85; max-height: 280px; overflow-y: auto;
+      font-size: 0.95rem; line-height: 1.9; max-height: 420px; overflow-y: auto;
     }
     .bazi-content-box table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 8px 0; }
     .bazi-content-box th, .bazi-content-box td { border: 1px solid rgba(201,162,39,0.25); padding: 5px 8px; text-align: left; }
@@ -1367,15 +1356,25 @@
     .bazi-content-box h2, .bazi-content-box h3 { font-size: 1rem; color: var(--gold); margin: 10px 0 5px; }
     .bazi-content-box strong { color: var(--gold-light); }
     .bazi-dayun-row {
-      display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+      display: flex; align-items: center; gap: 10px; padding: 9px 12px;
       border-radius: 8px; margin-bottom: 4px;
-      background: rgba(13,28,50,0.6); border: 1px solid transparent;
+      background: rgba(13,28,50,0.6); border: 1px solid transparent; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
     }
+    .bazi-dayun-row:hover { border-color: rgba(201,162,39,0.3); background: rgba(201,162,39,0.04); }
     .bazi-dayun-row.current { border-color: var(--gold); background: rgba(201,162,39,0.07); }
-    .bazi-dayun-gz { font-family: 'Noto Serif TC', serif; font-size: 1.1rem; font-weight: 700; width: 34px; flex-shrink: 0; }
-    .bazi-dayun-age { font-size: 0.76rem; color: var(--text-muted); width: 60px; flex-shrink: 0; }
-    .bazi-dayun-bar { flex: 1; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.07); overflow: hidden; }
+    .bazi-dayun-gz { font-family: 'Noto Serif TC', serif; font-size: 1.15rem; font-weight: 700; width: 38px; flex-shrink: 0; }
+    .bazi-dayun-age { font-size: 0.8rem; color: var(--text-muted); width: 68px; flex-shrink: 0; }
+    .bazi-dayun-label { flex: 1; font-size: 0.82rem; color: var(--text-muted); }
+    .bazi-dayun-bar { width: 80px; flex-shrink: 0; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.07); overflow: hidden; }
     .bazi-dayun-fill { height: 100%; border-radius: 2px; transition: width 0.5s; }
+    .bazi-dayun-interpret {
+      margin: 4px 0 10px 0; padding: 10px 14px;
+      background: rgba(13,28,50,0.8); border: 1px solid rgba(201,162,39,0.2);
+      border-radius: 8px; font-size: 0.88rem; line-height: 1.8;
+      color: var(--text-light); display: none;
+    }
+    .bazi-dayun-interpret.open { display: block; }
     .bazi-quickpick-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
     .bazi-qp-btn {
       background: rgba(201,162,39,0.1); border: 1px solid rgba(201,162,39,0.3);
@@ -1947,17 +1946,18 @@
       <!-- user info (shown when logged in) -->
       <div class="dd-user" id="dd-user-row" style="display:none"></div>
       <!-- always visible -->
-      <button class="dd-btn" id="bazi-btn" onclick="openBazi();closeMenu()">🀄 八字</button>
+      <button class="dd-btn" id="bazi-btn" data-premium="1" onclick="openBazi();closeMenu()">🀄 八字</button>
       <!-- shown after login -->
-      <button class="dd-btn" id="annual-btn" onclick="openAnnual();closeMenu()" style="display:none">🗓 流年流月</button>
-      <button class="dd-btn" id="calendar-btn" onclick="openCalendar();closeMenu()" style="display:none">📅 本週運勢</button>
-      <button class="dd-btn" id="chart-btn" onclick="showChart();closeMenu()" style="display:none">📊 命盤</button>
-      <button class="dd-btn" id="timeline-btn" onclick="openTimeline();closeMenu()" style="display:none">🗺 人生節點</button>
-      <button class="dd-btn" id="compat-btn" onclick="openCompat();closeMenu()" style="display:none">💕 合盤</button>
-      <button class="dd-btn" id="profiles-btn" onclick="openProfiles();closeMenu()" style="display:none">👥 命盤庫</button>
-      <button class="dd-btn" id="bookmark-btn" onclick="openBookmarks();closeMenu()" style="display:none">📌 收藏</button>
-      <button class="dd-btn" id="history-btn" onclick="openHistory();closeMenu()" style="display:none">📜 歷史</button>
-      <button class="dd-btn" id="settings-btn" onclick="openSettings();closeMenu()" style="display:none">⚙️ 設定</button>
+      <button class="dd-btn" id="annual-btn" data-premium="1" onclick="openAnnual();closeMenu()" style="display:none">🗓 流年流月</button>
+      <button class="dd-btn" id="calendar-btn" data-premium="1" onclick="openCalendar();closeMenu()" style="display:none">📅 本週運勢</button>
+      <button class="dd-btn" id="summary-btn" onclick="openChartSummary();closeMenu()" style="display:none">📋 精簡解說</button>
+      <button class="dd-btn" id="chart-btn" data-premium="1" onclick="showChart();closeMenu()" style="display:none">📊 命盤</button>
+      <button class="dd-btn" id="timeline-btn" data-premium="1" onclick="openTimeline();closeMenu()" style="display:none">🗺 人生節點</button>
+      <button class="dd-btn" id="compat-btn" data-premium="1" onclick="openCompat();closeMenu()" style="display:none">💕 合盤</button>
+      <button class="dd-btn" id="profiles-btn" data-premium="1" onclick="openProfiles();closeMenu()" style="display:none">👥 命盤庫</button>
+      <button class="dd-btn" id="bookmark-btn" data-premium="1" onclick="openBookmarks();closeMenu()" style="display:none">📌 收藏</button>
+      <button class="dd-btn" id="history-btn" data-premium="1" onclick="openHistory();closeMenu()" style="display:none">📜 歷史</button>
+      <button class="dd-btn" id="settings-btn" data-premium="1" onclick="openSettings();closeMenu()" style="display:none">⚙️ 設定</button>
       <div class="dd-sep"></div>
       <button class="dd-btn" id="lang-toggle" onclick="toggleLang()">🌐 切換語言 <span id="dd-lang-label">EN</span></button>
       <button class="dd-btn" onclick="resetChat();closeMenu()">🔄 重置對話</button>
@@ -1969,21 +1969,6 @@
 
 <!-- Main layout -->
 <div class="main-layout">
-
-  <!-- Sidebar -->
-  <div class="sidebar">
-    <div class="sidebar-section">
-      <div class="sidebar-title">時辰對照表（點擊填入）</div>
-      <div class="time-table">
-        {% for item in time_table %}
-        <div class="time-item" onclick="appendTime('{{ item.zhi }}')">
-          <div class="time-zhi">{{ item.zhi }}時</div>
-          <div class="time-range">{{ item.range }}</div>
-        </div>
-        {% endfor %}
-      </div>
-    </div>
-  </div>
 
   <!-- Chat Area -->
   <div class="chat-area">
@@ -2021,6 +2006,10 @@
         <div id="qq-chips" style="display:flex;gap:8px;flex-wrap:wrap;"></div>
       </div>
       <div class="input-row">
+        <div class="calendar-toggle" id="calendar-toggle" title="選擇生日曆法">
+          <button id="cal-solar" class="active" onclick="setCalendarMode('solar')">國曆</button>
+          <button id="cal-lunar" onclick="setCalendarMode('lunar')">農曆</button>
+        </div>
         <textarea
           id="user-input"
           placeholder="告訴我你的出生年月日、時辰和性別，例如：1990年3月15日卯時女生"
@@ -2290,7 +2279,7 @@
 
 <!-- BaZi Modal -->
 <div class="modal-overlay" id="bazi-modal" onclick="if(event.target===this)closeBazi()">
-  <div class="modal-box" style="max-width:620px">
+  <div class="modal-box" style="max-width:960px">
 
     <!-- ── SCREEN: FORM ── -->
     <div id="bazi-screen-form">
@@ -2620,6 +2609,19 @@
     document.getElementById('profiles-btn').style.display = '';
     document.getElementById('settings-btn').style.display = '';
 
+    // Fetch subscription status and apply gate
+    try {
+      const token = _getStoredToken();
+      if (token) {
+        const pr = await fetch('/api/auth/plan', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (pr.ok) {
+          const pd = await pr.json();
+          _isPaid = pd.plan !== 'free';
+        }
+      }
+    } catch {}
+    _applySubscriptionGate();
+
     // 查詢是否已有命盤
     let hasChart = false;
     try {
@@ -2644,6 +2646,7 @@
       const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
       const biStr = bi ? `（${bi.year}年${bi.month}月${bi.day}日 ${_getHourName(bi.hour)}時 ${bi.is_male ? '男' : '女'}）` : '';
       appendAIMessage(`歡迎回來，**${username}**！\n\n你的紫微斗數命盤${biStr}已就緒 📊，可以直接向我提問，例如感情、事業、財運等方向。`);
+      setTimeout(() => _showSummaryPrompt(), 600);
     } else if (hasHistory) {
       // 有歷史對話但尚未排盤 → 進入對話，顯示提示
       document.getElementById('welcome-screen')?.remove();
@@ -2690,6 +2693,36 @@
 
   let chatStarted = false;
   let isLoading = false;
+  let calendarMode = 'solar'; // 'solar' = 國曆, 'lunar' = 農曆
+  let _isPaid = false;
+
+  function _applySubscriptionGate() {
+    document.querySelectorAll('[data-premium]').forEach(btn => {
+      btn.classList.toggle('dd-locked', !_isPaid);
+    });
+  }
+
+  function _showUpgradeMsg() {
+    if (!chatStarted) { document.getElementById('welcome-screen')?.remove(); chatStarted = true; }
+    appendAIMessage('🔒 此功能為**訂閱版**專屬。\n\n升級訂閱後可使用：八字排盤、流年流月、本週運勢、命盤查看、人生節點、合盤分析、命盤庫、收藏、歷史等全部功能。');
+    closeMenu();
+  }
+
+  // Intercept clicks on locked premium buttons (capture phase, before onclick fires)
+  document.getElementById('topbar-dropdown').addEventListener('click', (e) => {
+    if (_isPaid) return;
+    const btn = e.target.closest('[data-premium]');
+    if (!btn) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    _showUpgradeMsg();
+  }, true);
+
+  function setCalendarMode(mode) {
+    calendarMode = mode;
+    document.getElementById('cal-solar').classList.toggle('active', mode === 'solar');
+    document.getElementById('cal-lunar').classList.toggle('active', mode === 'lunar');
+  }
   // Bug #9 Fix: 持久化 AbortController，重置時可取消進行中的 fetch
   let _currentController = null;
   let _loadingMsgTimer = null;
@@ -3011,6 +3044,10 @@
       chatStarted = true;
     }
 
+    // Append calendar hint to server message when lunar mode is active.
+    // The displayed message stays clean; the suffix is only for the LLM extractor.
+    const serverText = calendarMode === 'lunar' ? text + '（農曆）' : text;
+
     input.value = '';
     autoResize(input);
     appendUserMessage(text);
@@ -3029,7 +3066,7 @@
       const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, session_id: SESSION_ID }),
+        body: JSON.stringify({ message: serverText, session_id: SESSION_ID }),
         signal: controller.signal,
       });
       clearTimeout(timer);
@@ -3103,6 +3140,10 @@
               _pendingBaziAfterChart = false;
               setTimeout(() => _triggerBaziFromZiweiData(), 800);
             }
+            // 排盤完成後，在聊天區顯示「精簡解說」快捷提示
+            if (_streamHadChart) {
+              setTimeout(() => _showSummaryPrompt(), 400);
+            }
             streamDone = true;
             break;  // 跳出 for 迴圈
           }
@@ -3143,6 +3184,10 @@
     if (_currentController) {
       _currentController.abort();
       _currentController = null;
+    }
+    if (_summaryES) {
+      _summaryES.close();
+      _summaryES = null;
     }
   }
 
@@ -3189,6 +3234,7 @@
     if (!md) return;
     sessionStorage.setItem('ziwei_chart', md);
     if (birthInfo) sessionStorage.setItem('ziwei_birth_info', JSON.stringify(birthInfo));
+    document.getElementById('summary-btn').style.display = '';
     document.getElementById('chart-btn').style.display = '';
     document.getElementById('timeline-btn').style.display = '';
     document.getElementById('annual-btn').style.display = '';
@@ -3196,6 +3242,9 @@
     const _tcw = document.getElementById('trend-chart-wrap');
     if (_tcw) _tcw.innerHTML = '';  // invalidate trend cache
     _initQuickChips(true);
+    // Hide calendar toggle — irrelevant after chart is generated
+    const tog = document.getElementById('calendar-toggle');
+    if (tog) tog.style.display = 'none';
   }
 
   // Parse pandas to_markdown() output into array of palace objects
@@ -3447,9 +3496,10 @@
     if (e.target === document.getElementById('chart-modal')) closeChart();
   }
 
-  // Restore chart button if chart was previously stored
+  // Restore chart buttons if chart was previously stored
   (function () {
     if (sessionStorage.getItem('ziwei_chart')) {
+      document.getElementById('summary-btn').style.display = '';
       document.getElementById('chart-btn').style.display = '';
     }
   })();
@@ -3461,6 +3511,9 @@
       _currentController.abort();
       _currentController = null;
     }
+    if (_summaryES) { _summaryES.close(); _summaryES = null; }
+    document.getElementById('summary-prompt-chip')?.remove();
+    document.getElementById('full-analysis-prompt-chip')?.remove();
     isLoading = false;
     const sendBtn = document.getElementById('send-btn');
     if (sendBtn) sendBtn.disabled = false;
@@ -3468,6 +3521,7 @@
     sessionStorage.removeItem('ziwei_chart');
     sessionStorage.removeItem('ziwei_birth_info');
     sessionStorage.removeItem('ziwei_horoscope');
+    document.getElementById('summary-btn').style.display = 'none';
     document.getElementById('chart-btn').style.display = 'none';
     _lifeEventsCache = null;
     _calData = null;
@@ -3531,6 +3585,7 @@
     sessionStorage.removeItem('ziwei_chart');
     sessionStorage.removeItem('ziwei_birth_info');
     sessionStorage.removeItem('ziwei_horoscope');
+    document.getElementById('summary-btn').style.display = 'none';
     document.getElementById('chart-btn').style.display = 'none';
     _lifeEventsCache = null;
     _calData = null;
@@ -4203,6 +4258,131 @@
     const diff = now.getDay() === 0 ? -6 : 1 - now.getDay();
     const mon = new Date(now); mon.setDate(now.getDate() + diff);
     return mon;
+  }
+
+  // ── 命盤精簡解說 ─────────────────────────────────────────────
+  let _summaryES = null;
+
+  function _showFullAnalysisPrompt() {
+    document.getElementById('full-analysis-prompt-chip')?.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'full-analysis-prompt-chip';
+    wrap.style.cssText = 'display:flex;justify-content:center;padding:4px 0 8px;';
+    if (!_isPaid) {
+      wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;opacity:0.6" onclick="_showUpgradeMsg()">📖 完整解說 🔒</div>`;
+    } else {
+      wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px" onclick="document.getElementById('full-analysis-prompt-chip')?.remove();_renderFullHoroscope()">📖 完整解說</div>`;
+    }
+    document.getElementById('messages').appendChild(wrap);
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  const _PALACE_ORDER = ['命宮','兄弟宮','夫妻宮','子女宮','財帛宮','疾厄宮','遷移宮','交友宮','官祿宮','田宅宮','福德宮','父母宮'];
+
+  function _formatHoroscopeText(text) {
+    if (!text) return text;
+    // New format already has ## headers — use as-is
+    if (text.includes('## ')) return text;
+    // Old format: inject palace headers by matching keywords in each paragraph block
+    const blocks = text.split(/\n\n+/).filter(b => b.trim());
+    const used = new Set();
+    return blocks.map((block, i) => {
+      let palace = _PALACE_ORDER.find(p => block.includes(p) && !used.has(p));
+      if (!palace && i < _PALACE_ORDER.length) {
+        palace = _PALACE_ORDER.find(p => !used.has(p));
+      }
+      if (palace) used.add(palace);
+      return palace ? `## ${palace}\n\n${block.trim()}` : block.trim();
+    }).join('\n\n---\n\n');
+  }
+
+  async function _renderFullHoroscope() {
+    if (isLoading) return;
+    isLoading = true;
+    document.getElementById('send-btn').disabled = true;
+    showTyping();
+    try {
+      const res = await fetch(`/api/horoscope?session_id=${encodeURIComponent(SESSION_ID)}`);
+      const data = await res.json();
+      removeTyping();
+      if (data.horoscope) {
+        const formatted = _formatHoroscopeText(data.horoscope);
+        appendAIMessage('**📖 完整十二宮位解說**\n\n---\n\n' + formatted);
+      } else {
+        appendAIMessage('⚠️ 尚未建立命盤，請先輸入出生資料排盤。');
+      }
+    } catch {
+      removeTyping();
+      appendAIMessage('⚠️ 載入失敗，請稍後再試。');
+    } finally {
+      isLoading = false;
+      document.getElementById('send-btn').disabled = false;
+    }
+  }
+
+  function _showSummaryPrompt() {
+    // Remove any existing prompt first (avoid duplicates on retry)
+    document.getElementById('summary-prompt-chip')?.remove();
+    const wrap = document.createElement('div');
+    wrap.id = 'summary-prompt-chip';
+    wrap.style.cssText = 'display:flex;justify-content:center;padding:8px 0 4px;';
+    wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;border-color:rgba(201,162,39,0.5);color:var(--gold)" onclick="document.getElementById('summary-prompt-chip')?.remove();openChartSummary()">📋 點擊查看命盤精簡解說</div>`;
+    document.getElementById('messages').appendChild(wrap);
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function openChartSummary() {
+    if (isLoading) return;
+    if (_summaryES) { _summaryES.close(); _summaryES = null; }
+    document.getElementById('summary-prompt-chip')?.remove();
+
+    if (!chatStarted) {
+      document.getElementById('welcome-screen')?.remove();
+      chatStarted = true;
+    }
+
+    isLoading = true;
+    document.getElementById('send-btn').disabled = true;
+    document.getElementById('stop-btn').style.display = '';
+    showTyping();
+
+    let bubble = null;
+    let accumulated = '';
+
+    _summaryES = new EventSource(`/api/chart-summary?session_id=${encodeURIComponent(SESSION_ID)}`);
+    _summaryES.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.clear) {
+        accumulated = '';
+        if (bubble) bubble.innerHTML = '';
+        return;
+      }
+      if (data.token) {
+        if (!bubble) { removeTyping(); bubble = createStreamingBubble(); }
+        accumulated += data.token;
+        scheduleRender(bubble, accumulated);
+      }
+      if (data.done) {
+        _summaryES.close(); _summaryES = null;
+        if (bubble) flushRender(bubble, accumulated);
+        removeTyping();
+        isLoading = false;
+        document.getElementById('send-btn').disabled = false;
+        document.getElementById('stop-btn').style.display = 'none';
+        _showFullAnalysisPrompt();
+      }
+    };
+    _summaryES.onerror = () => {
+      _summaryES.close(); _summaryES = null;
+      removeTyping();
+      isLoading = false;
+      document.getElementById('send-btn').disabled = false;
+      document.getElementById('stop-btn').style.display = 'none';
+      if (!accumulated) {
+        bubble = createStreamingBubble();
+        flushRender(bubble, '⚠️ 載入失敗，請稍後再試。');
+      }
+    };
   }
 
   function openCalendar() {
@@ -5427,21 +5607,81 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     const dir = data.forward ? '陽順' : '陰逆';
     const sy  = data.start_age_years, sm = data.start_age_months;
     const curAge = new Date().getFullYear() - birthYear;
-    let html = `<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">起運：${sy}歲${sm>0?sm+'個月':''}  ${dir}排</div>`;
-    data.dayun.forEach(dy => {
+    let html = `<div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:10px">起運：${sy}歲${sm>0?sm+'個月':''}  ${dir}排  ／  點擊任一大運查看解析</div>`;
+    let currentDy = null;
+    data.dayun.forEach((dy, i) => {
       const se = _ELEM_STEM[dy.stem_idx], be = _ELEM_BRANCH[dy.branch_idx];
       const sc = _WX_COLOR[se]||'var(--gold)', bc = _WX_COLOR[be]||'var(--gold)';
       const cur = curAge >= dy.start_age && curAge < dy.end_age;
       const pct = cur ? Math.min(100, Math.round((curAge - dy.start_age)/10*100)) : 0;
+      if (cur) currentDy = dy;
       html +=
-        `<div class="bazi-dayun-row${cur?' current':''}">` +
+        `<div class="bazi-dayun-row${cur?' current':''}" onclick="_toggleDayunInterpret(this,${JSON.stringify(dy)})">` +
         `<div class="bazi-dayun-gz"><span style="color:${sc}">${dy.stem}</span><span style="color:${bc}">${dy.branch}</span></div>` +
         `<div class="bazi-dayun-age">${Math.floor(dy.start_age)}–${Math.floor(dy.end_age)}歲</div>` +
+        `<div class="bazi-dayun-label">${cur?'<span style="color:var(--gold)">◀ 當前大運</span>':''}</div>` +
         `<div class="bazi-dayun-bar"><div class="bazi-dayun-fill" style="width:${pct}%;background:${cur?'var(--gold)':'rgba(255,255,255,0.2)'}"></div></div>` +
-        `${cur?'<span style="font-size:0.7rem;color:var(--gold);flex-shrink:0">◀ 當前</span>':''}` +
-        `</div>`;
+        `</div>` +
+        `<div class="bazi-dayun-interpret${cur?' open':''}" id="dayun-interpret-${i}"></div>`;
     });
     box.innerHTML = html;
+    // Auto-load current DaYun analysis
+    if (currentDy) {
+      const idx = data.dayun.indexOf(currentDy);
+      const interpretEl = document.getElementById(`dayun-interpret-${idx}`);
+      if (interpretEl) _streamDayunInterpret(currentDy, interpretEl);
+    }
+  }
+
+  function _toggleDayunInterpret(rowEl, dy) {
+    const interpretEl = rowEl.nextElementSibling;
+    if (!interpretEl || !interpretEl.classList.contains('bazi-dayun-interpret')) return;
+    const isOpen = interpretEl.classList.contains('open');
+    if (isOpen) {
+      interpretEl.classList.remove('open');
+    } else {
+      interpretEl.classList.add('open');
+      if (!interpretEl.dataset.loaded) _streamDayunInterpret(dy, interpretEl);
+    }
+  }
+
+  async function _streamDayunInterpret(dy, box) {
+    if (box.dataset.loaded) return;
+    box.dataset.loaded = '1';
+    box.innerHTML = '⏳ AI 解析中…';
+    const req = _baziData?._req;
+    if (!req) { box.innerHTML = '⚠️ 缺少命盤資料'; return; }
+    try {
+      const res = await fetch('/api/bazi/dayun-interpret', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          year: req.year, month: req.month, day: req.day,
+          hour: req.hour, minute: req.minute || 0,
+          longitude: req.longitude || 120,
+          is_male: req.is_male ?? 1,
+          session_id: SESSION_ID,
+          dayun_stem: dy.stem, dayun_branch: dy.branch,
+          start_age: dy.start_age, end_age: dy.end_age,
+        }),
+      });
+      if (!res.ok || !res.body) { box.innerHTML = '⚠️ 解析失敗'; box.dataset.loaded = ''; return; }
+      const reader = res.body.getReader(), decoder = new TextDecoder();
+      let accumulated = '', buf = '';
+      box.innerHTML = '';
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, {stream: true});
+        const lines = buf.split('\n'); buf = lines.pop();
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          try {
+            const d = JSON.parse(line.slice(6));
+            if (d.token) { accumulated += d.token; box.innerHTML = renderMarkdown(accumulated); }
+          } catch {}
+        }
+      }
+    } catch { box.innerHTML = '⚠️ 連線失敗'; box.dataset.loaded = ''; }
   }
 
   // ── Save / history ────────────────────────────────────────────
@@ -5621,6 +5861,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
       'bazi-btn': '🀄 八字', 'annual-btn': '🗓 流年流月',
       'calendar-btn': '📅 本週運勢',
       'bookmark-btn': '📌 收藏', 'history-btn': '📜 歷史',
+      'summary-btn': '📋 精簡解說',
       'chart-btn': '📊 命盤', 'timeline-btn': '🗺 人生節點',
       'compat-btn': '💕 合盤', 'profiles-btn': '👥 命盤庫',
       'settings-btn': '⚙️ 設定',
@@ -5631,6 +5872,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
       'bazi-btn': '🀄 BaZi', 'annual-btn': '🗓 Annual/Monthly',
       'calendar-btn': '📅 Weekly Fortune',
       'bookmark-btn': '📌 Saved', 'history-btn': '📜 History',
+      'summary-btn': '📋 Summary',
       'chart-btn': '📊 Chart', 'timeline-btn': '🗺 Life Events',
       'compat-btn': '💕 Compat', 'profiles-btn': '👥 Profiles',
       'settings-btn': '⚙️ Settings',

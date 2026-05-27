@@ -9,11 +9,19 @@ from langchain_core.prompts import ChatPromptTemplate, PromptTemplate
 from .chat_state import ChatState
 from ..global_config import GlobalConfig
 from ..prompt import CHAT_PROMPT, MEMORY_PROMPT
+from ..utils.utils import langfuse_observe
 
 logger = logging.getLogger(__name__)
 
 # Bug #6 Fix: 用於識別命盤展示訊息（此訊息很長且與 state.horoscope 重複，應從 history 中排除）
 _CHART_MESSAGE_MARKER = "我已經排好你的命盤了"
+
+_BAZI_KEYWORDS = frozenset([
+    "八字", "大運", "流年", "日主", "天干", "地支", "命格",
+    "甲", "乙", "丙", "丁", "戊", "己", "庚", "辛", "壬", "癸",
+    "子", "丑", "寅", "卯", "辰", "巳", "午", "未", "申", "酉", "戌", "亥",
+    "五行", "金木水火土", "納音", "神煞", "喜用神", "格局",
+])
 
 # 只有問到星曜位置或宮位結構時才帶入 chart_table，其他問題靠 horoscope 即可
 _CHART_TABLE_KEYWORDS = frozenset([
@@ -29,14 +37,27 @@ def _needs_chart_table(user_msg: str) -> bool:
     return any(kw in user_msg for kw in _CHART_TABLE_KEYWORDS)
 
 
+def _bazi_section(user_msg: str, bazi_doc: str) -> str:
+    if not bazi_doc:
+        return ""
+    if any(kw in user_msg for kw in _BAZI_KEYWORDS):
+        return f"\n顧客的八字命盤：\n{bazi_doc}\n"
+    return ""
+
+
 def _format_chart_table_section(user_msg: str, chart_table: str) -> str:
     """只有問題涉及星曜位置/宮位結構時才回傳 chart_table 段落，否則回空字串。"""
     if chart_table and _needs_chart_table(user_msg):
         return f"顧客的命盤表格：\n{chart_table}\n"
     return ""
 
-# Bug #7 Fix: 保留最近 N 則訊息原文，更早的才壓縮
-_RECENT_KEEP = 6
+# ── ConversationManager 常數 (#5) ─────────────────────────────
+# 三套截斷邏輯統一在此宣告，各場景從這裡取用：
+#   RECENT_KEEP      — chat.py 壓縮前保留原文的最近筆數
+#   PIPELINE_MAX     — main.py 傳給 pipeline 的最大筆數（命盤已存在時）
+#   CACHE_MAX        — main.py SESSION_STATS 保留上限（_MAX_HISTORY）
+# 關係：RECENT_KEEP <= PIPELINE_MAX <= CACHE_MAX
+_RECENT_KEEP = 6       # 壓縮門檻（chat.py 內部使用）
 
 
 def get_token_count(text_list, model="gpt-3.5-turbo"):
@@ -244,6 +265,7 @@ def _horoscope_for_chat(user_msg: str, horoscope: str) -> str:
     return _filter_horoscope_by_topic(user_msg, horoscope)
 
 
+@langfuse_observe(name="chat", capture_input=False)
 def chat(state: ChatState, llm: Callable):
     """Chat node — full response (used by LangGraph pipeline)."""
     import datetime
@@ -256,7 +278,7 @@ def chat(state: ChatState, llm: Callable):
     hist_chat, _ = process_hist_chat(state.messages[:-1], llm)
     current_year = datetime.datetime.now().year
     user_profile_section = _format_user_profile(state.user_profile)
-    bazi_section = f"\n顧客的八字命盤：\n{state.bazi_doc}\n" if getattr(state, "bazi_doc", "") else ""
+    bazi_section = _bazi_section(user_msg, getattr(state, "bazi_doc", ""))
     chart_table_section = _resolve_chart_table_section(user_msg, state.chart_table)
     horoscope_ctx = _horoscope_for_chat(user_msg, state.horoscope)
     prompt = _build_prompt(hist_chat, user_msg, horoscope_ctx, state.chart_table, current_year, state.user_profile)
@@ -295,7 +317,7 @@ def chat_stream(messages: list, horoscope: str, llm, chart_table: str = "", curr
 
     hist_chat, _ = process_hist_chat(messages[:-1], llm)
     user_profile_section = _format_user_profile(user_profile)
-    bazi_section = f"\n顧客的八字命盤：\n{bazi_doc}\n" if bazi_doc else ""
+    bazi_section = _bazi_section(user_msg, bazi_doc)
     chart_table_section = _resolve_chart_table_section(user_msg, chart_table)
     horoscope_ctx = _horoscope_for_chat(user_msg, horoscope)
     prompt = _build_prompt(hist_chat, user_msg, horoscope_ctx, chart_table, current_year, user_profile)

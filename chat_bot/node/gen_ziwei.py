@@ -8,9 +8,10 @@ from langchain_core.prompts import PromptTemplate
 from .chat_state import ChatState
 from ziweidoushu.kernel import ZiweiChart
 from ziweidoushu.base import ZiWeiConfig
-from ..utils.utils import build_llm, process_llm_output, sleep_for_tpm
+from ..utils.utils import build_llm, process_llm_output, sleep_for_tpm, langfuse_observe
 from ..prompt import KEYWORD_PROMPT, ZIWEI_PROMPT
 from ..global_config import GlobalConfig
+from ..llm_client import is_transient_error
 
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 _DOMAIN_DF_CACHE: pd.DataFrame | None = None
@@ -25,22 +26,25 @@ _rag_processor = None
 _PALACE_WORKERS = 12
 
 
+def _create_rag_processor(mode: str):
+    """Factory — return the correct RAG backend for *mode* (RAG_MODE env var)."""
+    if mode == "rag":
+        from ..utils.rag_utils import RagProcessor
+        logger.info("RAG mode: rag (ModernBERT semantic search)")
+        return RagProcessor()
+    if mode == "agent_skill":
+        from ..utils.md_rag_utils import AgentSkillRagProcessor
+        logger.info("RAG mode: agent_skill (LLM-guided lookup)")
+        return AgentSkillRagProcessor()
+    from ..utils.md_rag_utils import MdRagProcessor
+    logger.info("RAG mode: matching (keyword lookup)")
+    return MdRagProcessor()
+
+
 def _get_rag_processor():
     global _rag_processor
     if _rag_processor is None:
-        mode = GlobalConfig.RAG_MODE
-        if mode == "rag":
-            from ..utils.rag_utils import RagProcessor
-            _rag_processor = RagProcessor()
-            logger.info("RAG mode: rag (ModernBERT semantic search)")
-        elif mode == "agent_skill":
-            from ..utils.md_rag_utils import AgentSkillRagProcessor
-            _rag_processor = AgentSkillRagProcessor()
-            logger.info("RAG mode: agent_skill (LLM-guided lookup)")
-        else:
-            from ..utils.md_rag_utils import MdRagProcessor
-            _rag_processor = MdRagProcessor()
-            logger.info("RAG mode: matching (keyword lookup)")
+        _rag_processor = _create_rag_processor(GlobalConfig.RAG_MODE)
     return _rag_processor
 
 
@@ -59,7 +63,8 @@ def generate_ziwei(state: ChatState):
         config = ZiWeiConfig(
             birth_info["year"], birth_info["month"],
             birth_info["day"], birth_info["hour"],
-            bool(birth_info["is_male"])
+            bool(birth_info["is_male"]),
+            is_lunar=bool(birth_info.get("is_lunar", False)),
         )
         ziwei_inst = ZiweiChart(config)
         df = ziwei_inst.gen_chart()
@@ -71,8 +76,7 @@ def generate_ziwei(state: ChatState):
             AIMessage(content=f'我已經排好你的命盤了: \n 生日: {birth_info["year"]}年{birth_info["month"]}月{birth_info["day"]}日, {birth_info["hour"]}時\n\n\n {chart_text}\n\n\n 有什麼需要提問的嗎?')
         )
     except ValueError:
-        # ValueError 通常是出生資料本身問題（例如月份/日期無效）
-        # 清空 birth_info 讓使用者重新輸入，避免下一輪自動再次嘗試同樣的錯誤資料
+        # 資料錯誤（日期無效、月份超出範圍）— 清空出生資訊讓使用者重填
         logger.exception("generate_ziwei 資料錯誤")
         state.birth_info = {
             "year": None, "month": None, "day": None, "hour": None, "is_male": None
@@ -81,17 +85,22 @@ def generate_ziwei(state: ChatState):
         state.messages.append(
             AIMessage(content="⚠️ 出生資料有誤，請確認年月日時辰是否正確（例如是否有閏月、日期是否存在）。請重新告訴我你的出生資訊。")
         )
-    except Exception:
-        # 其他錯誤（API 超時、網路問題）不應怪罪使用者
-        # 同樣清空 birth_info，避免自動重試造成無限錯誤循環
+    except Exception as exc:
         logger.exception("generate_ziwei 系統錯誤")
-        state.birth_info = {
-            "year": None, "month": None, "day": None, "hour": None, "is_male": None
-        }
         state.is_fortune = False
-        state.messages.append(
-            AIMessage(content="⚠️ 系統發生錯誤，請稍後再試。如問題持續請聯絡客服。")
-        )
+        if is_transient_error(exc):
+            # 暫時性錯誤（限流/API 繁忙）— 保留 birth_info，讓使用者不必重新輸入
+            state.messages.append(
+                AIMessage(content="⚠️ AI 服務目前繁忙，你的出生資料已保留。請稍後輸入任意文字重試排盤。")
+            )
+        else:
+            # 其他未知系統錯誤 — 清空避免無限重試
+            state.birth_info = {
+                "year": None, "month": None, "day": None, "hour": None, "is_male": None
+            }
+            state.messages.append(
+                AIMessage(content="⚠️ 系統發生錯誤，請稍後再試。如問題持續請聯絡客服。")
+            )
     return state
 
 
@@ -101,6 +110,7 @@ def transformed_llm_visualize(context: str, model: str | None = None) -> str:
     return context
 
 
+@langfuse_observe(name="split_keywords")
 @sleep_for_tpm
 def split_keywords(context: str, model: str | None = None) -> list:
     # Bug #2 Fix: use None sentinel instead of GlobalConfig.MODEL as default so the value
@@ -111,6 +121,7 @@ def split_keywords(context: str, model: str | None = None) -> list:
     return [kw.strip() for kw in raw.split(",") if kw.strip()]
 
 
+@langfuse_observe(name="analysis_ziwei", as_type="generation")
 @sleep_for_tpm
 def analysis_ziwei(context: str, rag_document: str, model: str | None = None) -> str:
     # Bug #2 Fix: use None sentinel instead of GlobalConfig.MODEL as default.
@@ -164,13 +175,15 @@ def _extract_keywords_from_row(row) -> list[str]:
 
 def _analyze_row(row, rag_inst, ziwei_domain_df: pd.DataFrame) -> str:
     """Analyze a single palace row — called in parallel across all palaces."""
+    palace = str(row.get("宮", "")).strip() if pd.notna(row.get("宮", "")) else ""
     sentence = format_row(row)
     if GlobalConfig.RAG_MODE == "matching":
         keyword_list = _extract_keywords_from_row(row)
     else:
         keyword_list = split_keywords(sentence)
     rag_document = rag_inst.retrieve_definitions(ziwei_domain_df, keyword_list)
-    return analysis_ziwei(sentence, rag_document)
+    analysis = analysis_ziwei(sentence, rag_document)
+    return f"## {palace}\n\n{analysis}" if palace and analysis else analysis
 
 
 def get_palace_information(df: pd.DataFrame, ziwei_domain_df: pd.DataFrame) -> str:

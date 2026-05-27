@@ -11,8 +11,8 @@ from .global_config import GlobalConfig
 logger = logging.getLogger(__name__)
 
 class LLMProcessor:
-    def __init__(self, model: str = GlobalConfig.MODEL):  # Fix #9：跟隨 GlobalConfig
-        self.llm = build_llm(model)
+    def __init__(self, llm=None, model: str = GlobalConfig.MODEL):
+        self.llm = llm if llm is not None else build_llm(model)
 
     def set_kernel_pipeline(self):
         """
@@ -64,6 +64,6 @@ class LLMProcessor:
         if GlobalConfig.USE_AGENT_SKILL:
             from .agent_processor import AgentProcessor  # 本地 import 避免循環依賴
             logger.info("pipeline 模式: Agent Skill (create_react_agent)")
-            return AgentProcessor(model=GlobalConfig.MODEL).set_pipeline()
+            return AgentProcessor(llm=self.llm).set_pipeline()
         logger.info("pipeline 模式: LangGraph 固定流程")
         return self.set_kernel_pipeline()

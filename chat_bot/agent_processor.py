@@ -2,7 +2,6 @@ import logging
 from langgraph.prebuilt import create_react_agent
 from langgraph.checkpoint.memory import MemorySaver
 
-from .utils.utils import build_llm
 from .node.skills import generate_ziwei_chart
 
 logger = logging.getLogger(__name__)
@@ -19,6 +18,7 @@ AGENT_SYSTEM_PROMPT = """\
 3. 出生日期（1~31）
 4. 出生時辰（地支如：子、丑、寅… 或 24 小時制的整數）
 5. 性別（男 / 女）
+6. 曆法（國曆 / 農曆，預設國曆）
 
 如果有任何一項缺失，請一次性詢問使用者補充所有缺少的資訊，語氣友善自然。
 例如：「請問你的出生年月日和時辰是什麼呢？還有你的性別？」
@@ -42,8 +42,8 @@ class AgentProcessor:
     回傳一個可呼叫 .invoke({"messages": [...]}, config=...) 的 compiled graph。
     """
 
-    def __init__(self, model: str = "gemini-2.5-flash-lite"):
-        self.llm = build_llm(model)
+    def __init__(self, llm):
+        self.llm = llm
         # MemorySaver 在 __init__ 建立，跨 request 持續存活（LINE Bot 需要）
         self.memory = MemorySaver()
 

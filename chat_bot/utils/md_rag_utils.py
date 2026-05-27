@@ -6,10 +6,27 @@ Replaces ModernBERT semantic search with two lighter alternatives:
   AgentSkillRagProcessor — LLM-guided lookup (agent_skill mode)
 
 No ML model loading required for either — near-zero startup time and memory.
+
+All processors implement BaseRagProcessor so gen_ziwei.py can swap them
+transparently without isinstance checks.
 """
 import json
 import logging
 import os
+from abc import ABC, abstractmethod
+
+
+class BaseRagProcessor(ABC):
+    """Common interface for all RAG backends."""
+
+    @abstractmethod
+    def retrieve_definitions(
+        self,
+        domain_df,          # pandas DataFrame — used by rag mode; ignored by others
+        keywords: list[str],
+        top_k: int = 1,
+    ) -> str:
+        """Return relevant knowledge text for the given keywords."""
 
 logger = logging.getLogger(__name__)
 
@@ -72,11 +89,10 @@ def _get_index() -> dict[str, str]:
 
 # ── Mode 1: matching ─────────────────────────────────────────────────────────
 
-class MdRagProcessor:
+class MdRagProcessor(BaseRagProcessor):
     """
     Keyword-based lookup from local markdown knowledge files.
     Tries exact match first, then partial/suffix match.
-    API-compatible with RagProcessor so gen_ziwei.py can swap transparently.
     """
 
     def retrieve_definitions(
@@ -125,7 +141,7 @@ _SELECT_KEYS_PROMPT = """\
 {context}"""
 
 
-class AgentSkillRagProcessor:
+class AgentSkillRagProcessor(BaseRagProcessor):
     """
     LLM-guided lookup from local markdown knowledge files.
 

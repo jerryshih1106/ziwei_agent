@@ -668,6 +668,16 @@ def sync_whitelist() -> None:
             created += 1
         else:
             skipped += 1
+        # Always ensure whitelist accounts retain pro plan (no expiry)
+        try:
+            with get_db() as conn:
+                conn.execute(
+                    "UPDATE users SET plan='pro', plan_expires_at=NULL WHERE username=?",
+                    (username,),
+                )
+                conn.commit()
+        except Exception:
+            logger.warning("[whitelist] 無法設定 pro plan：%s", username)
     logger.info("[whitelist] 完成：新建 %d 個帳號，已存在略過 %d 個", created, skipped)
 
 

@@ -34,6 +34,9 @@ from pydantic import BaseModel
 
 from chat_bot.global_config import GlobalConfig
 from chat_bot.llm_processor import LLMProcessor
+from chat_bot.session_store import SessionStore
+from chat_bot.llm_client import astream_with_retry, is_transient_error
+from chat_bot.background_tasks import bg as _bg
 
 # ── 時辰對照表 ────────────────────────────────────────────────
 TIME_TABLE = [
@@ -52,38 +55,53 @@ TIME_TABLE = [
 ]
 
 # ── 應用程式狀態 ──────────────────────────────────────────────
-_pipeline = None
-_llm = None  # Bug #5 Fix: singleton LLM reused across streaming requests (avoid rebuilding per request)
+
+class _AppState:
+    """Centralises pipeline / LLM readiness so startup failures surface clearly."""
+    pipeline = None
+    llm = None
+    _init_error: "Exception | None" = None
+
+    @classmethod
+    def is_ready(cls) -> bool:
+        return cls.pipeline is not None and cls.llm is not None
+
+    @classmethod
+    def require_pipeline(cls):
+        if cls.pipeline is None:
+            raise HTTPException(status_code=503, detail="服務啟動中，請稍後再試。")
+        return cls.pipeline
+
+    @classmethod
+    def require_llm(cls):
+        if cls.llm is None:
+            raise HTTPException(status_code=503, detail="AI 服務尚未就緒，請稍後再試。")
+        return cls.llm
+
+
+_pipeline = None   # kept for backward compat; _AppState.pipeline is the source of truth
+_llm = None        # kept for backward compat; _AppState.llm is the source of truth
 _line_bot_api: "LineBotApi | None" = None   # Fix #9：lazy singleton
 _line_handler: "WebhookHandler | None" = None  # Fix #9：lazy singleton
-SESSION_STATS: dict = {}
-HOROSCOPE: dict = {}
-CHART_TABLE: dict = {}
-BIRTH_INFO: dict = {}
-BAZI_DOC: dict = {}    # session_id → 格式化八字文件，注入 CHAT_PROMPT
-AGENT_THREAD: dict = {}
-NON_AGENT_THREAD: dict = {}    # Bug #1 Fix: non-agent 模式的 LangGraph thread_id，重置時換新 UUID
-_SESSION_LAST_SEEN: dict = {}  # Fix #5: session 最後活躍時間戳
-USER_PROFILES: dict = {}       # 用戶 playbook 快取（key: session_id, value: md 字串）
-# Per-session asyncio.Lock — prevents concurrent requests for the same session_id from
-# running the pipeline simultaneously and causing TOCTOU races on HOROSCOPE/SESSION_STATS.
-# NOTE: asyncio.Lock must be created lazily inside the running event loop.
-# We use a plain dict protected by an asyncio.Lock for the dict itself.
-# _SESSION_LOCKS_META_LOCK is initialised once inside the lifespan (event-loop context).
-_SESSION_LOCKS: dict = {}
-_SESSION_LOCKS_META_LOCK: "asyncio.Lock | None" = None  # set in lifespan
+
+# SessionStore — all session-scoped state in one place (#1 + #2)
+_store = SessionStore()
+
+# ── Backward-compat aliases (existing code keeps working unchanged) ──
+SESSION_STATS   = _store.messages
+HOROSCOPE       = _store.horoscopes
+CHART_TABLE     = _store.chart_tables
+BIRTH_INFO      = _store.birth_infos
+BAZI_DOC        = _store.bazi_docs
+AGENT_THREAD    = _store.agent_threads
+NON_AGENT_THREAD = _store.thread_ids
+USER_PROFILES   = _store.user_profiles
+_SESSION_LAST_SEEN = _store._last_seen
 
 
 async def _get_session_lock(session_id: str) -> asyncio.Lock:
     """Return (or create) the asyncio.Lock for this session_id (coroutine-safe)."""
-    global _SESSION_LOCKS_META_LOCK
-    if _SESSION_LOCKS_META_LOCK is None:
-        # Should not happen after lifespan runs, but guard anyway.
-        _SESSION_LOCKS_META_LOCK = asyncio.Lock()
-    async with _SESSION_LOCKS_META_LOCK:
-        if session_id not in _SESSION_LOCKS:
-            _SESSION_LOCKS[session_id] = asyncio.Lock()
-        return _SESSION_LOCKS[session_id]
+    return await _store.get_lock(session_id)
 
 # 每個 session 最多保留的訊息輪數（fix #9：防止無限成長）
 _MAX_HISTORY = 20
@@ -93,17 +111,25 @@ _SESSION_TTL_SECS = 7200
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _pipeline, _llm, _SESSION_LOCKS_META_LOCK
+    global _pipeline, _llm
     from chat_bot.utils.utils import build_llm
     from chat_bot.auth.auth import init_db, sync_whitelist
-    # Initialise the meta-lock inside the event loop so all asyncio.Lock objects
-    # created later are bound to the same loop.
-    _SESSION_LOCKS_META_LOCK = asyncio.Lock()
+    _store.init_event_loop()
     init_db()
     sync_whitelist()
-    _pipeline = LLMProcessor().set_pipeline()
-    _llm = build_llm(GlobalConfig.MODEL)  # Bug #5 Fix: build once, reuse in _stream_worker
+    try:
+        _AppState.llm = build_llm(GlobalConfig.MODEL)
+        _AppState.pipeline = LLMProcessor(llm=_AppState.llm).set_pipeline()
+        # backward-compat module-level references
+        _pipeline = _AppState.pipeline
+        _llm = _AppState.llm
+    except Exception as exc:
+        _AppState._init_error = exc
+        logger.exception("[lifespan] pipeline/LLM 初始化失敗: %s", exc)
     yield
+    _bg.shutdown(wait=True)  # 優雅關閉：等待背景任務完成再退出
+    from chat_bot.utils.utils import flush_langfuse
+    flush_langfuse()
 
 
 app = FastAPI(title="紫微斗數 API", lifespan=lifespan)
@@ -220,43 +246,20 @@ def _extract_last_message(output: dict) -> str:
 
 def _trim_history(session_id: str) -> None:
     """超過上限時，保留最新的 _MAX_HISTORY 條訊息。"""
-    msgs = SESSION_STATS.get(session_id, [])
-    if len(msgs) > _MAX_HISTORY:
-        SESSION_STATS[session_id] = msgs[-_MAX_HISTORY:]
+    _store.trim_messages(session_id, _MAX_HISTORY)
 
 
 def _pipeline_messages(session_id: str) -> list:
-    """Bug #10 Fix: 當命盤已存在時，只傳最近 12 則訊息給 pipeline。
-    命盤初期收集資料的訊息（出生資料問答）對後續對話無用，且命盤已透過 horoscope 傳遞，
-    只保留近期對話即可，減少 context 浪費。"""
-    msgs = SESSION_STATS.get(session_id, [])
-    if HOROSCOPE.get(session_id):
-        # 命盤已生成：只取最近 12 則，節省 context
-        return msgs[-12:] if len(msgs) > 12 else msgs
-    return msgs
+    """當命盤已存在時，只傳最近 12 則訊息給 pipeline，減少 context 浪費。"""
+    return _store.pipeline_messages(session_id, bool(HOROSCOPE.get(session_id)))
 
 
 def _touch_session(session_id: str) -> None:
-    """Fix #5：更新 session 活躍時間。"""
-    _SESSION_LAST_SEEN[session_id] = time.time()
+    _store.touch(session_id)
 
 
 def _evict_stale_sessions() -> None:
-    """Fix #5：清除超過 TTL 的閒置 sessions，防止記憶體無限成長。"""
-    now = time.time()
-    # Bug R4#1 Fix: 先 list() 快照，避免另一個 coroutine 在迭代過程中修改 dict 造成 RuntimeError
-    stale = [sid for sid, ts in list(_SESSION_LAST_SEEN.items()) if now - ts > _SESSION_TTL_SECS]
-    for sid in stale:
-        SESSION_STATS.pop(sid, None)
-        HOROSCOPE.pop(sid, None)
-        CHART_TABLE.pop(sid, None)
-        BIRTH_INFO.pop(sid, None)
-        AGENT_THREAD.pop(sid, None)
-        NON_AGENT_THREAD.pop(sid, None)
-        _SESSION_LAST_SEEN.pop(sid, None)
-        USER_PROFILES.pop(sid, None)
-        # Fix: 同步清除 asyncio.Lock，避免 _SESSION_LOCKS 無限增長（記憶體洩漏）
-        _SESSION_LOCKS.pop(sid, None)
+    _store.evict_stale(_SESSION_TTL_SECS)
 
 
 def _playbook_conv(session_id: str, n: int = 5) -> str:
@@ -426,8 +429,7 @@ async def api_chat(body: ChatRequest):
     Response:     { "reply": "..." }
     Bug #2 Fix: 改為 async def，pipeline.invoke 用 run_in_threadpool 避免阻塞 event loop
     """
-    # Fix #2：pipeline 尚未就緒時提早返回
-    if _pipeline is None:
+    if not _AppState.is_ready():
         return JSONResponse(status_code=503, content={"reply": "⚠️ 服務啟動中，請稍後再試。"})
 
     t0 = time.time()
@@ -458,10 +460,7 @@ async def api_chat(body: ChatRequest):
                 from chat_bot.auth.auth import load_horoscope
                 _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
                 if _h:
-                    HOROSCOPE[session_id] = _h
-                    CHART_TABLE[session_id] = _ct or ""
-                    if _bi:
-                        BIRTH_INFO[session_id] = _bi
+                    _store.set_horoscope_atomic(session_id, _h, _ct or "", _bi)
                     # 伺服器重啟後同步恢復對話上下文
                     await run_in_threadpool(_restore_session_from_db, session_id)
                     _auto_activate_bazi(session_id, _bi)
@@ -503,11 +502,10 @@ async def api_chat(body: ChatRequest):
                     config,
                 )
                 if not HOROSCOPE[session_id]:
-                    HOROSCOPE[session_id] = output.get("horoscope", "")
-                    CHART_TABLE[session_id] = output.get("chart_table", "")
-                    _bi = output.get("birth_info") or {}
-                    if _bi:
-                        BIRTH_INFO[session_id] = _bi
+                    _new_h = output.get("horoscope", "")
+                    _new_ct = output.get("chart_table", "")
+                    _new_bi = output.get("birth_info") or None
+                    _store.set_horoscope_atomic(session_id, _new_h, _new_ct, _new_bi)
                     if HOROSCOPE[session_id]:
                         from chat_bot.auth.auth import save_horoscope
                         _h_snap = HOROSCOPE[session_id]
@@ -517,22 +515,14 @@ async def api_chat(body: ChatRequest):
                             save_horoscope(sid, h, ct, bi)
                             _auto_save_self_profile(sid, h, ct, bi)
                             _auto_activate_bazi(sid, bi)
-                        threading.Thread(target=_save_new_chart, daemon=True).start()
+                        _bg.submit(_save_new_chart)
 
                 reply = _extract_last_message(output)
                 SESSION_STATS[session_id].append(AIMessage(content=reply))
 
         # 背景更新 user playbook（不阻塞回應）
         if not is_reset and _llm is not None:
-            _llm_ref = _llm
-            _sid = session_id
-            _conv = _playbook_conv(session_id)
-            import threading
-            threading.Thread(
-                target=update_playbook,
-                args=(_sid, _conv, _llm_ref),
-                daemon=True,
-            ).start()
+            _bg.submit_named(f"playbook:{session_id}", update_playbook, session_id, _playbook_conv(session_id), _llm)
             USER_PROFILES.pop(session_id, None)  # 下次請求時從磁碟重新載入最新資料
 
         logger.info(f"[api/chat] done in {time.time()-t0:.1f}s")
@@ -540,7 +530,7 @@ async def api_chat(body: ChatRequest):
 
     except Exception as e:
         logger.exception("[api/chat] error")
-        if "RESOURCE_EXHAUSTED" in str(e) or "429" in str(e):
+        if is_transient_error(e):
             return JSONResponse(status_code=429, content={"reply": "⚠️ AI 服務目前請求過多，請稍後再試。"})
         return JSONResponse(status_code=500, content={"reply": "⚠️ 發生錯誤，請稍後再試。"})
 
@@ -550,15 +540,7 @@ async def api_chat(body: ChatRequest):
 async def api_reset(body: ResetRequest):
     """清除指定 session 的對話記憶與命盤，讓使用者可以重新排盤。"""
     session_id = (body.session_id or "").strip() or "web_default"
-    SESSION_STATS.pop(session_id, None)
-    HOROSCOPE.pop(session_id, None)
-    CHART_TABLE.pop(session_id, None)
-    BIRTH_INFO.pop(session_id, None)
-    AGENT_THREAD.pop(session_id, None)
-    NON_AGENT_THREAD.pop(session_id, None)
-    _SESSION_LAST_SEEN.pop(session_id, None)
-    USER_PROFILES.pop(session_id, None)
-    _SESSION_LOCKS.pop(session_id, None)
+    _store.clear_session(session_id)
     return {"status": "ok"}
 
 
@@ -569,13 +551,7 @@ async def api_clear_chart(body: ResetRequest):
     關鍵：必須刪除磁碟上的 horoscope 檔案，否則下次請求會從磁碟重載舊命盤。
     同時重置 NON_AGENT_THREAD，讓 LangGraph state 回到初始（is_fortune=False）。"""
     session_id = (body.session_id or "").strip() or "web_default"
-    HOROSCOPE.pop(session_id, None)
-    CHART_TABLE.pop(session_id, None)
-    BIRTH_INFO.pop(session_id, None)
-    SESSION_STATS.pop(session_id, None)
-    USER_PROFILES.pop(session_id, None)
-    # Reset conversation thread so LangGraph starts fresh (birth_info / is_fortune reset)
-    NON_AGENT_THREAD.pop(session_id, None)
+    _store.clear_chart(session_id)
     # Delete horoscope file — without this, the next request would reload the old chart from disk
     from chat_bot.auth.auth import delete_horoscope
     await run_in_threadpool(delete_horoscope, session_id)
@@ -630,7 +606,7 @@ async def api_chat_stream(body: ChatRequest):
       data: {"token": "..."}\n\n   — 每個 token
       data: {"done": true}\n\n     — 結束
     """
-    if _pipeline is None:
+    if not _AppState.is_ready():
         async def _not_ready():
             yield f'data: {json.dumps({"token": "⚠️ 服務啟動中，請稍後再試。"})}\n\n'
             yield f'data: {json.dumps({"done": True})}\n\n'
@@ -732,11 +708,12 @@ async def api_chat_stream(body: ChatRequest):
                             config=_cfg,
                         )
                         if not HOROSCOPE[session_id]:
-                            HOROSCOPE[session_id] = output.get("horoscope", "")
-                            CHART_TABLE[session_id] = output.get("chart_table", "")
-                            _bi = output.get("birth_info") or {}
-                            if _bi:
-                                BIRTH_INFO[session_id] = _bi
+                            _store.set_horoscope_atomic(
+                                session_id,
+                                output.get("horoscope", ""),
+                                output.get("chart_table", ""),
+                                output.get("birth_info") or None,
+                            )
                             # 命盤生成後存入 DB，伺服器重啟後不需重新排盤
                             if HOROSCOPE[session_id]:
                                 from chat_bot.auth.auth import save_horoscope
@@ -762,19 +739,13 @@ async def api_chat_stream(body: ChatRequest):
                 try:
                     reply = await run_in_threadpool(_run)
                 except Exception as exc:
-                    if "RESOURCE_EXHAUSTED" in str(exc) or "429" in str(exc):
+                    if is_transient_error(exc):
                         reply = "⚠️ AI 服務目前請求過多，請稍後再試。"
                     else:
                         reply = "⚠️ 發生錯誤，請稍後再試。"
                     logger.exception("[stream] pipeline error")
                 if _llm is not None:
-                    _lref = _llm
-                    _conv_snap = _playbook_conv(session_id)
-                    threading.Thread(
-                        target=update_playbook,
-                        args=(session_id, _conv_snap, _lref),
-                        daemon=True,
-                    ).start()
+                    _bg.submit_named(f"playbook:{session_id}", update_playbook, session_id, _playbook_conv(session_id), _llm)
                     USER_PROFILES.pop(session_id, None)
                 chart_md = CHART_TABLE.get(session_id, "")
                 # clear 事件讓前端清除 loading 訊息，再顯示實際回應
@@ -785,8 +756,8 @@ async def api_chat_stream(body: ChatRequest):
                 yield f'data: {json.dumps({"done": True})}\n\n'
                 # 背景儲存排盤對話到 chat_history DB
                 from chat_bot.auth.auth import save_chat_message as _save_msg
-                threading.Thread(target=_save_msg, args=(session_id, "user", msg), daemon=True).start()
-                threading.Thread(target=_save_msg, args=(session_id, "ai", reply), daemon=True).start()
+                _bg.submit(_save_msg, session_id, "user", msg)
+                _bg.submit(_save_msg, session_id, "ai", reply)
 
             return StreamingResponse(_pipeline_stream(), media_type="text/event-stream")
 
@@ -898,17 +869,11 @@ async def api_chat_stream(body: ChatRequest):
                 _trim_history(session_id)
                 # 背景儲存訊息到 chat_history DB
                 from chat_bot.auth.auth import save_chat_message as _save_msg
-                threading.Thread(target=_save_msg, args=(session_id, "user", msg), daemon=True).start()
-                threading.Thread(target=_save_msg, args=(session_id, "ai", complete), daemon=True).start()
+                _bg.submit(_save_msg, session_id, "user", msg)
+                _bg.submit(_save_msg, session_id, "ai", complete)
                 # 背景更新 playbook（串流完成後）
                 if _llm is not None:
-                    _lref = _llm
-                    _conv_snap = _playbook_conv(session_id)
-                    threading.Thread(
-                        target=update_playbook,
-                        args=(session_id, _conv_snap, _lref),
-                        daemon=True,
-                    ).start()
+                    _bg.submit_named(f"playbook:{session_id}", update_playbook, session_id, _playbook_conv(session_id), _llm)
                     USER_PROFILES.pop(session_id, None)
             elif SESSION_STATS.get(session_id) and isinstance(
                 SESSION_STATS[session_id][-1], HumanMessage
@@ -983,37 +948,85 @@ async def api_daily_fortune(session_id: str = "web_default"):
         prompt = PromptTemplate.from_template(_DAILY_FORTUNE_PROMPT)
         chain = prompt | _llm
         _inputs = {"today": today, "horoscope": horoscope[:2500], "stars": stars}
-        accumulated = []
-        _max_retries = 3
-        for _attempt in range(_max_retries):
-            _attempt_tokens: list[str] = []
-            try:
-                async for chunk in chain.astream(_inputs):
-                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
-                    if token:
-                        _attempt_tokens.append(token)
-                        yield f'data: {json.dumps({"token": token})}\n\n'
-                accumulated = _attempt_tokens
-                break
-            except Exception as exc:
-                _err = str(exc)
-                _is_busy = any(k in _err for k in ["503", "high demand", "overloaded", "UNAVAILABLE", "Resource has been exhausted"])
-                if _attempt < _max_retries - 1 and _is_busy:
-                    _wait = 5 * (2 ** _attempt)
-                    yield f'data: {json.dumps({"clear": True})}\n\n'
-                    yield f'data: {json.dumps({"token": f"⚠️ AI 服務繁忙，{_wait} 秒後自動重試（第 {_attempt + 2}/{_max_retries} 次）…"})}\n\n'
-                    await asyncio.sleep(_wait)
-                    yield f'data: {json.dumps({"clear": True})}\n\n'
-                else:
-                    logger.exception("[daily-fortune] generate error")
-                    yield f'data: {json.dumps({"token": "⚠️ 生成失敗，請稍後再試。"})}\n\n'
-                    yield f'data: {json.dumps({"done": True})}\n\n'
-                    return
+        accumulated: list[str] = []
+        async for token, err in astream_with_retry(chain, _inputs):
+            if err == "__clear__":
+                yield f'data: {json.dumps({"clear": True})}\n\n'
+            elif err:
+                logger.error("[daily-fortune] generate error: %s", err)
+                yield f'data: {json.dumps({"token": err})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+                return
+            else:
+                accumulated.append(token)
+                yield f'data: {json.dumps({"token": token})}\n\n'
 
         content = "".join(accumulated)
-        threading.Thread(
-            target=save_daily_fortune, args=(session_id, today, content), daemon=True
-        ).start()
+        _bg.submit(save_daily_fortune, session_id, today, content)
+        yield f'data: {json.dumps({"done": True})}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# ── 命盤精簡解說 API ───────────────────────────────────────────
+_CHART_SUMMARY_PROMPT = """\
+你是資深紫微斗數命理師。以下是命主的命盤分析資料。
+
+請用350字左右提供一篇「命盤精簡解說」，幫命主快速掌握自己的命格全貌。
+內容需涵蓋：
+1. 整體命格特質與人生基調
+2. 最突出的星曜組合及其影響
+3. 事業與財運大方向
+4. 感情與婚姻特質
+5. 最重要的人生建議一句話
+
+請以親切直接的口吻，用自然流暢的段落呈現，不要列點或表格。
+
+命盤分析資料：
+{horoscope}
+{bazi_section}"""
+
+
+@app.get("/api/chart-summary")
+async def api_chart_summary(session_id: str = "web_default"):
+    """SSE 串流：回傳命盤精簡整體解說。"""
+    session_id = (session_id or "").strip() or "web_default"
+
+    async def _stream():
+        horoscope = HOROSCOPE.get(session_id, "")
+        if not horoscope:
+            from chat_bot.auth.auth import load_horoscope
+            horoscope_tuple = await run_in_threadpool(load_horoscope, session_id)
+            horoscope = horoscope_tuple[0] or ""
+        if not horoscope:
+            yield f'data: {json.dumps({"token": "⚠️ 尚未建立命盤，請先輸入出生資料排盤。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        if _llm is None:
+            yield f'data: {json.dumps({"token": "⚠️ AI 服務尚未就緒，請稍後再試。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+
+        bazi_doc = BAZI_DOC.get(session_id, "")
+        bazi_section = f"\n八字資料：\n{bazi_doc}\n" if bazi_doc else ""
+
+        from langchain_core.prompts import PromptTemplate
+        prompt = PromptTemplate.from_template(_CHART_SUMMARY_PROMPT)
+        chain = prompt | _llm
+        _inputs = {"horoscope": horoscope[:3000], "bazi_section": bazi_section}
+
+        async for token, err in astream_with_retry(chain, _inputs):
+            if err == "__clear__":
+                yield f'data: {json.dumps({"clear": True})}\n\n'
+            elif err:
+                logger.error("[chart-summary] generate error: %s", err)
+                yield f'data: {json.dumps({"token": err})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+                return
+            else:
+                yield f'data: {json.dumps({"token": token})}\n\n'
+
         yield f'data: {json.dumps({"done": True})}\n\n'
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
@@ -1509,13 +1522,7 @@ async def linebot(request: Request):
 
                 # 背景更新 playbook
                 if not is_reset and _llm is not None:
-                    _lref = _llm
-                    _conv_snap = _playbook_conv(user_id)
-                    threading.Thread(
-                        target=update_playbook,
-                        args=(user_id, _conv_snap, _lref),
-                        daemon=True,
-                    ).start()
+                    _bg.submit_named(f"playbook:{user_id}", update_playbook, user_id, _playbook_conv(user_id), _llm)
                     USER_PROFILES.pop(user_id, None)
 
             except Exception:
@@ -1717,7 +1724,7 @@ async def api_weekly_fortune(session_id: str = "web_default", week_start: str = 
         data["week_start"] = ws.isoformat()
         data["week_label"] = f"{ws.month}/{ws.day} – {week_dates[-1].month}/{week_dates[-1].day}"
         cache_str = _json.dumps(data, ensure_ascii=False)
-        threading.Thread(target=save_monthly_fortune, args=(session_id, cache_key, cache_str), daemon=True).start()
+        _bg.submit(save_monthly_fortune, session_id, cache_key, cache_str)
         return data
     except HTTPException:
         raise
@@ -1791,7 +1798,7 @@ async def api_fortune_calendar(session_id: str = "web_default", year: int = None
             raise HTTPException(status_code=500, detail="AI 回傳格式錯誤")
         data = _json.loads(match.group())
         cache_str = _json.dumps(data, ensure_ascii=False)
-        threading.Thread(target=save_monthly_fortune, args=(session_id, year_month, cache_str), daemon=True).start()
+        _bg.submit(save_monthly_fortune, session_id, year_month, cache_str)
         return data
     except HTTPException:
         raise
@@ -2200,11 +2207,7 @@ async def api_annual_fortune(session_id: str = "web_default", year: int = None):
             raise HTTPException(status_code=500, detail="AI 回傳格式錯誤")
         data = _json.loads(match.group())
         data["year"] = year
-        threading.Thread(
-            target=save_annual_fortune,
-            args=(session_id, cache_key, _json.dumps(data, ensure_ascii=False)),
-            daemon=True,
-        ).start()
+        _bg.submit(save_annual_fortune, session_id, cache_key, _json.dumps(data, ensure_ascii=False))
         return data
     except HTTPException:
         raise
@@ -2258,39 +2261,21 @@ async def api_monthly_detail(session_id: str = "web_default", year: int = None, 
         prompt = PromptTemplate.from_template(_MONTHLY_DETAIL_PROMPT)
         chain = prompt | _llm
         _inputs = {"year": year, "month": month, "horoscope": horoscope[:2500], "stars": stars}
-        accumulated = []
-        _max_retries = 3
-        for _attempt in range(_max_retries):
-            _attempt_tokens: list[str] = []
-            try:
-                async for chunk in chain.astream(_inputs):
-                    token = chunk.content if hasattr(chunk, "content") else str(chunk)
-                    if token:
-                        _attempt_tokens.append(token)
-                        yield f'data: {json.dumps({"token": token})}\n\n'
-                accumulated = _attempt_tokens
-                break
-            except Exception as exc:
-                _err = str(exc)
-                _is_busy = any(k in _err for k in ["503", "high demand", "overloaded", "UNAVAILABLE", "Resource has been exhausted"])
-                if _attempt < _max_retries - 1 and _is_busy:
-                    _wait = 5 * (2 ** _attempt)
-                    yield f'data: {json.dumps({"clear": True})}\n\n'
-                    yield f'data: {json.dumps({"token": f"⚠️ AI 服務繁忙，{_wait} 秒後自動重試（第 {_attempt + 2}/{_max_retries} 次）…"})}\n\n'
-                    await asyncio.sleep(_wait)
-                    yield f'data: {json.dumps({"clear": True})}\n\n'
-                else:
-                    logger.exception("[monthly-detail] generate error")
-                    yield f'data: {json.dumps({"token": "⚠️ 生成失敗，請稍後再試。"})}\n\n'
-                    yield f'data: {json.dumps({"done": True})}\n\n'
-                    return
+        accumulated: list[str] = []
+        async for token, err in astream_with_retry(chain, _inputs):
+            if err == "__clear__":
+                yield f'data: {json.dumps({"clear": True})}\n\n'
+            elif err:
+                logger.error("[monthly-detail] generate error: %s", err)
+                yield f'data: {json.dumps({"token": err})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+                return
+            else:
+                accumulated.append(token)
+                yield f'data: {json.dumps({"token": token})}\n\n'
 
         full_content = "".join(accumulated)
-        threading.Thread(
-            target=save_annual_fortune,
-            args=(session_id, cache_key, full_content),
-            daemon=True,
-        ).start()
+        _bg.submit(save_annual_fortune, session_id, cache_key, full_content)
         yield f'data: {json.dumps({"done": True})}\n\n'
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
@@ -2694,35 +2679,94 @@ async def api_bazi_interpret(body: BaziRequest):
         from langchain_core.prompts import PromptTemplate
         prompt = PromptTemplate.from_template(_BAZI_INTERPRET_PROMPT)
         chain = prompt | _llm
-        accumulated = []
-        _max_retries = 3
-        for _attempt in range(_max_retries):
-            _tokens: list[str] = []
-            try:
-                async for chunk in chain.astream(_inputs):
-                    tok = chunk.content if hasattr(chunk, "content") else str(chunk)
-                    if tok:
-                        _tokens.append(tok)
-                        yield f'data: {json.dumps({"token": tok})}\n\n'
-                accumulated = _tokens
-                break
-            except Exception as exc:
-                _err = str(exc)
-                _busy = any(k in _err for k in ["503", "high demand", "overloaded", "UNAVAILABLE", "Resource has been exhausted"])
-                if _attempt < _max_retries - 1 and _busy:
-                    _wait = 5 * (2 ** _attempt)
-                    yield f'data: {json.dumps({"clear": True})}\n\n'
-                    yield f'data: {json.dumps({"token": f"⚠️ AI 服務繁忙，{_wait} 秒後重試…"})}\n\n'
-                    await asyncio.sleep(_wait)
-                    yield f'data: {json.dumps({"clear": True})}\n\n'
-                else:
-                    logger.exception("[bazi-interpret] error")
-                    yield f'data: {json.dumps({"token": "⚠️ 解盤失敗，請稍後再試。"})}\n\n'
-                    yield f'data: {json.dumps({"done": True})}\n\n'
-                    return
+        async for token, err in astream_with_retry(chain, _inputs):
+            if err == "__clear__":
+                yield f'data: {json.dumps({"clear": True})}\n\n'
+            elif err:
+                logger.error("[bazi-interpret] error: %s", err)
+                yield f'data: {json.dumps({"token": err})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+                return
+            else:
+                yield f'data: {json.dumps({"token": token})}\n\n'
         yield f'data: {json.dumps({"done": True, "bazi": bazi})}\n\n'
 
     return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# ── 大運 AI 解析 ────────────────────────────────────────────────
+_DAYUN_INTERPRET_PROMPT = """\
+你是資深八字命理師。以下是命主的八字資料與即將解析的大運期間。
+
+命主出生：{birth_dt}
+性別：{is_male}
+大運：{dayun_gz}（{start_age}歲至{end_age}歲）
+
+請用150字左右，說明這段大運對命主的影響：
+1. 此干支組合的五行特性與象意
+2. 對命主事業、財運、感情的主要影響方向
+3. 需要注意的潛在挑戰或機遇
+
+用簡潔流暢的口吻，不要列點，直接成段。"""
+
+class DayunInterpretRequest(BaseModel):
+    year: int
+    month: int
+    day: int
+    hour: int
+    minute: int = 0
+    longitude: float = 120.0
+    is_male: int = 1
+    session_id: str = "web_default"
+    dayun_stem: str
+    dayun_branch: str
+    start_age: float
+    end_age: float
+
+
+@app.post("/api/bazi/dayun-interpret")
+async def api_bazi_dayun_interpret(body: DayunInterpretRequest):
+    """SSE 串流：AI 解析指定大運期間的影響。"""
+    if _llm is None:
+        raise HTTPException(status_code=503, detail="AI 服務未就緒")
+
+    birth_dt = f"{body.year}年{body.month}月{body.day}日 {body.hour:02d}時"
+    dayun_gz = f"{body.dayun_stem}{body.dayun_branch}"
+    is_male_str = "男" if body.is_male else "女"
+
+    _inputs = {
+        "birth_dt": birth_dt,
+        "is_male": is_male_str,
+        "dayun_gz": dayun_gz,
+        "start_age": int(body.start_age),
+        "end_age": int(body.end_age),
+    }
+
+    async def _stream():
+        from langchain_core.prompts import PromptTemplate
+        prompt = PromptTemplate.from_template(_DAYUN_INTERPRET_PROMPT)
+        chain = prompt | _llm
+        async for token, err in astream_with_retry(chain, _inputs, max_retries=2):
+            if err and err != "__clear__":
+                yield f'data: {json.dumps({"token": err})}\n\n'
+                return
+            elif err != "__clear__" and token:
+                yield f'data: {json.dumps({"token": token})}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
+# ── 完整命盤宮位解說 ─────────────────────────────────────────────
+@app.get("/api/horoscope")
+async def api_get_horoscope(session_id: str = "web_default"):
+    """回傳命主的完整紫微斗數宮位解說文字。"""
+    session_id = (session_id or "").strip() or "web_default"
+    horoscope = HOROSCOPE.get(session_id, "")
+    if not horoscope:
+        from chat_bot.auth.auth import load_horoscope
+        result = await run_in_threadpool(load_horoscope, session_id)
+        horoscope = result[0] or ""
+    return {"horoscope": horoscope}
 
 
 if __name__ == "__main__":
