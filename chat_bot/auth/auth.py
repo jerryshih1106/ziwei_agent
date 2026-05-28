@@ -58,7 +58,18 @@ def init_db() -> None:
                 password_hash TEXT NOT NULL,
                 session_id TEXT UNIQUE NOT NULL,
                 created_at TEXT NOT NULL,
-                last_login TEXT
+                last_login TEXT,
+                email TEXT,
+                email_verified INTEGER NOT NULL DEFAULT 0,
+                email_verify_token TEXT,
+                email_verify_expires_at TEXT,
+                plan TEXT NOT NULL DEFAULT 'free',
+                plan_expires_at TEXT,
+                api_calls_today INTEGER NOT NULL DEFAULT 0,
+                api_calls_reset_at TEXT,
+                password_reset_token TEXT,
+                password_reset_expires TEXT,
+                password_version INTEGER NOT NULL DEFAULT 0
             )
         """)
         conn.execute("""
