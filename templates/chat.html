@@ -255,10 +255,23 @@
       margin: 8px 0 4px;
       font-family: 'Noto Serif TC', serif;
     }
+    /* U4: table horizontal scroll with fade hint */
+    .msg-bubble .tbl-wrap {
+      position: relative; overflow-x: auto; -webkit-overflow-scrolling: touch;
+      margin: 8px 0;
+    }
+    .msg-bubble .tbl-wrap::after {
+      content: ''; position: absolute; top: 0; right: 0; bottom: 0; width: 28px;
+      background: linear-gradient(to right, transparent, rgba(13,28,50,0.85));
+      pointer-events: none; border-radius: 0 4px 4px 0;
+      transition: opacity 0.2s;
+    }
+    .msg-bubble .tbl-wrap.no-overflow::after { opacity: 0; }
+
     .msg-bubble table {
       border-collapse: collapse;
       width: 100%;
-      margin: 8px 0;
+      margin: 0;
       font-size: 0.85rem;
     }
     .msg-bubble table th {
@@ -356,6 +369,24 @@
       min-height: 36px;
     }
     .regen-btn:hover { color:var(--gold); opacity:1; }
+    /* U3: retry button on error messages */
+    .retry-btn {
+      display:inline-flex; align-items:center; gap:4px;
+      background:none; border:1px solid rgba(201,162,39,0.4); border-radius:8px;
+      color:var(--gold); cursor:pointer; font-size:0.8rem; padding:5px 10px;
+      margin-top:8px; transition:all 0.2s;
+    }
+    .retry-btn:hover { background:rgba(201,162,39,0.12); border-color:var(--gold); }
+    /* U2: scroll-to-bottom floating button */
+    #scroll-to-bottom {
+      position:fixed; bottom:120px; right:18px; z-index:200;
+      background:rgba(13,28,50,0.92); border:1px solid rgba(201,162,39,0.5);
+      border-radius:50%; width:40px; height:40px;
+      display:none; align-items:center; justify-content:center;
+      cursor:pointer; font-size:1.1rem; color:var(--gold);
+      box-shadow:0 2px 10px rgba(0,0,0,0.4); transition:opacity 0.2s;
+    }
+    #scroll-to-bottom.visible { display:flex; }
     /* Voice button */
     .voice-btn {
       background:none; border:1px solid rgba(201,162,39,0.2); border-radius:10px;
@@ -589,6 +620,9 @@
       }
       .input-hint { display: none; }
       #user-input { font-size: 1rem; } /* >= 16px 避免 iOS 自動縮放 */
+
+      /* BaZi modal: prevent overflow on small screens */
+      #bazi-modal .modal-box { max-width: 100% !important; margin: 0 4px; border-radius: 12px; }
 
       /* Quick-questions 橫向捲動，不換行 */
       .quick-questions {
@@ -1196,8 +1230,9 @@
     .annual-select {
       background: rgba(255,255,255,0.06); border: 1px solid rgba(201,162,39,0.3);
       color: var(--text-light); border-radius: 7px; padding: 5px 10px;
-      font-size: 0.88rem; cursor: pointer;
+      font-size: 0.88rem; cursor: pointer; color-scheme: dark;
     }
+    .annual-select option { background: #0d1c32; color: var(--text-light); }
     .annual-run-btn {
       background: linear-gradient(135deg, var(--gold-dark), var(--gold));
       color: #000; border: none; border-radius: 8px; padding: 6px 16px;
@@ -1220,20 +1255,21 @@
     }
     @media (max-width: 480px) { .annual-month-grid { grid-template-columns: repeat(3, 1fr); } }
     .annual-month-cell {
-      background: rgba(13,28,50,0.7); border: 1px solid rgba(255,255,255,0.08);
+      background: var(--bg-card); border: 1px solid rgba(201,162,39,0.2);
       border-radius: 9px; padding: 9px 8px; text-align: center; cursor: pointer;
       transition: border-color 0.15s, background 0.15s;
+      color: var(--text-light);
     }
     .annual-month-cell:hover { border-color: var(--gold); background: rgba(201,162,39,0.08); }
     .annual-month-cell.selected { border-color: var(--gold); background: rgba(201,162,39,0.14); }
-    .amc-month { font-size: 0.78rem; color: var(--text-muted); margin-bottom: 3px; }
+    .amc-month { font-size: 0.78rem; color: #8fb8d8; margin-bottom: 3px; }
     .amc-score { font-size: 1.05rem; font-weight: 700; }
     .amc-note { font-size: 0.68rem; color: var(--text-muted); margin-top: 2px; line-height: 1.2; overflow: hidden; max-height: 2.4em; }
     .annual-detail-pane { border-top: 1px solid rgba(201,162,39,0.2); padding-top: 14px; }
     .annual-detail-title { font-size: 0.9rem; color: var(--gold); margin-bottom: 8px; font-weight: 700; }
     .annual-stream-box {
-      font-size: 0.92rem; line-height: 1.85;
-      max-height: 320px; overflow-y: auto;
+      font-size: 0.92rem; line-height: 1.85; color: var(--text-light);
+      max-height: 55vh; overflow-y: auto;
     }
     .annual-stream-box table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 8px 0; }
     .annual-stream-box th, .annual-stream-box td { border: 1px solid rgba(201,162,39,0.25); padding: 5px 8px; text-align: left; }
@@ -1347,8 +1383,30 @@
     .bazi-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
     .bazi-tab-pane { display: none; }
     .bazi-tab-pane.active { display: block; }
+    /* ── BaZi result two-column layout ── */
+    .bazi-result-layout {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      align-items: start;
+    }
+    @media (max-width: 680px) {
+      .bazi-result-layout { grid-template-columns: 1fr; }
+    }
+    .bazi-left-col {}
+    .bazi-right-col {
+      border-left: 1px solid rgba(201,162,39,0.2);
+      padding-left: 14px;
+    }
+    @media (max-width: 680px) {
+      .bazi-right-col { border-left: none; padding-left: 0; border-top: 1px solid rgba(201,162,39,0.2); padding-top: 12px; }
+    }
+    .bazi-right-title {
+      font-size: 0.85rem; color: var(--gold); font-weight: 700;
+      margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+    }
     .bazi-content-box {
-      font-size: 0.95rem; line-height: 1.9; max-height: 420px; overflow-y: auto;
+      font-size: 0.9rem; line-height: 1.85; min-height: 200px; max-height: 65vh; overflow-y: auto;
     }
     .bazi-content-box table { border-collapse: collapse; width: 100%; font-size: 0.85rem; margin: 8px 0; }
     .bazi-content-box th, .bazi-content-box td { border: 1px solid rgba(201,162,39,0.25); padding: 5px 8px; text-align: left; }
@@ -1913,8 +1971,8 @@
     }
     .topbar-logout:hover { color: var(--gold); border-color: var(--gold); }
   </style>
-  <!-- Bug #9 Fix: 鎖定版本號，避免 breaking change -->
-  <script src="https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js"></script>
+  <!-- marked: 本地靜態檔，不依賴外部 CDN -->
+  <script src="/static/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
   <!-- Bug #5 Fix: DOMPurify 防止 AI 回應中的 XSS -->
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.3/dist/purify.min.js"></script>
@@ -1945,6 +2003,7 @@
     <div class="topbar-dropdown" id="topbar-dropdown">
       <!-- user info (shown when logged in) -->
       <div class="dd-user" id="dd-user-row" style="display:none"></div>
+      <div id="dd-calls-indicator" style="display:none;font-size:0.78rem;color:var(--text-muted);padding:4px 14px 2px;cursor:pointer" onclick="openUpgrade()"></div>
       <!-- always visible -->
       <button class="dd-btn" id="bazi-btn" data-premium="1" onclick="openBazi();closeMenu()">🀄 八字</button>
       <!-- shown after login -->
@@ -2025,6 +2084,8 @@
       <div class="input-hint">Enter 送出 ／ Shift+Enter 換行 ／ <a href="#" onclick="openHourGuide();return false;" style="color:var(--gold);text-decoration:none;">不確定時辰？</a></div>
     </div>
   </div>
+<!-- U2: scroll-to-bottom floating button -->
+<button id="scroll-to-bottom" onclick="_scrollToBottom()" title="回到最新訊息">↓</button>
 </div>
 
 <!-- Fix 6: 宮位詳細 bottom sheet (mobile tap) -->
@@ -2346,26 +2407,33 @@
         </div>
       </div>
       <div class="modal-body">
-        <div class="bazi-pillars" id="bazi-pillars"></div>
-        <div class="bazi-meta-row">
-          <span id="bazi-day-master"></span>
-          <span id="bazi-shichen-label"></span>
-        </div>
-        <div class="bazi-wuxing" id="bazi-wuxing"></div>
-        <div class="bazi-correction" id="bazi-correction"></div>
-        <div style="display:flex;gap:8px;margin-bottom:12px">
-          <button class="fortune-refresh-btn" onclick="baziAppendToPrompt()" id="bazi-append-btn" style="flex:1.4;color:var(--gold);border-color:rgba(201,162,39,0.5)">📋 附加到提問</button>
-          <button class="fortune-refresh-btn" onclick="saveBaziToHistory()" id="bazi-to-chat-btn" style="flex:1">💬 存入聊天記錄</button>
-        </div>
-        <div class="bazi-tabs">
-          <button class="bazi-tab active" id="btab-interpret" onclick="switchBaziTab('interpret')">🔮 AI解盤</button>
-          <button class="bazi-tab" id="btab-dayun" onclick="switchBaziTab('dayun')">📅 大運</button>
-        </div>
-        <div class="bazi-tab-pane active" id="bpane-interpret">
-          <div class="bazi-content-box" id="bazi-interpret-box"></div>
-        </div>
-        <div class="bazi-tab-pane" id="bpane-dayun">
-          <div class="bazi-content-box" id="bazi-dayun-box"></div>
+        <div class="bazi-result-layout">
+          <!-- Left: chart data -->
+          <div class="bazi-left-col">
+            <div class="bazi-pillars" id="bazi-pillars"></div>
+            <div class="bazi-meta-row">
+              <span id="bazi-day-master"></span>
+              <span id="bazi-shichen-label"></span>
+            </div>
+            <div class="bazi-wuxing" id="bazi-wuxing"></div>
+            <div class="bazi-correction" id="bazi-correction"></div>
+          </div>
+          <!-- Right: tabs for 大運 + AI解盤 -->
+          <div class="bazi-right-col">
+            <div class="bazi-tabs">
+              <button class="bazi-tab active" id="btab-dayun" onclick="switchBaziTab('dayun')">📅 大運</button>
+              <button class="bazi-tab" id="btab-interpret" onclick="switchBaziTab('interpret')">🔮 AI 解盤</button>
+            </div>
+            <div class="bazi-tab-pane active" id="bpane-dayun">
+              <div class="bazi-content-box" id="bazi-dayun-box"></div>
+            </div>
+            <div class="bazi-tab-pane" id="bpane-interpret">
+              <div class="bazi-content-box" id="bazi-interpret-box"></div>
+            </div>
+            <div style="margin-top:12px">
+              <button class="fortune-refresh-btn" onclick="saveBaziToHistory()" id="bazi-to-chat-btn">💬 存入聊天記錄</button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -2415,6 +2483,32 @@
           <div class="annual-stream-box" id="annual-monthly-box"></div>
         </div>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upgrade Modal -->
+<div class="modal-overlay" id="upgrade-modal" onclick="if(event.target===this)closeUpgrade()">
+  <div class="modal-box" style="max-width:480px">
+    <div class="modal-header">
+      <span class="modal-title">⭐ 升級訂閱方案</span>
+      <button class="modal-close" onclick="closeUpgrade()">✕</button>
+    </div>
+    <div style="padding:16px 0 8px">
+      <div id="upgrade-current-plan" style="display:none;background:rgba(39,174,96,0.12);border:1px solid rgba(39,174,96,0.35);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.85rem;color:#27ae60;line-height:1.5"></div>
+      <div id="upgrade-plan-standard" style="border:1px solid rgba(201,162,39,0.4);border-radius:12px;padding:16px;margin-bottom:12px;cursor:pointer;transition:background 0.2s" onmouseover="this.style.background='rgba(201,162,39,0.08)'" onmouseout="this.style.background=''">
+        <div style="font-size:1.05rem;font-weight:600;color:var(--gold)">📅 標準月費方案</div>
+        <div style="font-size:1.5rem;font-weight:700;margin:6px 0">NT$199 <span style="font-size:0.85rem;font-weight:400;color:var(--text-muted)">/ 月</span></div>
+        <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6">✓ 無限AI對話<br>✓ 完整十二宮解說<br>✓ 流年流月分析<br>✓ 八字命盤<br>✓ 本週運勢<br>✓ 命盤庫、收藏</div>
+        <button class="qq-chip" style="margin-top:12px;width:100%;text-align:center;padding:10px" onclick="startCheckout('standard')">立即訂閱 →</button>
+      </div>
+      <div id="upgrade-plan-pro" style="border:1px solid rgba(201,162,39,0.6);border-radius:12px;padding:16px;cursor:pointer;background:rgba(201,162,39,0.04);transition:background 0.2s" onmouseover="this.style.background='rgba(201,162,39,0.1)'" onmouseout="this.style.background='rgba(201,162,39,0.04)'">
+        <div style="font-size:1.05rem;font-weight:600;color:var(--gold)">🏆 專業年費方案 <span style="font-size:0.75rem;background:var(--gold);color:#000;border-radius:4px;padding:2px 6px;margin-left:4px">最划算</span></div>
+        <div style="font-size:1.5rem;font-weight:700;margin:6px 0">NT$1,490 <span style="font-size:0.85rem;font-weight:400;color:var(--text-muted)">/ 年（約 NT$124/月）</span></div>
+        <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6">✓ 標準方案全部功能<br>✓ 合盤分析<br>✓ 人生節點<br>✓ 優先客服支援</div>
+        <button class="qq-chip" style="margin-top:12px;width:100%;text-align:center;padding:10px;border-color:var(--gold)" onclick="startCheckout('pro')">立即訂閱 →</button>
+      </div>
+      <div id="upgrade-msg" style="margin-top:10px;text-align:center;font-size:0.85rem;color:var(--text-muted)"></div>
     </div>
   </div>
 </div>
@@ -2509,6 +2603,9 @@
 </div>
 
 <script>
+  // 診斷：啟動時確認 marked 是否載入
+  console.log('[marked] 類型:', typeof marked, '| parse 方法:', typeof marked !== 'undefined' ? typeof marked.parse : '未載入');
+
   // ── Auth ──────────────────────────────────────────────────────
   function _parseJwtPayload(token) {
     try {
@@ -2518,6 +2615,12 @@
 
   function _getStoredToken() { return localStorage.getItem('ziwei_token'); }
   function _getStoredUser() { return localStorage.getItem('ziwei_username'); }
+  function _authHeaders(extra) {
+    const t = _getStoredToken();
+    const h = { 'Content-Type': 'application/json' };
+    if (t) h['Authorization'] = `Bearer ${t}`;
+    return Object.assign(h, extra);
+  }
 
   function _saveAuth(token, username, sessionId) {
     localStorage.setItem('ziwei_token', token);
@@ -2617,6 +2720,7 @@
         if (pr.ok) {
           const pd = await pr.json();
           _isPaid = pd.plan !== 'free';
+          _updateCallsIndicator(pd);
         }
       }
     } catch {}
@@ -2702,17 +2806,56 @@
     });
   }
 
+  function _updateCallsIndicator(planData) {
+    const el = document.getElementById('dd-calls-indicator');
+    if (!el) return;
+    if (!planData) { el.style.display = 'none'; return; }
+    if (planData.plan === 'free') {
+      const remaining = Math.max(0, (planData.limit || 10) - (planData.calls_today || 0));
+      el.style.display = '';
+      el.innerHTML = `📊 今日剩餘 <strong style="color:${remaining<=2?'#e05':'var(--gold)'}">${remaining}</strong>/${planData.limit || 10} 次 <span style="color:var(--gold);font-size:0.75rem">↑升級</span>`;
+      el.onclick = () => { openUpgrade(); closeMenu(); };
+    } else {
+      const planLabel = planData.plan === 'pro' ? '專業版' : '標準版';
+      const expStr = planData.expires_at ? planData.expires_at.slice(0, 10) : '永久';
+      el.style.display = '';
+      el.innerHTML = `⭐ ${planLabel} <span style="font-size:0.73rem;color:var(--text-muted)">到期：${expStr}</span>`;
+      el.onclick = null;
+    }
+  }
+
+  async function _refreshPlanStatus() {
+    try {
+      const token = _getStoredToken();
+      if (!token) return;
+      const pr = await fetch('/api/auth/plan', { headers: { 'Authorization': `Bearer ${token}` } });
+      if (pr.ok) {
+        const pd = await pr.json();
+        const wasUnpaid = !_isPaid;
+        _isPaid = pd.plan !== 'free';
+        if (wasUnpaid !== !_isPaid) _applySubscriptionGate();
+        _updateCallsIndicator(pd);
+      }
+    } catch {}
+  }
+
   function _showUpgradeMsg() {
     if (!chatStarted) { document.getElementById('welcome-screen')?.remove(); chatStarted = true; }
-    appendAIMessage('🔒 此功能為**訂閱版**專屬。\n\n升級訂閱後可使用：八字排盤、流年流月、本週運勢、命盤查看、人生節點、合盤分析、命盤庫、收藏、歷史等全部功能。');
+    appendAIMessage('🔒 此功能為**訂閱版**專屬。\n\n升級後可無限使用：八字排盤、流年流月、本週運勢、命盤查看、人生節點、合盤分析、命盤庫、收藏、歷史等全部功能。\n\n👉 [點此升級訂閱](#upgrade-modal)');
     closeMenu();
+    // Show upgrade modal directly
+    setTimeout(() => openUpgrade(), 300);
   }
 
   // Intercept clicks on locked premium buttons (capture phase, before onclick fires)
-  document.getElementById('topbar-dropdown').addEventListener('click', (e) => {
-    if (_isPaid) return;
+  document.getElementById('topbar-dropdown').addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-premium]');
     if (!btn) return;
+    if (!_isPaid) {
+      // Re-check plan status in case subscription was completed in another tab
+      await _refreshPlanStatus();
+    }
+    if (_isPaid) return;  // now genuinely paid — let onclick proceed
     e.stopImmediatePropagation();
     e.preventDefault();
     _showUpgradeMsg();
@@ -2818,7 +2961,7 @@
     appendAIMessage('✅ 紫微命盤已排好！正在幫你計算八字命盤…');
     try {
       const res = await fetch('/api/bazi/chart', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: _authHeaders(),
         body: JSON.stringify({
           year: bi.year, month: bi.month, day: bi.day,
           hour: bi.hour ?? 0, minute: 0, longitude: 120,
@@ -2849,7 +2992,7 @@
     if (_baziData) {
       try {
         await fetch('/api/bazi/profiles', {
-          method: 'POST', headers: {'Content-Type':'application/json'},
+          method: 'POST', headers: _authHeaders(),
           body: JSON.stringify({
             session_id: SESSION_ID, profile_name: name,
             year: bi.year, month: bi.month, day: bi.day,
@@ -3110,6 +3253,18 @@
             accumulated += evt.token;
             // Bug #7 Fix: debounce render to avoid DOM churn on every token
             scheduleRender(bubble, accumulated);
+            // Rate-limited response: show upgrade prompt after message
+            if (evt.rate_limited) {
+              streamDone = true;
+              if (bubble) flushRender(bubble, accumulated);
+              // Show upgrade CTA chip
+              const wrap = document.createElement('div');
+              wrap.style.cssText = 'display:flex;justify-content:center;padding:4px 0 8px;';
+              wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;border-color:rgba(201,162,39,0.5);color:var(--gold)" onclick="openUpgrade()">⭐ 升級解除限制</div>`;
+              document.getElementById('messages').appendChild(wrap);
+              wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+              break;
+            }
           }
 
           if (evt.done) {
@@ -3944,7 +4099,7 @@
     try {
       const res = await fetch('/api/compatibility', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _authHeaders(),
         body: JSON.stringify({
           person_a: a, person_b: b, session_id: SESSION_ID, name_a: nameA, name_b: nameB,
           horoscope_a: _compatSelected.a?.horoscope || '',
@@ -4300,24 +4455,38 @@
     if (isLoading) return;
     isLoading = true;
     document.getElementById('send-btn').disabled = true;
+    document.getElementById('stop-btn').style.display = '';
     showTyping();
-    try {
-      const res = await fetch(`/api/horoscope?session_id=${encodeURIComponent(SESSION_ID)}`);
-      const data = await res.json();
-      removeTyping();
-      if (data.horoscope) {
-        const formatted = _formatHoroscopeText(data.horoscope);
-        appendAIMessage('**📖 完整十二宮位解說**\n\n---\n\n' + formatted);
-      } else {
-        appendAIMessage('⚠️ 尚未建立命盤，請先輸入出生資料排盤。');
+    let bubble = null;
+    let accumulated = '';
+    const tok = _getStoredToken() || '';
+    const es = new EventSource(`/api/horoscope-report?session_id=${encodeURIComponent(SESSION_ID)}&token=${encodeURIComponent(tok)}`);
+    es.onmessage = (e) => {
+      const data = JSON.parse(e.data);
+      if (data.clear) { accumulated = ''; if (bubble) bubble.innerHTML = ''; return; }
+      if (data.token) {
+        if (!bubble) { removeTyping(); bubble = createStreamingBubble(); }
+        accumulated += data.token;
+        scheduleRender(bubble, accumulated);
       }
-    } catch {
+      if (data.done) {
+        es.close();
+        if (bubble) flushRender(bubble, accumulated);
+        removeTyping();
+        isLoading = false;
+        document.getElementById('send-btn').disabled = false;
+        document.getElementById('stop-btn').style.display = 'none';
+      }
+    };
+    es.onerror = () => {
+      es.close();
       removeTyping();
-      appendAIMessage('⚠️ 載入失敗，請稍後再試。');
-    } finally {
+      if (!accumulated) appendAIMessage('⚠️ 載入失敗，請稍後再試。');
+      else if (bubble) flushRender(bubble, accumulated);
       isLoading = false;
       document.getElementById('send-btn').disabled = false;
-    }
+      document.getElementById('stop-btn').style.display = 'none';
+    };
   }
 
   function _showSummaryPrompt() {
@@ -4332,7 +4501,11 @@
   }
 
   function openChartSummary() {
-    if (isLoading) return;
+    if (isLoading) {
+      // Don't remove the chip — user can retry once loading finishes
+      appendAIMessage('⏳ 請等待目前操作完成後再試。');
+      return;
+    }
     if (_summaryES) { _summaryES.close(); _summaryES = null; }
     document.getElementById('summary-prompt-chip')?.remove();
 
@@ -4349,7 +4522,8 @@
     let bubble = null;
     let accumulated = '';
 
-    _summaryES = new EventSource(`/api/chart-summary?session_id=${encodeURIComponent(SESSION_ID)}`);
+    const _summaryTok = _getStoredToken() || '';
+    _summaryES = new EventSource(`/api/chart-summary?session_id=${encodeURIComponent(SESSION_ID)}&token=${encodeURIComponent(_summaryTok)}`);
     _summaryES.onmessage = (e) => {
       const data = JSON.parse(e.data);
       if (data.clear) {
@@ -4383,6 +4557,61 @@
         flushRender(bubble, '⚠️ 載入失敗，請稍後再試。');
       }
     };
+  }
+
+  async function openUpgrade() {
+    document.getElementById('upgrade-modal').classList.add('open');
+    document.getElementById('upgrade-msg').textContent = '';
+    // Show current plan status inside the modal
+    const planBanner = document.getElementById('upgrade-current-plan');
+    planBanner.style.display = 'none';
+    const token = _getStoredToken();
+    if (token) {
+      try {
+        const pr = await fetch('/api/auth/plan', { headers: { 'Authorization': `Bearer ${token}` } });
+        if (pr.ok) {
+          const pd = await pr.json();
+          const planNames = { free: '免費版', standard: '標準月費版', pro: '專業年費版' };
+          const name = planNames[pd.plan] || pd.plan;
+          if (pd.plan === 'free') {
+            planBanner.innerHTML = `📋 目前方案：<strong>${name}</strong>　升級後立即解鎖所有功能`;
+          } else {
+            const exp = pd.expires_at ? `（到期：${pd.expires_at.slice(0,10)}）` : '';
+            planBanner.innerHTML = `✅ 目前方案：<strong>${name}</strong>${exp}　感謝您的訂閱！`;
+          }
+          planBanner.style.display = 'block';
+        }
+      } catch {}
+    }
+  }
+  function closeUpgrade() { document.getElementById('upgrade-modal').classList.remove('open'); }
+
+  async function startCheckout(plan) {
+    const token = _getStoredToken();
+    if (!token) { appendAIMessage('⚠️ 請先登入再訂閱。'); closeUpgrade(); return; }
+    const msg = document.getElementById('upgrade-msg');
+    msg.textContent = '處理中…';
+    try {
+      const res = await fetch('/api/payment/create-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ plan }),
+      });
+      if (!res.ok) { const e = await res.json(); msg.textContent = '⚠️ ' + (e.detail || '建立訂單失敗'); return; }
+      const data = await res.json();
+      // Build an auto-submit form for ECPay checkout
+      const form = document.createElement('form');
+      form.method = 'POST'; form.action = data.checkout_url; form.target = '_blank';
+      Object.entries(data.params).forEach(([k, v]) => {
+        const inp = document.createElement('input');
+        inp.type = 'hidden'; inp.name = k; inp.value = v;
+        form.appendChild(inp);
+      });
+      document.body.appendChild(form);
+      form.submit();
+      document.body.removeChild(form);
+      msg.textContent = '✓ 已開啟付款頁面，請完成付款後重新整理。';
+    } catch { msg.textContent = '⚠️ 網路錯誤，請稍後再試。'; }
   }
 
   function openCalendar() {
@@ -4427,7 +4656,7 @@
     summaryEl.style.display = 'none';
     try {
       const wsStr = _dateToISO(ws);
-      const res = await fetch(`/api/weekly-fortune?session_id=${encodeURIComponent(SESSION_ID)}&week_start=${wsStr}`);
+      const res = await fetch(`/api/weekly-fortune?session_id=${encodeURIComponent(SESSION_ID)}&week_start=${wsStr}`, { headers: _authHeaders() });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         wrap.innerHTML = `<div style="text-align:center;color:#e74c3c;padding:24px">${err.detail || '載入失敗，請先排盤'}</div>`;
@@ -4516,7 +4745,7 @@
       return;
     }
     try {
-      const res = await fetch(`/api/life-events?session_id=${encodeURIComponent(SESSION_ID)}`);
+      const res = await fetch(`/api/life-events?session_id=${encodeURIComponent(SESSION_ID)}`, { headers: _authHeaders() });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         body.innerHTML = `<div class="life-events-loading" style="color:#e74c3c">${err.detail || '載入失敗，請先排盤'}</div>`;
@@ -5058,7 +5287,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     }
     body.innerHTML = '<div class="profile-empty">⏳ 載入人生節點分析中…</div>';
     try {
-      const res = await fetch(`/api/life-events?session_id=${encodeURIComponent(SESSION_ID)}`);
+      const res = await fetch(`/api/life-events?session_id=${encodeURIComponent(SESSION_ID)}`, { headers: _authHeaders() });
       if (!res.ok) { body.innerHTML = '<div class="profile-empty">載入失敗，請先完成排盤</div>'; return; }
       const data = await res.json();
       _lifeEventsCache = data;  // populate shared cache
@@ -5136,7 +5365,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   }
 
   async function _loadAnnualOverview(year) {
-    const res = await fetch(`/api/annual-fortune?session_id=${encodeURIComponent(SESSION_ID)}&year=${year}`);
+    const res = await fetch(`/api/annual-fortune?session_id=${encodeURIComponent(SESSION_ID)}&year=${year}`, { headers: _authHeaders() });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));
       throw new Error(err.detail || res.statusText);
@@ -5201,7 +5430,8 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   async function _fetchAndRenderMonthlyDetail(year, month, targetBox) {
     if (_monthDetailES) { _monthDetailES.close(); _monthDetailES = null; }
     return new Promise(resolve => {
-      const url = `/api/monthly-detail?session_id=${encodeURIComponent(SESSION_ID)}&year=${year}&month=${month}`;
+      const _mdTok = _getStoredToken() || '';
+      const url = `/api/monthly-detail?session_id=${encodeURIComponent(SESSION_ID)}&year=${year}&month=${month}&token=${encodeURIComponent(_mdTok)}`;
       const es = new EventSource(url);
       _monthDetailES = es;
       let accumulated = '';
@@ -5263,7 +5493,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   // ── Library ───────────────────────────────────────────────────
   async function _loadBaziLibrary() {
     try {
-      const res = await fetch(`/api/bazi/profiles?session_id=${encodeURIComponent(SESSION_ID)}`);
+      const res = await fetch(`/api/bazi/profiles?session_id=${encodeURIComponent(SESSION_ID)}`, { headers: _authHeaders() });
       if (res.ok) { _baziLibrary = (await res.json()).profiles || []; }
     } catch {}
     _renderBaziQuickPick();
@@ -5340,7 +5570,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   async function deleteBaziProfile(profileId) {
     if (!confirm('確定要刪除此命盤？')) return;
     try {
-      await fetch(`/api/bazi/profiles/${profileId}?session_id=${encodeURIComponent(SESSION_ID)}`, {method:'DELETE'});
+      await fetch(`/api/bazi/profiles/${profileId}?session_id=${encodeURIComponent(SESSION_ID)}`, { method: 'DELETE', headers: _authHeaders() });
       await _loadBaziLibrary();
     } catch {}
   }
@@ -5359,7 +5589,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     btn.disabled = true; btn.textContent = '⏳ 計算中…';
     try {
       const res = await fetch('/api/bazi/chart', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: _authHeaders(),
         body: JSON.stringify({year, month, day, hour, minute: 0, longitude: 120, is_male: isMale?1:0, name, session_id: SESSION_ID}),
       });
       if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.detail||res.statusText); }
@@ -5377,7 +5607,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
   }
 
   function _startBaziTabs() {
-    switchBaziTab('interpret');  // auto-start AI interpretation
+    switchBaziTab('dayun');
   }
 
   function _renderBaziResult(name, fromCache) {
@@ -5487,7 +5717,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     try {
       await fetch('/api/bazi/activate', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: _authHeaders(),
         body: JSON.stringify({
           session_id: SESSION_ID,
           year: req.year, month: req.month, day: req.day,
@@ -5544,9 +5774,9 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
 
   // ── Result-level Tabs ─────────────────────────────────────────
   function switchBaziTab(tab) {
-    ['interpret','dayun'].forEach(t => {
-      document.getElementById(`btab-${t}`).classList.toggle('active', t===tab);
-      document.getElementById(`bpane-${t}`).classList.toggle('active', t===tab);
+    ['dayun','interpret'].forEach(t => {
+      document.getElementById('btab-' + t)?.classList.toggle('active', t === tab);
+      document.getElementById('bpane-' + t)?.classList.toggle('active', t === tab);
     });
     if (tab === 'interpret' && !_baziInterpLoaded) {
       _baziInterpLoaded = true;
@@ -5564,7 +5794,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     const req = _baziData._req;
     try {
       const res = await fetch('/api/bazi/interpret', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: _authHeaders(),
         body: JSON.stringify({...req, session_id: SESSION_ID}),
       });
       if (!res.ok || !res.body) { box.innerHTML = '<span style="color:#e74c3c">⚠️ 解盤失敗</span>'; return; }
@@ -5593,7 +5823,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     const req = _baziData._req;
     try {
       const res = await fetch('/api/bazi/dayun', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: _authHeaders(),
         body: JSON.stringify({...req, session_id: SESSION_ID}),
       });
       if (!res.ok) { box.innerHTML = '<span style="color:#e74c3c">⚠️ 大運計算失敗</span>'; return; }
@@ -5653,7 +5883,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     if (!req) { box.innerHTML = '⚠️ 缺少命盤資料'; return; }
     try {
       const res = await fetch('/api/bazi/dayun-interpret', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: _authHeaders(),
         body: JSON.stringify({
           year: req.year, month: req.month, day: req.day,
           hour: req.hour, minute: req.minute || 0,
@@ -5691,7 +5921,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     btn.disabled = true; btn.textContent = '⏳…';
     try {
       const res = await fetch('/api/bazi/profiles', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: _authHeaders(),
         body: JSON.stringify({
           session_id: SESSION_ID,
           profile_name: req.name || '命主',
@@ -5747,7 +5977,7 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
     });
     try {
       const results = await Promise.all(months.map(m =>
-        fetch(`/api/fortune-calendar?session_id=${encodeURIComponent(SESSION_ID)}&year=${m.year}&month=${m.month}`)
+        fetch(`/api/fortune-calendar?session_id=${encodeURIComponent(SESSION_ID)}&year=${m.year}&month=${m.month}`, { headers: _authHeaders() })
           .then(r => r.json()).then(d => ({ ...m, days: d.days || [] })).catch(() => ({ ...m, days: [] }))
       ));
 
@@ -6003,7 +6233,159 @@ ${gridImgSrc ? `<div class="section"><div class="section-title">命盤格局圖<
         setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 320);
       });
     });
+
+    // ── ECPay 付款回傳 URL 處理（payment=success|fail） ─────────
+    (function _handlePaymentReturn() {
+      const params = new URLSearchParams(window.location.search);
+      const status = params.get('payment');
+      if (!status) return;
+      // Clean URL so refresh doesn't re-trigger
+      const cleanUrl = window.location.pathname + (window.location.hash || '');
+      history.replaceState(null, '', cleanUrl);
+      if (status === 'success') {
+        setTimeout(async () => {
+          // Refresh plan status so UI reflects new subscription immediately
+          await _refreshPlanStatus().catch(() => {});
+          appendAIMessage('🎉 **訂閱成功！**\n\n感謝您的訂閱，您的付費功能已立即開通。盡情探索命盤、八字、大運流年等進階分析吧！');
+        }, 500);
+      } else if (status === 'fail' || status === 'cancel') {
+        setTimeout(() => {
+          appendAIMessage('⚠️ 付款未完成或已取消。如有問題請重新嘗試，或聯絡客服。');
+        }, 500);
+      }
+    })();
   });
+
+  // ── U1: Visual Viewport — prevent keyboard from covering input on iOS/Android ──
+  (function _initVisualViewport() {
+    if (!window.visualViewport) return;
+    const inputArea = document.querySelector('.input-area');
+    let _lastVvHeight = window.visualViewport.height;
+    window.visualViewport.addEventListener('resize', () => {
+      const vh = window.visualViewport.height;
+      const diff = _lastVvHeight - vh;
+      _lastVvHeight = vh;
+      // Keyboard appeared (viewport shrank by >100px)
+      if (diff > 100) {
+        // On mobile, scroll to bottom so the latest message is visible above keyboard
+        const msgs = document.getElementById('messages');
+        if (msgs) setTimeout(() => { msgs.scrollTop = msgs.scrollHeight; }, 50);
+      }
+    });
+    window.visualViewport.addEventListener('scroll', () => {
+      // Keep the input area pinned to visible bottom on iOS Safari
+      if (inputArea) {
+        inputArea.style.transform = `translateY(${-window.visualViewport.offsetTop}px)`;
+      }
+    });
+  })();
+
+  // ── U2: Scroll-to-bottom floating button ──
+  (function _initScrollBtn() {
+    const msgs = document.getElementById('messages');
+    const btn = document.getElementById('scroll-to-bottom');
+    if (!msgs || !btn) return;
+    msgs.addEventListener('scroll', () => {
+      const distFromBottom = msgs.scrollHeight - msgs.scrollTop - msgs.clientHeight;
+      btn.classList.toggle('visible', distFromBottom > 200);
+    });
+  })();
+
+  function _scrollToBottom() {
+    const msgs = document.getElementById('messages');
+    if (msgs) { msgs.scrollTop = msgs.scrollHeight; }
+  }
+
+  // ── U3: Retry button appended to error messages ──
+  // Monkey-patch appendAIMessage to detect error tokens and add retry button
+  (function _patchRetryButton() {
+    const _orig = appendAIMessage;
+    window.appendAIMessage = function(text) {
+      _orig(text);
+      if (!text.startsWith('⚠️')) return;
+      // Find the last .msg.ai bubble and append retry button
+      const msgs = document.getElementById('messages');
+      if (!msgs) return;
+      const lastAI = msgs.querySelectorAll('.msg.ai:not(.typing-indicator)');
+      const last = lastAI[lastAI.length - 1];
+      if (!last) return;
+      const footer = last.querySelector('.msg-footer');
+      if (!footer) return;
+      const btn = document.createElement('button');
+      btn.className = 'retry-btn';
+      btn.innerHTML = '↺ 重試';
+      btn.onclick = function() {
+        btn.closest('.msg')?.remove();
+        const lastUserMsg = (() => {
+          const all = msgs.querySelectorAll('.msg.user');
+          return all[all.length - 1]?.querySelector('.msg-bubble')?.textContent || '';
+        })();
+        if (lastUserMsg) {
+          const inp = document.getElementById('user-input');
+          if (inp) { inp.value = lastUserMsg; autoResize(inp); }
+          sendMessage();
+        }
+      };
+      footer.appendChild(btn);
+    };
+  })();
+
+  // ── U4: Horizontal scroll hint on tables inside messages ──
+  (function _initTableScrollHints() {
+    const msgs = document.getElementById('messages');
+    if (!msgs) return;
+    // Wrap any bare <table> inside .msg-bubble in a .tbl-wrap div
+    function _wrapTables(root) {
+      root.querySelectorAll('.msg-bubble table').forEach(tbl => {
+        if (tbl.parentElement.classList.contains('tbl-wrap')) return;
+        const wrap = document.createElement('div');
+        wrap.className = 'tbl-wrap';
+        tbl.parentNode.insertBefore(wrap, tbl);
+        wrap.appendChild(tbl);
+        // Hide fade when fully scrolled right
+        wrap.addEventListener('scroll', () => {
+          const atEnd = wrap.scrollLeft + wrap.clientWidth >= wrap.scrollWidth - 4;
+          wrap.classList.toggle('no-overflow', atEnd);
+        });
+        // Initial check
+        wrap.classList.toggle('no-overflow', wrap.scrollWidth <= wrap.clientWidth);
+      });
+    }
+    // Run on new messages
+    const ob = new MutationObserver(muts => {
+      muts.forEach(m => m.addedNodes.forEach(n => {
+        if (n.nodeType === 1) _wrapTables(n);
+      }));
+    });
+    ob.observe(msgs, { childList: true, subtree: true });
+    _wrapTables(msgs); // existing messages
+  })();
+
+  // ── U5: Onboarding toast for first-time visitors ──
+  (function _showOnboardingHint() {
+    if (localStorage.getItem('ziwei_onboarded')) return;
+    const isLoggedIn = !!localStorage.getItem('ziwei_token');
+    if (isLoggedIn) { localStorage.setItem('ziwei_onboarded', '1'); return; }
+    setTimeout(() => {
+      const toast = document.createElement('div');
+      toast.style.cssText = [
+        'position:fixed','bottom:100px','left:50%','transform:translateX(-50%)',
+        'background:rgba(13,28,50,0.96)','border:1px solid rgba(201,162,39,0.5)',
+        'border-radius:12px','padding:14px 20px','max-width:320px','width:90%',
+        'z-index:300','font-size:0.88rem','line-height:1.6','color:var(--text-light)',
+        'box-shadow:0 4px 20px rgba(0,0,0,0.5)','text-align:center',
+      ].join(';');
+      toast.innerHTML = `
+        <div style="font-size:1.5rem;margin-bottom:6px">🔯</div>
+        <div style="font-weight:700;color:var(--gold);margin-bottom:4px">歡迎使用紫微AI算命！</div>
+        <div style="color:var(--text-muted);font-size:0.82rem">輸入你的出生年月日、時辰與性別，即可排出紫微斗數命盤並開始諮詢。</div>
+        <button onclick="this.closest('div[style]').remove();localStorage.setItem('ziwei_onboarded','1');"
+          style="margin-top:10px;background:var(--gold);color:#060e1c;border:none;border-radius:8px;padding:7px 18px;cursor:pointer;font-weight:700;font-size:0.85rem">
+          了解了
+        </button>`;
+      document.body.appendChild(toast);
+    }, 1500);
+  })();
 </script>
 </body>
 </html>

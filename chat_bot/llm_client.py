@@ -41,6 +41,9 @@ def is_transient_error(exc: BaseException) -> bool:
     return any(k in msg for k in _TRANSIENT_KEYWORDS)
 
 
+_CHUNK_TIMEOUT_SECS = float(60)  # max seconds to wait for the next token chunk
+
+
 async def astream_with_retry(
     chain,
     inputs: dict,
@@ -61,7 +64,14 @@ async def astream_with_retry(
     for attempt in range(max_retries):
         tokens: list[str] = []
         try:
-            async for chunk in chain.astream(inputs):
+            aiter = chain.astream(inputs).__aiter__()
+            while True:
+                try:
+                    chunk = await asyncio.wait_for(aiter.__anext__(), timeout=_CHUNK_TIMEOUT_SECS)
+                except StopAsyncIteration:
+                    break
+                except asyncio.TimeoutError:
+                    raise TimeoutError(f"LLM 回應逾時（超過 {int(_CHUNK_TIMEOUT_SECS)} 秒未收到回應）")
                 token = chunk.content if hasattr(chunk, "content") else str(chunk)
                 if token:
                     tokens.append(token)

@@ -1,12 +1,11 @@
-const CACHE_NAME = 'ziwei-v1';
+const CACHE_NAME = 'ziwei-v3';
 const STATIC_ASSETS = [
-  '/chat',
   'https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@400;600;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap',
-  'https://cdn.jsdelivr.net/npm/marked@14.1.4/marked.min.js',
+  '/static/marked.min.js',
   'https://cdn.jsdelivr.net/npm/dompurify@3.2.3/dist/purify.min.js',
 ];
 
-// Install: pre-cache shell
+// Install: pre-cache CDN assets only (not HTML pages)
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_NAME).then(cache =>
@@ -52,17 +51,21 @@ self.addEventListener('notificationclick', event => {
   );
 });
 
-// Fetch: network-first for API, cache-first for static
+// Fetch: network-first for API and HTML pages; cache-first for CDN static assets
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
 
-  // Always go network-first for API calls (SSE, auth, etc.)
-  if (url.pathname.startsWith('/api/') || url.pathname === '/linebot') {
-    event.respondWith(fetch(event.request));
+  // Always network-first for API calls and HTML navigation
+  if (
+    url.pathname.startsWith('/api/') ||
+    url.pathname === '/linebot' ||
+    event.request.mode === 'navigate'
+  ) {
+    event.respondWith(fetch(event.request).catch(() => caches.match('/chat') || new Response('Offline', { status: 503 })));
     return;
   }
 
-  // Cache-first for static assets
+  // Cache-first for CDN static assets
   event.respondWith(
     caches.match(event.request).then(cached => {
       if (cached) return cached;
@@ -71,7 +74,7 @@ self.addEventListener('fetch', event => {
         const clone = response.clone();
         caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
         return response;
-      }).catch(() => caches.match('/chat'));
+      });
     })
   );
 });

@@ -1416,82 +1416,26 @@
       <div class="divider"></div>
       <p class="section-desc">輸入兩人出生資料，AI 即刻從紫微斗數角度分析感情相性、個性互補與合作潛力</p>
     </div>
-    <div class="compat-wrap fade-in">
-      <div class="compat-grid">
-        <!-- 甲方 -->
-        <div class="compat-card">
-          <div class="compat-card-title">甲方</div>
-          <div class="compat-field">
-            <label>代稱</label>
-            <input id="ic-a-name" type="text" placeholder="例：自己、小明" maxlength="20">
-          </div>
-          <div class="compat-field">
-            <label>出生年</label>
-            <input id="ic-a-year" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="例：1990" min="1900" max="2099">
-          </div>
-          <div class="compat-field">
-            <label>出生月</label>
-            <input id="ic-a-month" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1–12" min="1" max="12">
-          </div>
-          <div class="compat-field">
-            <label>出生日</label>
-            <input id="ic-a-day" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1–31" min="1" max="31">
-          </div>
-          <div class="compat-field">
-            <label>出生時辰</label>
-            <select id="ic-a-hour">
-              {% for item in time_table %}
-              <option value="{{ item.hour }}">{{ item.zhi }}時（{{ item.range }}）</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="compat-field">
-            <label>性別</label>
-            <select id="ic-a-gender">
-              <option value="1">男</option>
-              <option value="0">女</option>
-            </select>
-          </div>
+    <div class="compat-wrap fade-in" style="text-align:center;padding:40px 20px">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:20px;max-width:700px;margin:0 auto 32px">
+        <div class="compat-card" style="text-align:center;padding:24px 16px">
+          <div style="font-size:2rem;margin-bottom:8px">💞</div>
+          <div style="font-family:'Noto Serif TC',serif;color:var(--gold);font-weight:700;margin-bottom:6px">感情相性分析</div>
+          <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.6">從命宮、夫妻宮星曜分析兩人的相處模式與吸引力</div>
         </div>
-        <!-- 乙方 -->
-        <div class="compat-card">
-          <div class="compat-card-title">乙方</div>
-          <div class="compat-field">
-            <label>代稱</label>
-            <input id="ic-b-name" type="text" placeholder="例：對象、小花" maxlength="20">
-          </div>
-          <div class="compat-field">
-            <label>出生年</label>
-            <input id="ic-b-year" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="例：1992" min="1900" max="2099">
-          </div>
-          <div class="compat-field">
-            <label>出生月</label>
-            <input id="ic-b-month" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1–12" min="1" max="12">
-          </div>
-          <div class="compat-field">
-            <label>出生日</label>
-            <input id="ic-b-day" type="number" inputmode="numeric" pattern="[0-9]*" placeholder="1–31" min="1" max="31">
-          </div>
-          <div class="compat-field">
-            <label>出生時辰</label>
-            <select id="ic-b-hour">
-              {% for item in time_table %}
-              <option value="{{ item.hour }}">{{ item.zhi }}時（{{ item.range }}）</option>
-              {% endfor %}
-            </select>
-          </div>
-          <div class="compat-field">
-            <label>性別</label>
-            <select id="ic-b-gender">
-              <option value="0">女</option>
-              <option value="1">男</option>
-            </select>
-          </div>
+        <div class="compat-card" style="text-align:center;padding:24px 16px">
+          <div style="font-size:2rem;margin-bottom:8px">🤝</div>
+          <div style="font-family:'Noto Serif TC',serif;color:var(--gold);font-weight:700;margin-bottom:6px">個性互補解析</div>
+          <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.6">找出兩人特質的互補之處與潛在摩擦點</div>
+        </div>
+        <div class="compat-card" style="text-align:center;padding:24px 16px">
+          <div style="font-size:2rem;margin-bottom:8px">🔮</div>
+          <div style="font-family:'Noto Serif TC',serif;color:var(--gold);font-weight:700;margin-bottom:6px">合作潛力評估</div>
+          <div style="font-size:0.82rem;color:var(--text-muted);line-height:1.6">預測兩人在事業、家庭、人生規劃上的契合程度</div>
         </div>
       </div>
-      <div class="compat-status" id="ic-status">⏳ 合盤需分別為兩人排盤，請耐心等候（約 1–2 分鐘）</div>
-      <button class="compat-submit-btn" id="ic-submit-btn" onclick="runIndexCompat()">💕 開始合盤分析</button>
-      <div class="compat-result-box" id="ic-result"></div>
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:20px">合盤功能為付費方案專屬，請先登入並排盤後使用</p>
+      <a href="/chat" class="compat-submit-btn" style="display:inline-block;text-decoration:none;padding:14px 40px">✨ 前往算命 · 使用合盤</a>
     </div>
   </div>
 </section>

@@ -51,11 +51,16 @@ class SessionStore:
         now = time.time()
         stale = [
             sid for sid, ts in list(self._last_seen.items())
-            if now - ts > ttl_secs
+            # web_default is a shared anonymous session — never fully evict it,
+            # but trim its message history to avoid unbounded growth
+            if sid != "web_default" and now - ts > ttl_secs
         ]
         for sid in stale:
             self.clear_session(sid)
             logger.debug("SessionStore: evicted stale session %s", sid)
+        # Cap web_default message history to the last 10 messages
+        if "web_default" in self.messages and len(self.messages["web_default"]) > 10:
+            self.messages["web_default"] = self.messages["web_default"][-10:]
 
     # ── Asyncio lock ─────────────────────────────────────────────────────
 

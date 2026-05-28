@@ -109,14 +109,111 @@ _MAX_HISTORY = 20
 _SESSION_TTL_SECS = 7200
 
 
+_scheduler_stop = threading.Event()
+_maintenance_tick = 0  # count iterations to run backups less frequently
+
+def _run_periodic_maintenance():
+    """Background thread: runs DB maintenance + plan-expiry notifications every 30 minutes."""
+    global _maintenance_tick
+    from chat_bot.auth.auth import prune_chat_history
+    interval = 1800  # 30 minutes
+    while not _scheduler_stop.wait(timeout=interval):
+        _maintenance_tick += 1
+        try:
+            prune_chat_history()
+        except Exception:
+            logger.exception("[maintenance] prune_chat_history 失敗")
+        try:
+            _vacuum_sqlite()
+        except Exception:
+            logger.exception("[maintenance] VACUUM 失敗")
+        try:
+            _send_expiry_warnings()
+        except Exception:
+            logger.exception("[maintenance] plan expiry warning 失敗")
+        try:
+            from chat_bot.auth.auth import cleanup_orphan_horoscopes
+            active = set(_store._last_seen.keys())
+            cleanup_orphan_horoscopes(active)
+        except Exception:
+            logger.exception("[maintenance] cleanup_orphan_horoscopes 失敗")
+        # SQLite backup every 6 ticks (~3 hours), keep last 3 copies
+        if _maintenance_tick % 6 == 0:
+            try:
+                _backup_sqlite()
+            except Exception:
+                logger.exception("[maintenance] SQLite backup 失敗")
+    logger.info("[maintenance] scheduler stopped")
+
+
+def _vacuum_sqlite():
+    """Run SQLite VACUUM to reclaim space from deleted rows."""
+    from chat_bot.auth.auth import get_db
+    with get_db() as conn:
+        conn.execute("VACUUM")
+    logger.info("[maintenance] SQLite VACUUM done")
+
+
+def _backup_sqlite():
+    """Copy users.db to a timestamped backup, keeping the most recent 3 copies."""
+    import shutil
+    from chat_bot.auth.auth import DB_PATH
+    db_path = DB_PATH
+    backup_dir = db_path.parent / "backups"
+    backup_dir.mkdir(exist_ok=True)
+    ts = time.strftime("%Y%m%d_%H%M%S")
+    dest = backup_dir / f"users_{ts}.db"
+    shutil.copy2(db_path, dest)
+    # Prune old backups — keep newest 3
+    existing = sorted(backup_dir.glob("users_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
+    for old in existing[3:]:
+        try:
+            old.unlink()
+        except Exception:
+            pass
+    logger.info("[maintenance] SQLite backup written: %s", dest.name)
+
+
+def _send_expiry_warnings():
+    """Send expiry warning emails to users whose plan expires within 3 days."""
+    from chat_bot.auth.auth import get_expiring_plans
+    expiring = get_expiring_plans(days_before=3)
+    if not expiring:
+        return
+    try:
+        from chat_bot.email_service import send_plan_expiry_warning
+        for u in expiring:
+            try:
+                send_plan_expiry_warning(u["email"], u["username"], u["plan"], u["plan_expires_at"])
+                logger.info("[maintenance] expiry warning sent: %s", u["username"])
+            except Exception:
+                logger.warning("[maintenance] expiry warning 發送失敗: %s", u["username"])
+    except ImportError:
+        pass  # email service not configured
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _pipeline, _llm
     from chat_bot.utils.utils import build_llm
-    from chat_bot.auth.auth import init_db, sync_whitelist
+    from chat_bot.auth.auth import init_db, sync_whitelist, prune_chat_history
     _store.init_event_loop()
     init_db()
     sync_whitelist()
+    # O4: log git commit hash and process info at startup for observability
+    try:
+        import subprocess as _sp
+        _git_hash = _sp.check_output(["git", "rev-parse", "--short", "HEAD"], stderr=_sp.DEVNULL).decode().strip()
+    except Exception:
+        _git_hash = "unknown"
+    logger.info("[startup] 紫微AI 啟動 | git=%s | model=%s | pid=%d", _git_hash, GlobalConfig.MODEL, os.getpid())
+    # O3: document known limitation — _login_attempts is process-local, not shared across workers
+    logger.info("[startup] 注意：_login_attempts 為 process-local，多 worker 部署時暴力破解防護不跨 worker 共享")
+    _bg.submit(prune_chat_history)  # initial chat-history retention cleanup at startup
+    # Start 30-minute periodic maintenance scheduler
+    _scheduler_stop.clear()
+    _maint_thread = threading.Thread(target=_run_periodic_maintenance, daemon=True, name="maintenance")
+    _maint_thread.start()
     try:
         _AppState.llm = build_llm(GlobalConfig.MODEL)
         _AppState.pipeline = LLMProcessor(llm=_AppState.llm).set_pipeline()
@@ -127,6 +224,7 @@ async def lifespan(app: FastAPI):
         _AppState._init_error = exc
         logger.exception("[lifespan] pipeline/LLM 初始化失敗: %s", exc)
     yield
+    _scheduler_stop.set()  # signal maintenance thread to stop
     _bg.shutdown(wait=True)  # 優雅關閉：等待背景任務完成再退出
     from chat_bot.utils.utils import flush_langfuse
     flush_langfuse()
@@ -137,9 +235,45 @@ os.makedirs("static", exist_ok=True)
 app.mount("/static", StaticFiles(directory="static"), name="static")
 templates = Jinja2Templates(directory="templates")
 
-# ── 安全 Headers middleware ───────────────────────────────────
+# ── CORS middleware ────────────────────────────────────────────
 from fastapi.middleware.cors import CORSMiddleware
 
+_CORS_ORIGINS = [o.strip() for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS or ["*"],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "DELETE", "PUT", "OPTIONS"],
+    allow_headers=["*"],
+)
+
+# ── O2: Request correlation ID middleware ─────────────────────
+import contextvars as _cv
+_request_id_var: _cv.ContextVar[str] = _cv.ContextVar("request_id", default="-")
+
+class _CorrelationFilter(logging.Filter):
+    def filter(self, record):
+        record.req_id = _request_id_var.get("-")
+        return True
+
+_corr_filter = _CorrelationFilter()
+for _h in logging.getLogger().handlers or [logging.StreamHandler()]:
+    _h.addFilter(_corr_filter)
+    if "%(req_id)" not in getattr(_h.formatter, "_fmt", ""):
+        _h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)s [%(req_id)s] %(name)s: %(message)s"
+        ))
+
+@app.middleware("http")
+async def _req_id_middleware(request, call_next):
+    import uuid as _uuid
+    rid = request.headers.get("X-Request-ID") or _uuid.uuid4().hex[:12]
+    _request_id_var.set(rid)
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
+    return response
+
+# ── 安全 Headers middleware ────────────────────────────────────
 @app.middleware("http")
 async def _security_headers(request, call_next):
     response = await call_next(request)
@@ -147,6 +281,16 @@ async def _security_headers(request, call_next):
     response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
     response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
     response.headers.setdefault("X-XSS-Protection", "1; mode=block")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data: https:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'",
+    )
     return response
 
 # ── 登入速率限制（暴力破解防護）────────────────────────────────
@@ -155,30 +299,42 @@ from collections import defaultdict as _defaultdict
 _login_attempts: dict = _defaultdict(list)
 _LOGIN_MAX_ATTEMPTS = 10   # 10 次
 _LOGIN_WINDOW_SECS  = 300  # 5 分鐘內
+_login_attempts_lock = threading.Lock()
 
 
 def _check_login_rate(ip: str) -> bool:
     """回傳 True 表示允許，False 表示已超過速率限制。"""
     now = time.time()
-    bucket = _login_attempts[ip]
-    _login_attempts[ip] = [t for t in bucket if now - t < _LOGIN_WINDOW_SECS]
-    if len(_login_attempts[ip]) >= _LOGIN_MAX_ATTEMPTS:
-        return False
-    _login_attempts[ip].append(now)
+    with _login_attempts_lock:
+        bucket = _login_attempts[ip]
+        _login_attempts[ip] = [t for t in bucket if now - t < _LOGIN_WINDOW_SECS]
+        if len(_login_attempts[ip]) >= _LOGIN_MAX_ATTEMPTS:
+            return False
+        _login_attempts[ip].append(now)
     return True
 
 
 # ── 啟動安全性檢查 ────────────────────────────────────────────
+_MISSING_CRITICAL = []
+_MISSING_WARN = []
+
 if not os.environ.get("JWT_SECRET"):
-    logger.warning(
+    _MISSING_CRITICAL.append("JWT_SECRET")
+    logger.error(
         "[security] JWT_SECRET 未設定！每次重啟將產生新的隨機 secret，"
         "導致所有使用者 Token 失效。請在 .env 設定固定的 JWT_SECRET。"
     )
 if not GlobalConfig.API_KEY:
+    _MISSING_WARN.append("API_KEY")
     logger.warning(
         "[security] API_KEY 未設定！部分 API 端點（chat/reset/pop-last 等）"
         "處於完全開放狀態，任何人皆可呼叫。建議在 .env 設定 API_KEY。"
     )
+if not os.environ.get("GOOGLE_API_KEY") and not os.environ.get("ANTHROPIC_API_KEY"):
+    _MISSING_CRITICAL.append("GOOGLE_API_KEY / ANTHROPIC_API_KEY")
+    logger.error("[startup] 未設定任何 LLM API 金鑰，AI 功能將無法運作。")
+if _MISSING_CRITICAL:
+    logger.error("[startup] 缺少必要設定項目: %s — 請檢查 .env 檔案", ", ".join(_MISSING_CRITICAL))
 
 # ── API Key 驗證 ──────────────────────────────────────────────
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -197,7 +353,7 @@ def verify_api_key(api_key: str = Security(_api_key_header)):
 
 
 # ── Request / Response schemas ────────────────────────────────
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 
 class ChatRequest(BaseModel):
     message: str
@@ -235,6 +391,53 @@ class LoginRequest(BaseModel):
 
 
 # ── 工具函式 ──────────────────────────────────────────────────
+
+def _sanitize_llm_input(text: str, max_len: int = 50) -> str:
+    """Strip control characters and truncate user-supplied strings before injecting into LLM prompts."""
+    import re as _re
+    text = _re.sub(r"[\x00-\x1f\x7f]", "", str(text))  # strip control chars
+    return text[:max_len]
+
+
+def _session_from_request(request: Request, fallback: str = "web_default") -> str:
+    """
+    If the request carries a valid JWT, return the session_id embedded in the
+    token — the client cannot spoof it.  Falls back to *fallback* when the
+    caller is unauthenticated (e.g. LINE bot, local dev without token).
+    """
+    from chat_bot.auth.auth import verify_token
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if token:
+        user = verify_token(token)
+        if user:
+            return user["session_id"]
+    return (fallback or "").strip() or "web_default"
+
+
+async def _require_paid_plan(request: Request, session_id: str) -> None:
+    """
+    Raise HTTP 403 if the session is on the free plan.
+    Used as a guard for premium-only API endpoints.
+    Authenticated users: plan checked against their DB record.
+    Unauthenticated / web_default sessions: always rejected.
+    """
+    from chat_bot.auth.auth import verify_token, get_user_plan
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip()
+    if not token:
+        # EventSource cannot set custom headers; allow token via query param as fallback
+        token = request.query_params.get("token", "").strip()
+    if not token:
+        raise HTTPException(status_code=403, detail="此功能需要登入並訂閱付費方案")
+    user = verify_token(token)
+    if not user:
+        raise HTTPException(status_code=403, detail="Token 無效，請重新登入")
+    plan_info = await run_in_threadpool(get_user_plan, user["session_id"])
+    if plan_info.get("plan", "free") == "free":
+        raise HTTPException(status_code=403, detail="此功能為付費方案專屬，請升級訂閱")
+
+
 def _extract_last_message(output: dict) -> str:
     """Fix #10：output["messages"] 為空時回傳預設提示，而非 IndexError。"""
     msgs = output.get("messages", [])
@@ -362,6 +565,29 @@ def index(request: Request):
     )
 
 
+# ── 健康檢查 ─────────────────────────────────────────────────
+@app.get("/health")
+async def health_check():
+    """供 uptime 監控使用。回傳服務狀態與各子系統就緒狀態。"""
+    from chat_bot.auth.auth import get_db
+    db_ok = False
+    try:
+        with get_db() as conn:
+            conn.execute("SELECT 1")
+        db_ok = True
+    except Exception:
+        pass
+    status_code = 200 if _AppState.is_ready() and db_ok else 503
+    return JSONResponse(
+        status_code=status_code,
+        content={
+            "status": "ok" if status_code == 200 else "degraded",
+            "pipeline": _AppState.is_ready(),
+            "db": db_ok,
+        },
+    )
+
+
 # ── 網頁聊天介面 ───────────────────────────────────────────────
 @app.get("/chat", response_class=HTMLResponse)
 def chat_page(request: Request):
@@ -390,7 +616,7 @@ async def api_register(body: RegisterRequest, request: Request):
     user = create_user(username, password)
     if user is None:
         raise HTTPException(status_code=409, detail="帳號已被使用")
-    token = create_token(user["username"], user["session_id"])
+    token = create_token(user["username"], user["session_id"], user.get("password_version", 0))
     return {"token": token, "username": user["username"], "session_id": user["session_id"]}
 
 
@@ -403,7 +629,7 @@ async def api_login(body: LoginRequest, request: Request):
     user = authenticate_user(body.username.strip(), body.password)
     if user is None:
         raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
-    token = create_token(user["username"], user["session_id"])
+    token = create_token(user["username"], user["session_id"], user.get("password_version", 0))
     return {"token": token, "username": user["username"], "session_id": user["session_id"]}
 
 
@@ -448,6 +674,13 @@ async def api_chat(body: ChatRequest):
         _evict_stale_sessions()
         _touch_session(session_id)
 
+        # 速率限制：與 /api/chat/stream 保持一致（免費方案每日 10 次）
+        if not is_reset:
+            from chat_bot.auth.auth import check_and_increment_api_calls as _check_rate
+            _allowed, _remaining = await run_in_threadpool(_check_rate, session_id)
+            if not _allowed:
+                return JSONResponse(status_code=429, content={"reply": "⚠️ 今日免費使用次數已達上限（20次）。升級付費方案即可無限使用！"})
+
         from chat_bot.utils.user_playbook import load_playbook, update_playbook
         user_profile = USER_PROFILES.get(session_id) or load_playbook(session_id)
         USER_PROFILES[session_id] = user_profile
@@ -484,6 +717,8 @@ async def api_chat(body: ChatRequest):
                     HOROSCOPE.pop(session_id, None)
                     CHART_TABLE.pop(session_id, None)
                     BIRTH_INFO.pop(session_id, None)
+                    from chat_bot.auth.auth import clear_chat_history
+                    await run_in_threadpool(clear_chat_history, session_id)
                     return {"reply": "✅ 對話與命盤已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你排盤。"}
                 elif session_id not in HOROSCOPE:
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
@@ -537,20 +772,20 @@ async def api_chat(body: ChatRequest):
 
 # ── 重置 API ──────────────────────────────────────────────────
 @app.post("/api/reset", dependencies=[Depends(verify_api_key)])
-async def api_reset(body: ResetRequest):
+async def api_reset(request: Request, body: ResetRequest):
     """清除指定 session 的對話記憶與命盤，讓使用者可以重新排盤。"""
-    session_id = (body.session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, body.session_id)
     _store.clear_session(session_id)
     return {"status": "ok"}
 
 
 @app.post("/api/clear-chart", dependencies=[Depends(verify_api_key)])
-async def api_clear_chart(body: ResetRequest):
+async def api_clear_chart(request: Request, body: ResetRequest):
     """只清除命盤資料（HOROSCOPE / CHART_TABLE / BIRTH_INFO + 磁碟檔案），保留對話記憶。
     用於「排新命盤」：讓使用者為不同人排盤，不需清除對話歷史。
     關鍵：必須刪除磁碟上的 horoscope 檔案，否則下次請求會從磁碟重載舊命盤。
     同時重置 NON_AGENT_THREAD，讓 LangGraph state 回到初始（is_fortune=False）。"""
-    session_id = (body.session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, body.session_id)
     _store.clear_chart(session_id)
     # Delete horoscope file — without this, the next request would reload the old chart from disk
     from chat_bot.auth.auth import delete_horoscope
@@ -577,9 +812,9 @@ async def api_chart(session_id: str = "web_default"):
 
 # ── 對話歷史 API ──────────────────────────────────────────────
 @app.get("/api/history")
-async def api_history(session_id: str = "web_default", limit: int = 30, offset: int = 0, q: str = ""):
+async def api_history(request: Request, session_id: str = "web_default", limit: int = 30, offset: int = 0, q: str = ""):
     """回傳指定 session 的聊天歷史（支援關鍵字搜尋 q）。"""
-    session_id = (session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, session_id)
     limit = max(1, min(limit, 100))
     from chat_bot.auth.auth import load_chat_history
     messages = await run_in_threadpool(load_chat_history, session_id, limit, offset, q.strip())
@@ -587,9 +822,9 @@ async def api_history(session_id: str = "web_default", limit: int = 30, offset: 
 
 
 @app.delete("/api/history")
-async def api_history_delete(session_id: str = "web_default"):
+async def api_history_delete(request: Request, session_id: str = "web_default"):
     """清除指定 session 的聊天歷史。"""
-    session_id = (session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import clear_chat_history
     await run_in_threadpool(clear_chat_history, session_id)
     return {"status": "ok"}
@@ -633,7 +868,7 @@ async def api_chat_stream(body: ChatRequest):
         _allowed, _remaining = await run_in_threadpool(_check_rate, session_id)
         if not _allowed:
             async def _rate_limited():
-                yield f'data: {json.dumps({"token": "⚠️ 今日免費使用次數已達上限（10次）。升級付費方案即可無限使用！", "rate_limited": True})}\n\n'
+                yield f'data: {json.dumps({"token": "⚠️ 今日免費使用次數已達上限（20次）。升級付費方案即可無限使用！", "rate_limited": True})}\n\n'
                 yield f'data: {json.dumps({"done": True})}\n\n'
             return StreamingResponse(_rate_limited(), media_type="text/event-stream")
 
@@ -688,6 +923,8 @@ async def api_chat_stream(body: ChatRequest):
                     CHART_TABLE.pop(session_id, None)
                     BIRTH_INFO.pop(session_id, None)
                     BAZI_DOC.pop(session_id, None)
+                    from chat_bot.auth.auth import clear_chat_history
+                    await run_in_threadpool(clear_chat_history, session_id)
                     _reset_msg = "✅ 對話與命盤已重置！請重新告訴我你的出生年月日、時辰和性別，我來幫你排盤。"
                 elif session_id not in HOROSCOPE:
                     NON_AGENT_THREAD[session_id] = str(uuid.uuid4())
@@ -849,9 +1086,19 @@ async def api_chat_stream(body: ChatRequest):
     async def _token_generator():
         full_reply: list[str] = []
         loop = asyncio.get_running_loop()
+        _STREAM_TIMEOUT = 120  # seconds — gives up if no token arrives for 2 minutes
         try:
             while True:
-                token = await loop.run_in_executor(None, token_q.get)
+                try:
+                    token = await asyncio.wait_for(
+                        loop.run_in_executor(None, lambda: token_q.get(timeout=_STREAM_TIMEOUT)),
+                        timeout=_STREAM_TIMEOUT + 5,
+                    )
+                except (asyncio.TimeoutError, _queue.Empty):
+                    logger.warning("[stream] token_q timeout after %ds — aborting", _STREAM_TIMEOUT)
+                    cancel_event.set()
+                    yield f'data: {json.dumps({"token": "⚠️ 回應逾時，請稍後再試。"})}\n\n'
+                    break
                 if token is None:
                     break
                 full_reply.append(token)
@@ -928,9 +1175,8 @@ async def api_daily_fortune(session_id: str = "web_default"):
         # 確保有命盤資料
         horoscope = HOROSCOPE.get(session_id, "")
         if not horoscope:
-            _, _, _bi = await run_in_threadpool(load_horoscope, session_id)
-            horoscope_tuple = await run_in_threadpool(load_horoscope, session_id)
-            horoscope = horoscope_tuple[0] or ""
+            _h, _ct, _bi = await run_in_threadpool(load_horoscope, session_id)
+            horoscope = _h or ""
         if not horoscope:
             yield f'data: {json.dumps({"token": "⚠️ 尚未建立命盤，請先輸入出生資料排盤。"})}\n\n'
             yield f'data: {json.dumps({"done": True})}\n\n'
@@ -987,10 +1233,74 @@ _CHART_SUMMARY_PROMPT = """\
 {bazi_section}"""
 
 
+_CHART_REPORT_PROMPT = """\
+你是資深紫微斗數命理師。以下是命主十二宮位的完整分析資料。
+
+請整理成一份結構清晰、文筆流暢的「完整命盤報告」，讓命主一目了然。
+格式要求：
+- 使用 Markdown 標題（## ）區分各主題章節
+- 每章節 2–3 段，語氣親切易懂，避免過多命理術語
+- 必須包含以下六個章節（按順序）：
+  ## 命格概述
+  ## 個性與特質
+  ## 事業與財運
+  ## 感情與婚姻
+  ## 健康與福德
+  ## 人生建議
+
+命盤分析資料：
+{horoscope}
+{bazi_section}"""
+
+
+@app.get("/api/horoscope-report")
+async def api_horoscope_report(request: Request, session_id: str = "web_default"):
+    """SSE 串流：將完整命盤資料透過 LLM 整理成可讀報告。"""
+    token = request.query_params.get("token", "").strip()
+    if token:
+        # Allow token via query param for EventSource callers
+        request.state.__dict__.setdefault("_auth_token", token)
+    session_id = _session_from_request(request, session_id)
+
+    async def _stream():
+        horoscope = HOROSCOPE.get(session_id, "")
+        if not horoscope:
+            from chat_bot.auth.auth import load_horoscope
+            horoscope_tuple = await run_in_threadpool(load_horoscope, session_id)
+            horoscope = horoscope_tuple[0] or ""
+        if not horoscope:
+            yield f'data: {json.dumps({"token": "⚠️ 尚未建立命盤，請先輸入出生資料排盤。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+        if _llm is None:
+            yield f'data: {json.dumps({"token": "⚠️ AI 服務尚未就緒，請稍後再試。"})}\n\n'
+            yield f'data: {json.dumps({"done": True})}\n\n'
+            return
+        bazi_doc = BAZI_DOC.get(session_id, "")
+        bazi_section = f"\n八字資料：\n{bazi_doc}\n" if bazi_doc else ""
+        from langchain_core.prompts import PromptTemplate
+        prompt = PromptTemplate.from_template(_CHART_REPORT_PROMPT)
+        chain = prompt | _llm
+        async for token_val, err in astream_with_retry(chain, {"horoscope": horoscope[:6000], "bazi_section": bazi_section}):
+            if err == "__clear__":
+                yield f'data: {json.dumps({"clear": True})}\n\n'
+            elif err:
+                logger.error("[horoscope-report] error: %s", err)
+                yield f'data: {json.dumps({"token": err})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+                return
+            else:
+                yield f'data: {json.dumps({"token": token_val})}\n\n'
+        yield f'data: {json.dumps({"done": True})}\n\n'
+
+    return StreamingResponse(_stream(), media_type="text/event-stream")
+
+
 @app.get("/api/chart-summary")
-async def api_chart_summary(session_id: str = "web_default"):
+async def api_chart_summary(request: Request, session_id: str = "web_default"):
     """SSE 串流：回傳命盤精簡整體解說。"""
-    session_id = (session_id or "").strip() or "web_default"
+    await _require_paid_plan(request, session_id)
+    session_id = _session_from_request(request, session_id)
 
     async def _stream():
         horoscope = HOROSCOPE.get(session_id, "")
@@ -1046,24 +1356,24 @@ class BookmarkRequest(BaseModel):
 
 
 @app.post("/api/bookmarks")
-async def api_bookmark_add(body: BookmarkRequest):
-    session_id = (body.session_id or "").strip() or "web_default"
+async def api_bookmark_add(request: Request, body: BookmarkRequest):
+    session_id = _session_from_request(request, body.session_id)
     from chat_bot.auth.auth import save_bookmark
     bm_id = await run_in_threadpool(save_bookmark, session_id, body.content)
     return {"id": bm_id}
 
 
 @app.get("/api/bookmarks")
-async def api_bookmark_list(session_id: str = "web_default"):
-    session_id = (session_id or "").strip() or "web_default"
+async def api_bookmark_list(request: Request, session_id: str = "web_default"):
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import load_bookmarks
     items = await run_in_threadpool(load_bookmarks, session_id)
     return {"bookmarks": items}
 
 
 @app.delete("/api/bookmarks/{bookmark_id}")
-async def api_bookmark_delete(bookmark_id: int, session_id: str = "web_default"):
-    session_id = (session_id or "").strip() or "web_default"
+async def api_bookmark_delete(request: Request, bookmark_id: int, session_id: str = "web_default"):
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import delete_bookmark
     ok = await run_in_threadpool(delete_bookmark, bookmark_id, session_id)
     return {"status": "ok" if ok else "not_found"}
@@ -1116,9 +1426,15 @@ async def api_push_vapid_key():
     return {"key": GlobalConfig.VAPID_PUBLIC_KEY}
 
 
+_push_daily_last_sent: str = ""  # date string "YYYY-MM-DD"; prevents duplicate sends on same day
+
 @app.post("/api/push/send-daily", dependencies=[Depends(verify_api_key)])
 async def api_push_send_daily():
-    """觸發對所有訂閱用戶發送今日運勢推播（需 VAPID 金鑰）。"""
+    """觸發對所有訂閱用戶發送今日運勢推播（需 VAPID 金鑰）。每天最多執行一次。"""
+    global _push_daily_last_sent
+    today_str = time.strftime("%Y-%m-%d")
+    if _push_daily_last_sent == today_str:
+        return {"sent": 0, "note": "今日已推播完畢，不重複發送"}
     if not GlobalConfig.VAPID_PUBLIC_KEY or not GlobalConfig.VAPID_PRIVATE_KEY:
         raise HTTPException(status_code=503, detail="VAPID 金鑰未設定")
     from chat_bot.auth.auth import load_all_push_subscriptions
@@ -1153,6 +1469,8 @@ async def api_push_send_daily():
         return sent
 
     sent = await run_in_threadpool(_send_all)
+    if sent > 0:
+        _push_daily_last_sent = today_str
     return {"sent": sent}
 
 
@@ -1209,6 +1527,19 @@ class PersonInfo(BaseModel):
             raise ValueError("時辰需在 0–23 之間")
         return v
 
+    @model_validator(mode="after")
+    def day_in_month(self):
+        import calendar as _cal
+        try:
+            _, max_day = _cal.monthrange(self.year, self.month)
+            if self.day > max_day:
+                raise ValueError(f"{self.month}月最多只有 {max_day} 天（輸入了 {self.day} 日）")
+        except ValueError:
+            raise
+        except Exception:
+            pass
+        return self
+
 
 class CompatibilityRequest(BaseModel):
     person_a: PersonInfo
@@ -1228,11 +1559,12 @@ class CompatibilityRequest(BaseModel):
 
 
 @app.post("/api/compatibility")
-async def api_compatibility(body: CompatibilityRequest):
+async def api_compatibility(request: Request, body: CompatibilityRequest):
     """
     輸入兩人出生資料，回傳合盤分析文字（SSE 串流）。
     使用 get_palace_information() 生成完整宮位分析，並自動儲存命盤至命盤庫。
     """
+    await _require_paid_plan(request, body.session_id)
     from ziweidoushu.kernel import ZiweiChart
     from ziweidoushu.base import ZiWeiConfig
     from chat_bot.node.gen_ziwei import get_palace_information, _get_domain_df
@@ -1364,18 +1696,19 @@ async def api_compatibility(body: CompatibilityRequest):
         prompt = PromptTemplate.from_template(COMPAT_PROMPT)
         chain = prompt | _llm
         full_tokens: list[str] = []
-        try:
-            async for chunk in chain.astream({"chart_a": chart_text_a, "chart_b": chart_text_b,
-                                               "name_a": body.name_a, "name_b": body.name_b}):
-                token = chunk.content if hasattr(chunk, "content") else str(chunk)
-                if token:
-                    full_tokens.append(token)
-                    yield f'data: {json.dumps({"token": token})}\n\n'
-        except Exception:
-            logger.exception("[compat] AI 分析失敗")
-            yield f'data: {json.dumps({"token": "⚠️ 合盤分析失敗，請稍後再試。"})}\n\n'
-            yield f'data: {json.dumps({"done": True})}\n\n'
-            return
+        _compat_inputs = {"chart_a": chart_text_a, "chart_b": chart_text_b,
+                          "name_a": body.name_a, "name_b": body.name_b}
+        async for token, err in astream_with_retry(chain, _compat_inputs):
+            if err == "__clear__":
+                yield f'data: {json.dumps({"clear": True})}\n\n'
+            elif err:
+                logger.error("[compat] AI 分析失敗: %s", err)
+                yield f'data: {json.dumps({"token": err})}\n\n'
+                yield f'data: {json.dumps({"done": True})}\n\n'
+                return
+            else:
+                full_tokens.append(token)
+                yield f'data: {json.dumps({"token": token})}\n\n'
 
         # 抽取摘要段落並加入 SESSION_STATS 作為 AI 歷史訊息
         import re as _re
@@ -1384,6 +1717,10 @@ async def api_compatibility(body: CompatibilityRequest):
         summary = _summary_match.group(1).strip() if _summary_match else full_text[:300].strip() + ("…" if len(full_text) > 300 else "")
         history_msg = f"[合盤分析：{body.name_a} × {body.name_b}]\n{summary}"
         SESSION_STATS.setdefault(session_id, []).append(AIMessage(content=history_msg))
+        # 持久化到 DB，重新整理後仍可在歷史記錄中找到
+        from chat_bot.auth.auth import save_chat_message as _save_msg
+        full_db_msg = f"## 💕 合盤分析：{body.name_a} × {body.name_b}\n\n{full_text}"
+        _bg.submit(_save_msg, session_id, "ai", full_db_msg)
 
         yield f'data: {json.dumps({"compat_complete": {"name_a": body.name_a, "name_b": body.name_b}})}\n\n'
         yield f'data: {json.dumps({"done": True})}\n\n'
@@ -1556,16 +1893,16 @@ class ProfileRequest(BaseModel):
 
 
 @app.get("/api/profiles")
-async def api_profiles_list(session_id: str = "web_default"):
-    session_id = (session_id or "").strip() or "web_default"
+async def api_profiles_list(request: Request, session_id: str = "web_default"):
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import load_profiles
     items = await run_in_threadpool(load_profiles, session_id)
     return {"profiles": items}
 
 
 @app.post("/api/profiles")
-async def api_profiles_save(body: ProfileRequest):
-    session_id = (body.session_id or "").strip() or "web_default"
+async def api_profiles_save(request: Request, body: ProfileRequest):
+    session_id = _session_from_request(request, body.session_id)
     chart = CHART_TABLE.get(session_id, "")
     horoscope = HOROSCOPE.get(session_id, "")
     birth_info = BIRTH_INFO.get(session_id)
@@ -1583,8 +1920,8 @@ async def api_profiles_save(body: ProfileRequest):
 
 
 @app.get("/api/profiles/{profile_id}")
-async def api_profiles_get(profile_id: int, session_id: str = "web_default", activate: bool = False):
-    session_id = (session_id or "").strip() or "web_default"
+async def api_profiles_get(request: Request, profile_id: int, session_id: str = "web_default", activate: bool = False):
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import get_profile
     profile = await run_in_threadpool(get_profile, profile_id, session_id)
     if not profile:
@@ -1607,10 +1944,10 @@ class MultiProfileRequest(BaseModel):
 
 
 @app.post("/api/profiles/activate-multi")
-async def api_profiles_activate_multi(body: MultiProfileRequest):
+async def api_profiles_activate_multi(request: Request, body: MultiProfileRequest):
     """同時啟用複數命盤，合併為當前 session 的對話上下文。"""
     from chat_bot.auth.auth import get_profile
-    session_id = (body.session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, body.session_id)
     profiles = []
     for pid in body.profile_ids:
         p = await run_in_threadpool(get_profile, pid, session_id)
@@ -1654,8 +1991,8 @@ async def api_profiles_activate_multi(body: MultiProfileRequest):
 
 
 @app.delete("/api/profiles/{profile_id}")
-async def api_profiles_delete(profile_id: int, session_id: str = "web_default"):
-    session_id = (session_id or "").strip() or "web_default"
+async def api_profiles_delete(request: Request, profile_id: int, session_id: str = "web_default"):
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import delete_profile
     await run_in_threadpool(delete_profile, profile_id, session_id)
     return {"status": "ok"}
@@ -1674,10 +2011,11 @@ score 為 1-100 整數，各天差異要明顯，分佈自然。共需 7 天，�
 
 
 @app.get("/api/weekly-fortune")
-async def api_weekly_fortune(session_id: str = "web_default", week_start: str = None):
+async def api_weekly_fortune(request: Request, session_id: str = "web_default", week_start: str = None):
     """回傳一週運勢 JSON（同週同 session 快取）。"""
+    await _require_paid_plan(request, session_id)
     import datetime as _dt, json as _json, re as _re
-    session_id = (session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, session_id)
     today = _dt.date.today()
     if week_start:
         try:
@@ -1750,12 +2088,13 @@ score 為 1-100 整數（100最佳）。評分要求：
 
 
 @app.get("/api/fortune-calendar")
-async def api_fortune_calendar(session_id: str = "web_default", year: int = None, month: int = None):
+async def api_fortune_calendar(request: Request, session_id: str = "web_default", year: int = None, month: int = None):
+    await _require_paid_plan(request, session_id)
     import datetime as _dt
     import calendar as _cal
     import json as _json
     import re as _re
-    session_id = (session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, session_id)
     now = _dt.date.today()
     if not year:
         year = now.year
@@ -1814,15 +2153,15 @@ class SettingsRequest(BaseModel):
 
 
 @app.get("/api/settings")
-async def api_settings_get(session_id: str = "web_default"):
-    session_id = (session_id or "").strip() or "web_default"
+async def api_settings_get(request: Request, session_id: str = "web_default"):
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import get_user_settings
     return await run_in_threadpool(get_user_settings, session_id)
 
 
 @app.post("/api/settings")
-async def api_settings_save(body: SettingsRequest):
-    session_id = (body.session_id or "").strip() or "web_default"
+async def api_settings_save(request: Request, body: SettingsRequest):
+    session_id = _session_from_request(request, body.session_id)
     from chat_bot.auth.auth import save_user_settings
     await run_in_threadpool(save_user_settings, session_id, body.response_style)
     return {"status": "ok"}
@@ -1941,10 +2280,12 @@ async def api_update_email(body: UpdateEmailRequest, request: Request):
     if not verify_token_val:
         raise HTTPException(status_code=500, detail="更新失敗，請稍後再試")
     import threading as _thr
-    from chat_bot.email_service import send_email_verification
+    from chat_bot.email_service import send_email_verification, _SMTP_HOST
     from chat_bot.auth.auth import get_user_by_session as _get_u
     u_info = await run_in_threadpool(_get_u, user["session_id"])
     uname = u_info["username"] if u_info else user["username"]
+    if not _SMTP_HOST:
+        return {"status": "ok", "message": "信箱已儲存，但系統尚未設定 SMTP 寄信功能，請聯絡管理員"}
     _thr.Thread(
         target=send_email_verification,
         args=(body.email, uname, verify_token_val),
@@ -2003,6 +2344,18 @@ async def api_create_order(body: CreateOrderRequest, request: Request):
     if not is_configured():
         raise HTTPException(status_code=503, detail="金流服務尚未設定")
 
+    # Guard: reject if user already has an active non-free plan (already paid)
+    from chat_bot.auth.auth import get_user_plan as _get_plan
+    current_plan = await run_in_threadpool(_get_plan, user["session_id"])
+    if current_plan.get("plan", "free") != "free":
+        raise HTTPException(status_code=409, detail="您已有有效的付費方案，無需重複訂閱")
+
+    # Guard: reject if user already has a pending order for this plan (within last 10 mins)
+    from chat_bot.auth.auth import get_pending_order as _get_pending
+    pending = await run_in_threadpool(_get_pending, user["session_id"], body.plan)
+    if pending:
+        raise HTTPException(status_code=409, detail="已有待付款的相同方案訂單，請完成付款或等候 10 分鐘後再試")
+
     # Generate unique order ID (max 20 chars: ZW + 10-digit timestamp + 8 random)
     import secrets as _sec
     order_id = f"ZW{int(time.time())}{_sec.token_hex(4).upper()}"[:20]
@@ -2035,11 +2388,33 @@ async def api_payment_callback(request: Request):
     if rtn_code != "1" or not order_id:
         return PlainTextResponse("1|OK")
     order = await run_in_threadpool(complete_payment_order, order_id, trade_no)
-    if order:
-        plan = order["plan"]
-        session_id = order["session_id"]
-        duration = _PLAN_DURATIONS.get(plan, 30)
-        await run_in_threadpool(activate_plan, session_id, plan, duration)
+    if not order:
+        logger.error("[payment/callback] order not found: order_id=%s trade_no=%s", order_id, trade_no)
+        # Still return 1|OK so ECPay doesn't retry, but log for manual resolution
+        return PlainTextResponse("1|OK")
+    plan = order["plan"]
+    session_id = order["session_id"]
+    duration = _PLAN_DURATIONS.get(plan, 30)
+    plan_activated = await run_in_threadpool(activate_plan, session_id, plan, duration)
+    if not plan_activated:
+        logger.error(
+            "[payment/callback] activate_plan FAILED: order_id=%s session_id=%s plan=%s — "
+            "USER PAID BUT PLAN NOT ACTIVATED — manual fix required",
+            order_id, session_id, plan,
+        )
+        import threading as _thr_alert
+        from chat_bot.email_service import send_admin_alert as _alert
+        _thr_alert.Thread(
+            target=_alert,
+            args=(
+                "付款後方案啟用失敗",
+                f"order_id: {order_id}\nsession_id: {session_id}\nplan: {plan}\ntrade_no: {trade_no}\n"
+                "動作：請手動確認並執行 activate_plan 補救。",
+            ),
+            daemon=True,
+        ).start()
+    else:
+        logger.info("[payment/callback] plan activated: session=%s plan=%s duration=%d days", session_id, plan, duration)
         # Send receipt email in background if email available
         plan_info = await run_in_threadpool(get_user_plan, session_id)
         if plan_info.get("email") and plan_info.get("email_verified"):
@@ -2093,10 +2468,11 @@ type 必須是 "good"、"caution" 或 "neutral" 其中之一。title 控制在 8
 
 
 @app.get("/api/life-events")
-async def api_life_events(session_id: str = "web_default"):
+async def api_life_events(request: Request, session_id: str = "web_default"):
+    await _require_paid_plan(request, session_id)
     import json as _json
     import re as _re
-    session_id = (session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, session_id)
 
     horoscope = HOROSCOPE.get(session_id, "")
     chart_table = CHART_TABLE.get(session_id, "")
@@ -2168,10 +2544,11 @@ _MONTHLY_DETAIL_PROMPT = """你是資深紫微斗數命理師。請根據命主�
 
 
 @app.get("/api/annual-fortune")
-async def api_annual_fortune(session_id: str = "web_default", year: int = None):
+async def api_annual_fortune(request: Request, session_id: str = "web_default", year: int = None):
     """回傳流年分析 JSON（同年同 session 快取）。"""
+    await _require_paid_plan(request, session_id)
     import datetime as _dt, json as _json, re as _re
-    session_id = (session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, session_id)
     if year is None:
         year = _dt.date.today().year
     if not (1900 <= year <= 2200):
@@ -2217,10 +2594,11 @@ async def api_annual_fortune(session_id: str = "web_default", year: int = None):
 
 
 @app.get("/api/monthly-detail")
-async def api_monthly_detail(session_id: str = "web_default", year: int = None, month: int = None):
+async def api_monthly_detail(request: Request, session_id: str = "web_default", year: int = None, month: int = None):
     """SSE 串流：流月詳細分析（同年月同 session 快取）。"""
+    await _require_paid_plan(request, session_id)
     import datetime as _dt
-    session_id = (session_id or "").strip() or "web_default"
+    session_id = _session_from_request(request, session_id)
     today = _dt.date.today()
     if year is None:
         year = today.year
@@ -2493,8 +2871,9 @@ class BaziRequest(BaseModel):
 
 
 @app.post("/api/bazi/chart")
-async def api_bazi_chart(body: BaziRequest):
+async def api_bazi_chart(request: Request, body: BaziRequest):
     """計算八字命盤（純算法，無 AI），立即回傳 JSON。"""
+    await _require_paid_plan(request, body.session_id)
     from chat_bot.utils.bazi import compute_bazi, wuxing_count, day_master
     try:
         result = await run_in_threadpool(
@@ -2511,8 +2890,9 @@ async def api_bazi_chart(body: BaziRequest):
 
 
 @app.post("/api/bazi/activate")
-async def api_bazi_activate(body: BaziRequest):
+async def api_bazi_activate(request: Request, body: BaziRequest):
     """將八字命盤存入 session，之後的對話會自動帶入 bazi_doc 上下文。"""
+    await _require_paid_plan(request, body.session_id)
     from chat_bot.utils.bazi import compute_bazi, wuxing_count, day_master, _STEM_ELEMENT
     try:
         bazi = await run_in_threadpool(
@@ -2533,9 +2913,10 @@ async def api_bazi_activate(body: BaziRequest):
         for i, k in enumerate(["year_pillar","month_pillar","day_pillar","hour_pillar"])
     )
     gender = "男" if body.is_male else "女"
+    safe_name = _sanitize_llm_input(body.name, 20)
 
     doc = (
-        f"姓名：{body.name}（{gender}）\n"
+        f"姓名：{safe_name}（{gender}）\n"
         f"年柱：{bazi['year_pillar']['ganzhi']}　月柱：{bazi['month_pillar']['ganzhi']}　"
         f"日柱：{bazi['day_pillar']['ganzhi']}　時柱：{bazi['hour_pillar']['ganzhi']}\n"
         f"日主：{dm}（{dm_elem}）　時辰：{bazi['shichen']}\n"
@@ -2543,13 +2924,15 @@ async def api_bazi_activate(body: BaziRequest):
         f"藏幹：{cang_str}\n"
         f"真太陽時：{bazi['solar_hour']:02d}:{bazi['solar_minute']:02d}"
     )
-    BAZI_DOC[body.session_id] = doc
+    session_id = _session_from_request(request, body.session_id)
+    BAZI_DOC[session_id] = doc
     return {"status": "ok"}
 
 
 @app.post("/api/bazi/dayun")
-async def api_bazi_dayun(body: BaziRequest):
+async def api_bazi_dayun(request: Request, body: BaziRequest):
     """計算大運（10年大運）。"""
+    await _require_paid_plan(request, body.session_id)
     from chat_bot.utils.bazi import compute_dayun
     try:
         result = await run_in_threadpool(
@@ -2587,8 +2970,9 @@ class BaziProfileRequest(BaseModel):
 
 
 @app.post("/api/bazi/profiles")
-async def api_bazi_profile_save(body: BaziProfileRequest):
-    session_id = (body.session_id or "").strip() or "web_default"
+async def api_bazi_profile_save(request: Request, body: BaziProfileRequest):
+    await _require_paid_plan(request, body.session_id)
+    session_id = _session_from_request(request, body.session_id)
     from chat_bot.auth.auth import save_bazi_profile
     pid = await run_in_threadpool(
         save_bazi_profile,
@@ -2603,16 +2987,18 @@ async def api_bazi_profile_save(body: BaziProfileRequest):
 
 
 @app.get("/api/bazi/profiles")
-async def api_bazi_profile_list(session_id: str = "web_default"):
-    session_id = (session_id or "").strip() or "web_default"
+async def api_bazi_profile_list(request: Request, session_id: str = "web_default"):
+    await _require_paid_plan(request, session_id)
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import load_bazi_profiles
     profiles = await run_in_threadpool(load_bazi_profiles, session_id)
     return {"profiles": profiles}
 
 
 @app.delete("/api/bazi/profiles/{profile_id}")
-async def api_bazi_profile_delete(profile_id: int, session_id: str = "web_default"):
-    session_id = (session_id or "").strip() or "web_default"
+async def api_bazi_profile_delete(request: Request, profile_id: int, session_id: str = "web_default"):
+    await _require_paid_plan(request, session_id)
+    session_id = _session_from_request(request, session_id)
     from chat_bot.auth.auth import delete_bazi_profile
     ok = await run_in_threadpool(delete_bazi_profile, profile_id, session_id)
     return {"status": "ok" if ok else "not_found"}
@@ -2625,8 +3011,8 @@ class BaziSaveHistoryRequest(BaseModel):
 
 
 @app.post("/api/bazi/save-to-history")
-async def api_bazi_save_history(body: BaziSaveHistoryRequest):
-    session_id = (body.session_id or "").strip() or "web_default"
+async def api_bazi_save_history(request: Request, body: BaziSaveHistoryRequest):
+    session_id = _session_from_request(request, body.session_id)
     from chat_bot.auth.auth import save_chat_message
     content = body.bazi_summary[:3000]
     await run_in_threadpool(save_chat_message, session_id, "ai", content)
@@ -2634,8 +3020,9 @@ async def api_bazi_save_history(body: BaziSaveHistoryRequest):
 
 
 @app.post("/api/bazi/interpret")
-async def api_bazi_interpret(body: BaziRequest):
+async def api_bazi_interpret(request: Request, body: BaziRequest):
     """SSE 串流：AI 解盤八字命盤。"""
+    await _require_paid_plan(request, body.session_id)
     from chat_bot.utils.bazi import compute_bazi, wuxing_count, day_master, _STEM_ELEMENT
 
     if _llm is None:
@@ -2725,8 +3112,9 @@ class DayunInterpretRequest(BaseModel):
 
 
 @app.post("/api/bazi/dayun-interpret")
-async def api_bazi_dayun_interpret(body: DayunInterpretRequest):
+async def api_bazi_dayun_interpret(request: Request, body: DayunInterpretRequest):
     """SSE 串流：AI 解析指定大運期間的影響。"""
+    await _require_paid_plan(request, body.session_id)
     if _llm is None:
         raise HTTPException(status_code=503, detail="AI 服務未就緒")
 

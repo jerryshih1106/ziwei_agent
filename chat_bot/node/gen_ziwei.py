@@ -175,7 +175,8 @@ def _extract_keywords_from_row(row) -> list[str]:
 
 def _analyze_row(row, rag_inst, ziwei_domain_df: pd.DataFrame) -> str:
     """Analyze a single palace row — called in parallel across all palaces."""
-    palace = str(row.get("宮", "")).strip() if pd.notna(row.get("宮", "")) else ""
+    raw_palace = row.get("宮", "")
+    palace = str(raw_palace).strip() if pd.notna(raw_palace) and raw_palace not in (None, "None", "nan", "") else ""
     sentence = format_row(row)
     if GlobalConfig.RAG_MODE == "matching":
         keyword_list = _extract_keywords_from_row(row)

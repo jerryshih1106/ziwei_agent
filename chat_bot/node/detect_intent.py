@@ -114,9 +114,11 @@ output example（僅回傳 JSON）:
                     birth_info[key] = new_val
                     if key == "hour":
                         h = birth_info[key]
-                        birth_info[key] = (h // 2) * 2
-                        if birth_info[key] > 22:
-                            birth_info[key] = 22
+                        # Round to the canonical even hour for the 時辰.
+                        # Each 時辰 spans odd-to-even (e.g., 3:00-4:59 = 寅時, canonical=4).
+                        # (h//2)*2 rounds down, mapping 3→2 (丑時) instead of 4 (寅時).
+                        # ((h+1)//2)*2 %24 rounds up: 3→4 (寅時), 23→0 (子時). ✓
+                        birth_info[key] = ((h + 1) // 2) * 2 % 24
                 except (ValueError, TypeError):
                     logger.warning("[get_birth_info] 欄位 %s 值 %r 無法轉為整數，略過", key, val)
     except Exception:

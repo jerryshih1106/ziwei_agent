@@ -4,6 +4,7 @@ import smtplib
 import ssl
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
@@ -13,6 +14,10 @@ _SMTP_USER = os.environ.get("SMTP_USER", "")
 _SMTP_PASS = os.environ.get("SMTP_PASS", "")
 _EMAIL_FROM = os.environ.get("EMAIL_FROM", "") or _SMTP_USER
 _APP_URL = os.environ.get("APP_URL", "https://your-app.com").rstrip("/")
+_ADMIN_EMAIL = os.environ.get("ADMIN_EMAIL", "")
+
+_DATA_DIR = Path(os.environ["DATA_DIR"]) if os.environ.get("DATA_DIR") else Path(__file__).parent.parent.parent
+_PAYMENT_FAILURE_LOG = _DATA_DIR / "payment_failures.log"
 
 
 def _send_email(to: str, subject: str, html_body: str) -> bool:
@@ -103,3 +108,45 @@ def send_payment_receipt(to: str, username: str, plan: str, amount: int, expires
 <p style="color:#999;font-size:0.8rem">紫微AI命理 | 此為系統自動發送，請勿回覆</p>
 </body></html>"""
     return _send_email(to, subject, html)
+
+
+def send_plan_expiry_warning(to: str, username: str, plan: str, expires_at: str) -> bool:
+    plan_names = {"standard": "標準月費方案", "pro": "專業年費方案"}
+    plan_name = plan_names.get(plan, plan)
+    upgrade_link = f"{_APP_URL}/chat"
+    subject = f"【紫微AI命理】您的{plan_name}即將到期"
+    html = f"""<!DOCTYPE html>
+<html><body style="font-family:sans-serif;color:#333;max-width:600px;margin:40px auto;padding:0 20px">
+<div style="background:#0a1628;padding:24px;border-radius:12px;text-align:center;margin-bottom:24px">
+  <h1 style="color:#c9a227;margin:0;font-size:1.4rem">紫微AI命理</h1>
+</div>
+<h2 style="color:#1a2a4a">&#9888; 方案即將到期</h2>
+<p>您好，<strong>{username}</strong>，</p>
+<p>您的 <strong>{plan_name}</strong> 將於 <strong>{expires_at[:10]}</strong> 到期。到期後將自動降回免費版，八字、大運、流年流月、本週運勢、命盤庫、合盤等付費功能將全數停用。</p>
+<p style="text-align:center;margin:32px 0">
+  <a href="{upgrade_link}" style="background:#c9a227;color:#fff;padding:14px 28px;border-radius:8px;text-decoration:none;font-weight:bold;display:inline-block">立即續訂</a>
+</p>
+<hr style="border:none;border-top:1px solid #eee;margin:24px 0">
+<p style="color:#999;font-size:0.8rem">紫微AI命理 | 此為系統自動發送，請勿回覆</p>
+</body></html>"""
+    return _send_email(to, subject, html)
+
+
+def send_admin_alert(subject: str, body: str) -> None:
+    """Write payment/critical failures to log file and optionally email admin."""
+    import time as _time
+    timestamp = _time.strftime("%Y-%m-%d %H:%M:%S")
+    log_line = f"[{timestamp}] {subject}\n{body}\n{'='*60}\n"
+    try:
+        with open(_PAYMENT_FAILURE_LOG, "a", encoding="utf-8") as f:
+            f.write(log_line)
+    except Exception:
+        logger.exception("[admin_alert] failed to write payment_failures.log")
+    if _ADMIN_EMAIL:
+        html = f"""<!DOCTYPE html>
+<html><body style="font-family:monospace;color:#333;max-width:700px;margin:40px auto;padding:0 20px">
+<h2 style="color:#c00">&#9888; 系統警報：{subject}</h2>
+<pre style="background:#f5f5f5;padding:16px;border-radius:8px;overflow:auto">{body}</pre>
+<p style="color:#999;font-size:0.8rem">發生時間：{timestamp}</p>
+</body></html>"""
+        _send_email(_ADMIN_EMAIL, f"[紫微AI] {subject}", html)

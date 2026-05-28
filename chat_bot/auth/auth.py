@@ -49,6 +49,8 @@ def _safe_sid(session_id: str) -> str:
 
 def init_db() -> None:
     with get_db() as conn:
+        conn.execute("PRAGMA journal_mode=WAL")   # enable WAL for concurrent read/write
+        conn.execute("PRAGMA synchronous=NORMAL")  # safe with WAL; faster than FULL
         conn.execute("""
             CREATE TABLE IF NOT EXISTS users (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -219,6 +221,49 @@ def clear_chat_history(session_id: str) -> None:
         logger.warning("[chat_history] 清除失敗: %s", session_id)
 
 
+def prune_chat_history(keep_per_session: int = 200, older_than_days: int = 90) -> int:
+    """
+    Retention policy for chat_history table:
+    - Keep at most *keep_per_session* rows per session (delete oldest beyond that).
+    - Delete rows older than *older_than_days* days globally.
+    Returns total rows deleted.
+    """
+    deleted = 0
+    cutoff = time.strftime(
+        "%Y-%m-%d %H:%M:%S",
+        time.localtime(time.time() - older_than_days * 86400),
+    )
+    try:
+        with get_db() as conn:
+            # Delete globally old rows
+            cur = conn.execute(
+                "DELETE FROM chat_history WHERE created_at < ?", (cutoff,)
+            )
+            deleted += cur.rowcount
+            # Delete per-session excess (keep newest keep_per_session rows)
+            sessions = [
+                r[0] for r in conn.execute(
+                    "SELECT DISTINCT session_id FROM chat_history"
+                ).fetchall()
+            ]
+            for sid in sessions:
+                cur = conn.execute(
+                    """DELETE FROM chat_history WHERE session_id = ?
+                       AND id NOT IN (
+                           SELECT id FROM chat_history WHERE session_id = ?
+                           ORDER BY id DESC LIMIT ?
+                       )""",
+                    (sid, sid, keep_per_session),
+                )
+                deleted += cur.rowcount
+            conn.commit()
+    except Exception:
+        logger.warning("[chat_history] prune 失敗")
+    if deleted:
+        logger.info("[chat_history] pruned %d rows", deleted)
+    return deleted
+
+
 def save_horoscope(session_id: str, horoscope: str, chart_table: str = "", birth_info: "dict | None" = None) -> None:
     """存成 horoscope/{session_id}.json，與 memory/ 同樣的檔案儲存模式。"""
     import json as _json
@@ -239,6 +284,30 @@ def delete_horoscope(session_id: str) -> None:
         logger.info("[horoscope] 已刪除: %s", session_id)
     except Exception:
         logger.warning("[horoscope] 刪除失敗: %s", path)
+
+
+def cleanup_orphan_horoscopes(active_session_ids: "set[str]", ttl_secs: int = 7200) -> int:
+    """刪除 horoscope/ 目錄中已無對應活躍 session 的 JSON 檔案。回傳刪除數量。"""
+    if not _HOROSCOPE_DIR.exists():
+        return 0
+    now = time.time()
+    deleted = 0
+    for path in list(_HOROSCOPE_DIR.glob("*.json")):
+        try:
+            stem = path.stem  # safe-sid form of the session_id
+            # Keep files for active sessions
+            if any(_safe_sid(sid) == stem for sid in active_session_ids):
+                continue
+            # Also keep recently modified files (might be written by another process)
+            if now - path.stat().st_mtime < ttl_secs:
+                continue
+            path.unlink(missing_ok=True)
+            deleted += 1
+        except Exception:
+            pass
+    if deleted:
+        logger.info("[horoscope] cleanup_orphan_horoscopes: 清理 %d 個過期檔案", deleted)
+    return deleted
 
 
 def load_horoscope(session_id: str) -> "tuple[str, str, dict] | tuple[None, None, None]":
@@ -289,7 +358,7 @@ def create_user(username: str, password: str) -> Optional[dict]:
                 (username, _make_password_entry(password), session_id, now),
             )
             conn.commit()
-        return {"username": username, "session_id": session_id}
+        return {"username": username, "session_id": session_id, "password_version": 0}
     except sqlite3.IntegrityError:
         return None
 
@@ -298,7 +367,7 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
     """Return user dict on success, None on invalid credentials."""
     with get_db() as conn:
         row = conn.execute(
-            "SELECT username, password_hash, session_id FROM users WHERE username = ?",
+            "SELECT username, password_hash, session_id, COALESCE(password_version, 0) AS password_version FROM users WHERE username = ?",
             (username,),
         ).fetchone()
     if not row or not _verify_password(password, row["password_hash"]):
@@ -309,23 +378,33 @@ def authenticate_user(username: str, password: str) -> Optional[dict]:
             (time.strftime("%Y-%m-%d %H:%M:%S"), username),
         )
         conn.commit()
-    return {"username": row["username"], "session_id": row["session_id"]}
+    return {"username": row["username"], "session_id": row["session_id"], "password_version": row["password_version"]}
 
 
-def create_token(username: str, session_id: str) -> str:
+def create_token(username: str, session_id: str, password_version: int = 0) -> str:
     payload = {
         "sub": username,
         "session_id": session_id,
+        "pwv": password_version,
         "exp": int(time.time()) + JWT_EXPIRE_DAYS * 86400,
     }
     return jwt.encode(payload, _get_jwt_secret(), algorithm=JWT_ALGORITHM)
 
 
 def verify_token(token: str) -> Optional[dict]:
-    """Return {"username": ..., "session_id": ...} or None if invalid/expired."""
+    """Return {"username": ..., "session_id": ...} or None if invalid/expired/revoked."""
     try:
         payload = jwt.decode(token, _get_jwt_secret(), algorithms=[JWT_ALGORITHM])
-        return {"username": payload["sub"], "session_id": payload["session_id"]}
+        session_id = payload["session_id"]
+        token_pwv = payload.get("pwv", 0)
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(password_version, 0) AS pwv FROM users WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+        if row is None or row["pwv"] != token_pwv:
+            return None
+        return {"username": payload["sub"], "session_id": session_id}
     except Exception:
         return None
 
@@ -512,7 +591,10 @@ def change_password(session_id: str, old_password: str, new_password: str) -> bo
             return False
         new_hash = _make_password_entry(new_password)
         with get_db() as conn:
-            conn.execute("UPDATE users SET password_hash=? WHERE session_id=?", (new_hash, session_id))
+            conn.execute(
+                "UPDATE users SET password_hash=?, password_version=COALESCE(password_version,0)+1 WHERE session_id=?",
+                (new_hash, session_id),
+            )
             conn.commit()
         return True
     except Exception:
@@ -778,12 +860,14 @@ def _ensure_user_plan_columns() -> None:
         ("email",                 "TEXT"),
         ("email_verified",        "INTEGER NOT NULL DEFAULT 0"),
         ("email_verify_token",    "TEXT"),
+        ("email_verify_expires_at", "TEXT"),
         ("plan",                  "TEXT NOT NULL DEFAULT 'free'"),
         ("plan_expires_at",       "TEXT"),
         ("api_calls_today",       "INTEGER NOT NULL DEFAULT 0"),
         ("api_calls_reset_at",    "TEXT"),
         ("password_reset_token",  "TEXT"),
         ("password_reset_expires","TEXT"),
+        ("password_version",      "INTEGER NOT NULL DEFAULT 0"),
     ]
     with get_db() as conn:
         existing = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -842,13 +926,15 @@ def get_user_by_email(email: str) -> "dict | None":
 
 
 def update_user_email(session_id: str, email: str) -> "str | None":
-    """設定 email 並產生驗證 token，回傳 token（發送驗證信用）。"""
+    """設定 email 並產生驗證 token（24小時有效），回傳 token（發送驗證信用）。"""
+    import datetime as _dt
     token = secrets.token_urlsafe(32)
+    expires = (_dt.datetime.now() + _dt.timedelta(hours=24)).strftime("%Y-%m-%d %H:%M:%S")
     try:
         with get_db() as conn:
             conn.execute(
-                "UPDATE users SET email=?, email_verified=0, email_verify_token=? WHERE session_id=?",
-                (email, token, session_id),
+                "UPDATE users SET email=?, email_verified=0, email_verify_token=?, email_verify_expires_at=? WHERE session_id=?",
+                (email, token, expires, session_id),
             )
             conn.commit()
         return token
@@ -858,16 +944,20 @@ def update_user_email(session_id: str, email: str) -> "str | None":
 
 
 def verify_email_token(token: str) -> bool:
-    """驗證 email token，成功後清除 token 並標記已驗證。"""
+    """驗證 email token（含過期檢查），成功後清除 token 並標記已驗證。"""
+    now_str = time.strftime("%Y-%m-%d %H:%M:%S")
     try:
         with get_db() as conn:
             row = conn.execute(
-                "SELECT session_id FROM users WHERE email_verify_token=?", (token,)
+                "SELECT session_id, email_verify_expires_at FROM users WHERE email_verify_token=?",
+                (token,),
             ).fetchone()
             if not row:
                 return False
+            if row["email_verify_expires_at"] and row["email_verify_expires_at"] < now_str:
+                return False
             conn.execute(
-                "UPDATE users SET email_verified=1, email_verify_token=NULL WHERE email_verify_token=?",
+                "UPDATE users SET email_verified=1, email_verify_token=NULL, email_verify_expires_at=NULL WHERE email_verify_token=?",
                 (token,),
             )
             conn.commit()
@@ -876,9 +966,14 @@ def verify_email_token(token: str) -> bool:
         return False
 
 
+def _hash_reset_token(raw_token: str) -> str:
+    """SHA-256 of the raw token — stored in DB so a DB leak can't be used to reset passwords."""
+    return hashlib.sha256(raw_token.encode("utf-8")).hexdigest()
+
+
 def create_password_reset_token(email: str) -> "tuple[str, str] | None":
-    """為持有此 email 的帳號產生重設密碼 token。
-    回傳 (raw_token, username) 或 None（若 email 不存在）。
+    """產生密碼重設 token。回傳 (raw_token, username) 或 None。
+    DB 中只存 SHA-256 hash；email 連結中含 raw token。
     """
     try:
         with get_db() as conn:
@@ -888,12 +983,13 @@ def create_password_reset_token(email: str) -> "tuple[str, str] | None":
         if not row:
             return None
         raw_token = secrets.token_urlsafe(32)
+        token_hash = _hash_reset_token(raw_token)
         import datetime as _dt
         expires = (_dt.datetime.now() + _dt.timedelta(hours=1)).strftime("%Y-%m-%d %H:%M:%S")
         with get_db() as conn:
             conn.execute(
                 "UPDATE users SET password_reset_token=?, password_reset_expires=? WHERE email=?",
-                (raw_token, expires, email),
+                (token_hash, expires, email),
             )
             conn.commit()
         return raw_token, row["username"]
@@ -903,15 +999,16 @@ def create_password_reset_token(email: str) -> "tuple[str, str] | None":
 
 
 def verify_and_consume_reset_token(raw_token: str, new_password: str) -> bool:
-    """驗證重設密碼 token，成功後更新密碼並清除 token。"""
+    """驗證重設密碼 token（比對 hash），成功後更新密碼並清除 token。"""
     if len(new_password) < 6:
         return False
+    token_hash = _hash_reset_token(raw_token)
     now_str = time.strftime("%Y-%m-%d %H:%M:%S")
     try:
         with get_db() as conn:
             row = conn.execute(
                 "SELECT session_id, password_reset_expires FROM users WHERE password_reset_token=?",
-                (raw_token,),
+                (token_hash,),
             ).fetchone()
             if not row:
                 return False
@@ -919,8 +1016,9 @@ def verify_and_consume_reset_token(raw_token: str, new_password: str) -> bool:
                 return False
             new_hash = _make_password_entry(new_password)
             conn.execute(
-                "UPDATE users SET password_hash=?, password_reset_token=NULL, password_reset_expires=NULL WHERE password_reset_token=?",
-                (new_hash, raw_token),
+                "UPDATE users SET password_hash=?, password_version=COALESCE(password_version,0)+1, "
+                "password_reset_token=NULL, password_reset_expires=NULL WHERE password_reset_token=?",
+                (new_hash, token_hash),
             )
             conn.commit()
         return True
@@ -964,39 +1062,50 @@ def get_user_plan(session_id: str) -> dict:
 
 
 def check_and_increment_api_calls(session_id: str) -> "tuple[bool, int]":
-    """檢查速率限制並原子性遞增計數器。回傳 (allowed, remaining)。"""
+    """檢查速率限制並原子性遞增計數器。回傳 (allowed, remaining)。
+    使用 BEGIN IMMEDIATE 確保 SELECT+UPDATE 不存在 TOCTOU 競態條件。
+    """
     today = time.strftime("%Y-%m-%d")
     now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+    conn = get_db()
+    conn.isolation_level = None  # 手動管理事務
     try:
-        with get_db() as conn:
-            row = conn.execute(
-                "SELECT plan, plan_expires_at, api_calls_today, api_calls_reset_at FROM users WHERE session_id=?",
-                (session_id,),
-            ).fetchone()
-            if not row:
-                return True, 9999
-            plan = row["plan"] or "free"
-            if plan != "free" and row["plan_expires_at"] and row["plan_expires_at"] < now_str:
-                plan = "free"
-                conn.execute("UPDATE users SET plan='free', plan_expires_at=NULL WHERE session_id=?", (session_id,))
-            limit = _PLAN_DAILY_LIMITS.get(plan, 10)
-            reset_date = (row["api_calls_reset_at"] or "")[:10]
-            calls_today = row["api_calls_today"] or 0
-            if reset_date != today:
-                calls_today = 0
-            if calls_today >= limit:
-                conn.commit()
-                return False, 0
-            new_calls = calls_today + 1
-            conn.execute(
-                "UPDATE users SET api_calls_today=?, api_calls_reset_at=? WHERE session_id=?",
-                (new_calls, now_str, session_id),
-            )
-            conn.commit()
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT plan, plan_expires_at, api_calls_today, api_calls_reset_at FROM users WHERE session_id=?",
+            (session_id,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return True, 9999
+        plan = row["plan"] or "free"
+        if plan != "free" and row["plan_expires_at"] and row["plan_expires_at"] < now_str:
+            plan = "free"
+            conn.execute("UPDATE users SET plan='free', plan_expires_at=NULL WHERE session_id=?", (session_id,))
+        limit = _PLAN_DAILY_LIMITS.get(plan, 10)
+        reset_date = (row["api_calls_reset_at"] or "")[:10]
+        calls_today = row["api_calls_today"] or 0
+        if reset_date != today:
+            calls_today = 0
+        if calls_today >= limit:
+            conn.execute("ROLLBACK")
+            return False, 0
+        new_calls = calls_today + 1
+        conn.execute(
+            "UPDATE users SET api_calls_today=?, api_calls_reset_at=? WHERE session_id=?",
+            (new_calls, now_str, session_id),
+        )
+        conn.execute("COMMIT")
         return True, limit - new_calls
     except Exception:
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:
+            pass
         logger.warning("[rate_limit] check 失敗: %s", session_id)
         return True, 9999
+    finally:
+        conn.close()
 
 
 def activate_plan(session_id: str, plan: str, duration_days: int) -> bool:
@@ -1029,6 +1138,23 @@ def create_payment_order(order_id: str, session_id: str, plan: str, amount: int)
         return False
 
 
+def get_pending_order(session_id: str, plan: str, within_minutes: int = 10) -> "dict | None":
+    """Return the most recent pending order for this session+plan within *within_minutes*, or None."""
+    cutoff = time.strftime(
+        "%Y-%m-%d %H:%M:%S",
+        time.localtime(time.time() - within_minutes * 60),
+    )
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT order_id FROM orders WHERE session_id=? AND plan=? AND status='pending' AND created_at>=? LIMIT 1",
+                (session_id, plan, cutoff),
+            ).fetchone()
+        return dict(row) if row else None
+    except Exception:
+        return None
+
+
 def complete_payment_order(order_id: str, trade_no: str) -> "dict | None":
     """將訂單標記為 paid，回傳 {plan, session_id} 供後續 activate_plan 使用。"""
     now = time.strftime("%Y-%m-%d %H:%M:%S")
@@ -1049,3 +1175,31 @@ def complete_payment_order(order_id: str, trade_no: str) -> "dict | None":
     except Exception:
         logger.warning("[orders] complete 失敗: %s", order_id)
         return None
+
+
+def get_expiring_plans(days_before: int = 3) -> list:
+    """
+    Return list of {username, email, plan, plan_expires_at} for users whose
+    plan expires within *days_before* days and haven't been notified yet.
+    Used by the scheduled expiry-warning job.
+    """
+    import datetime as _dt
+    now = _dt.datetime.now()
+    warn_from = now.strftime("%Y-%m-%d %H:%M:%S")
+    warn_until = (now + _dt.timedelta(days=days_before)).strftime("%Y-%m-%d %H:%M:%S")
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                """SELECT username, email, plan, plan_expires_at
+                   FROM users
+                   WHERE plan != 'free'
+                     AND plan_expires_at IS NOT NULL
+                     AND plan_expires_at BETWEEN ? AND ?
+                     AND email IS NOT NULL
+                     AND email_verified = 1""",
+                (warn_from, warn_until),
+            ).fetchall()
+        return [dict(r) for r in rows]
+    except Exception:
+        logger.warning("[plan_expiry] query 失敗")
+        return []
