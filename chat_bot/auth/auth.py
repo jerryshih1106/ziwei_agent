@@ -182,6 +182,8 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_bazi_profiles_session ON bazi_profiles(session_id)")
         conn.commit()
+    # 補齊舊資料庫缺少的欄位（新 DB 此函式是 no-op）
+    _ensure_user_plan_columns()
 
 
 def save_chat_message(session_id: str, role: str, content: str) -> None:
@@ -905,11 +907,6 @@ def _ensure_user_plan_columns() -> None:
         conn.commit()
 
 
-# 在模組載入時自動補欄位
-try:
-    _ensure_user_plan_columns()
-except Exception:
-    pass
 
 
 def get_user_by_session(session_id: str) -> "dict | None":
