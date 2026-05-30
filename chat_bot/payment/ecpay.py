@@ -4,6 +4,7 @@ import os
 import time
 import urllib.parse
 from typing import Any
+import urllib.request
 
 _MERCHANT_ID = os.environ.get("ECPAY_MERCHANT_ID", "")
 _HASH_KEY = os.environ.get("ECPAY_HASH_KEY", "")
@@ -75,3 +76,36 @@ def verify_callback(form_data: dict[str, str]) -> bool:
 
 def is_configured() -> bool:
     return bool(_MERCHANT_ID and _HASH_KEY and _HASH_IV)
+
+
+_QUERY_URL = (
+    "https://payment-stage.ecpay.com.tw/Cashier/QueryTradeInfo/V5"
+    if _IS_STAGE
+    else "https://payment.ecpay.com.tw/Cashier/QueryTradeInfo/V5"
+)
+
+
+def query_trade_status(order_id: str) -> "str | None":
+    """Query ECPay for trade status of *order_id*.
+    Returns '1' if paid, '0' or other string for other states, None on error.
+    """
+    if not is_configured():
+        return None
+    ts = str(int(time.time()))
+    params: dict[str, Any] = {
+        "MerchantID": _MERCHANT_ID,
+        "MerchantTradeNo": order_id[:20],
+        "TimeStamp": ts,
+    }
+    params["CheckMacValue"] = calc_check_mac_value(params, _HASH_KEY, _HASH_IV)
+    body = urllib.parse.urlencode(params).encode("utf-8")
+    try:
+        req = urllib.request.Request(_QUERY_URL, data=body, method="POST")
+        req.add_header("Content-Type", "application/x-www-form-urlencoded")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            text = resp.read().decode("utf-8")
+        # Response format: "TradeStatus=1&MerchantTradeNo=...&..."
+        pairs = dict(p.split("=", 1) for p in text.split("&") if "=" in p)
+        return pairs.get("TradeStatus")
+    except Exception:
+        return None

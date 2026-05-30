@@ -17,7 +17,7 @@ _FIELD_NAMES = {
 }
 # is_lunar is derived from context, not asked for explicitly — omitted from _FIELD_NAMES
 
-_VALID_RANGES = {"year": (1800, 2100), "month": (1, 12), "day": (1, 30), "hour": (0, 23)}
+_VALID_RANGES = {"year": (1800, 2100), "month": (1, 12), "day": (1, 31), "hour": (0, 23)}
 
 
 def _format_known(birth_info: dict) -> str:
@@ -127,12 +127,18 @@ output example（僅回傳 JSON）:
     # 國曆才做嚴格日期驗證（農曆月可達 30 日，_dt.date 會誤判為無效）
     y, m, d = birth_info.get("year"), birth_info.get("month"), birth_info.get("day")
     is_lunar_flag = bool(birth_info.get("is_lunar"))
-    if y is not None and m is not None and d is not None and not is_lunar_flag:
-        try:
-            _dt.date(y, m, d)
-        except ValueError:
-            logger.warning("[get_birth_info] 無效日期 %d-%02d-%02d，清除日欄位", y, m, d)
-            birth_info["day"] = None
+    if y is not None and m is not None and d is not None:
+        if is_lunar_flag:
+            # 農曆月最多 30 天
+            if d > 30:
+                logger.warning("[get_birth_info] 農曆日期 %d 超出範圍（最大 30），清除日欄位", d)
+                birth_info["day"] = None
+        else:
+            try:
+                _dt.date(y, m, d)
+            except ValueError:
+                logger.warning("[get_birth_info] 無效國曆日期 %d-%02d-%02d，清除日欄位", y, m, d)
+                birth_info["day"] = None
 
     logger.debug("[get_birth_info] parsing 結果: %s", birth_info)
     missing = [_FIELD_NAMES[k] for k, v in birth_info.items() if v is None and k in _FIELD_NAMES]

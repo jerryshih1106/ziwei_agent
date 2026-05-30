@@ -591,6 +591,31 @@
     .welcome-choice-icon { font-size: 2.4rem; }
     .welcome-choice-title { font-size: 1rem; font-weight: 700; color: var(--gold); }
     .welcome-choice-desc { font-size: 0.75rem; color: var(--text-muted); text-align: center; line-height: 1.5; }
+    .welcome-features {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: center;
+      max-width: 480px;
+      margin-top: 4px;
+    }
+    .welcome-feature-tag {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      background: rgba(96,144,181,0.12);
+      border: 1px solid rgba(96,144,181,0.2);
+      border-radius: 20px;
+      padding: 4px 10px;
+    }
+    .welcome-free-badge {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      border: 1px solid rgba(201,162,39,0.25);
+      border-radius: 8px;
+      padding: 8px 14px;
+      max-width: 380px;
+      line-height: 1.6;
+    }
 
     /* ── Responsive ── */
     @media (max-width: 768px) {
@@ -2054,7 +2079,19 @@
             <div class="welcome-choice-desc">紫微＋八字<br>雙盤完整解析</div>
           </div>
         </div>
-        <button class="welcome-start-btn" style="margin-top:20px;font-size:0.88rem;padding:9px 22px;opacity:0.75" onclick="startChat()">直接開始對話 →</button>
+        <div class="welcome-features">
+          <span class="welcome-feature-tag">📊 完整十二宮解說</span>
+          <span class="welcome-feature-tag">🗓 流年流月分析</span>
+          <span class="welcome-feature-tag">🀄 八字五行命盤</span>
+          <span class="welcome-feature-tag">💕 合盤配對分析</span>
+          <span class="welcome-feature-tag">🗺 人生關鍵節點</span>
+          <span class="welcome-feature-tag">📅 本週每日運勢</span>
+        </div>
+        <div class="welcome-free-badge">
+          免費版：每日 10 次對話 · 基礎命理問答<br>
+          <span style="color:var(--gold)">訂閱後</span>解鎖全部進階功能 · <span style="color:var(--gold);cursor:pointer" onclick="openUpgrade()">查看方案 →</span>
+        </div>
+        <button class="welcome-start-btn" style="margin-top:8px;font-size:0.88rem;padding:9px 22px;opacity:0.75" onclick="startChat()">直接開始對話 →</button>
       </div>
     </div>
 
@@ -2122,8 +2159,8 @@
     <!-- Login Form -->
     <div class="auth-form active" id="form-login">
       <div class="auth-error" id="login-error"></div>
-      <label class="auth-label">帳號</label>
-      <input class="auth-input" id="login-username" type="text" placeholder="請輸入帳號" maxlength="20" autocomplete="username">
+      <label class="auth-label">帳號 / 信箱</label>
+      <input class="auth-input" id="login-username" type="text" placeholder="請輸入信箱或帳號" maxlength="100" autocomplete="username">
       <label class="auth-label">密碼</label>
       <input class="auth-input" id="login-password" type="password" placeholder="請輸入密碼" maxlength="100" autocomplete="current-password">
       <button class="auth-submit" onclick="doLogin()">登入</button>
@@ -2132,8 +2169,8 @@
     <!-- Register Form -->
     <div class="auth-form" id="form-register">
       <div class="auth-error" id="register-error"></div>
-      <label class="auth-label">帳號（3-20 字元）</label>
-      <input class="auth-input" id="reg-username" type="text" placeholder="請輸入帳號" maxlength="20" autocomplete="username">
+      <label class="auth-label">電子信箱</label>
+      <input class="auth-input" id="reg-email" type="email" placeholder="請輸入電子信箱" maxlength="100" autocomplete="email">
       <label class="auth-label">密碼（至少 6 字元）</label>
       <input class="auth-input" id="reg-password" type="password" placeholder="請輸入密碼" maxlength="100" autocomplete="new-password">
       <label class="auth-label">確認密碼</label>
@@ -2279,6 +2316,9 @@
           <input class="profile-name-input" id="profile-name-input" type="text" placeholder="輸入命盤名稱（例如：媽媽、老公、2024年自己）" maxlength="30">
           <button class="profile-save-submit" onclick="saveCurrentProfile()">💾 儲存目前命盤</button>
         </div>
+        <input id="profile-search" type="text" placeholder="🔍 搜尋命盤名稱…" maxlength="30"
+          style="width:100%;padding:7px 12px;border-radius:8px;border:1px solid rgba(201,162,39,0.25);background:rgba(13,34,68,0.5);color:var(--text-light);font-size:0.85rem;margin-bottom:8px;box-sizing:border-box;outline:none"
+          oninput="_filterProfileList(this.value)">
         <div id="profile-list-body"><div class="profile-empty">載入中…</div></div>
         <div class="profile-multi-bar" id="profile-multi-bar">
           <span class="profile-multi-label" id="profile-multi-label">已選 0 個命盤</span>
@@ -2489,26 +2529,45 @@
 
 <!-- Upgrade Modal -->
 <div class="modal-overlay" id="upgrade-modal" onclick="if(event.target===this)closeUpgrade()">
-  <div class="modal-box" style="max-width:480px">
+  <div class="modal-box" style="max-width:500px">
     <div class="modal-header">
       <span class="modal-title">⭐ 升級訂閱方案</span>
       <button class="modal-close" onclick="closeUpgrade()">✕</button>
     </div>
-    <div style="padding:16px 0 8px">
-      <div id="upgrade-current-plan" style="display:none;background:rgba(39,174,96,0.12);border:1px solid rgba(39,174,96,0.35);border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:0.85rem;color:#27ae60;line-height:1.5"></div>
-      <div id="upgrade-plan-standard" style="border:1px solid rgba(201,162,39,0.4);border-radius:12px;padding:16px;margin-bottom:12px;cursor:pointer;transition:background 0.2s" onmouseover="this.style.background='rgba(201,162,39,0.08)'" onmouseout="this.style.background=''">
-        <div style="font-size:1.05rem;font-weight:600;color:var(--gold)">📅 標準月費方案</div>
-        <div style="font-size:1.5rem;font-weight:700;margin:6px 0">NT$199 <span style="font-size:0.85rem;font-weight:400;color:var(--text-muted)">/ 月</span></div>
-        <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6">✓ 無限AI對話<br>✓ 完整十二宮解說<br>✓ 流年流月分析<br>✓ 八字命盤<br>✓ 本週運勢<br>✓ 命盤庫、收藏</div>
-        <button class="qq-chip" style="margin-top:12px;width:100%;text-align:center;padding:10px" onclick="startCheckout('standard')">立即訂閱 →</button>
+    <div style="padding:12px 0 8px">
+      <!-- Locked feature context banner -->
+      <div id="upgrade-locked-feature" style="display:none;background:rgba(201,162,39,0.1);border:1px solid rgba(201,162,39,0.4);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:0.88rem;color:var(--gold);line-height:1.5">
+        🔒 您正在嘗試使用：<strong id="upgrade-locked-name"></strong>　此功能需要訂閱方案
       </div>
-      <div id="upgrade-plan-pro" style="border:1px solid rgba(201,162,39,0.6);border-radius:12px;padding:16px;cursor:pointer;background:rgba(201,162,39,0.04);transition:background 0.2s" onmouseover="this.style.background='rgba(201,162,39,0.1)'" onmouseout="this.style.background='rgba(201,162,39,0.04)'">
-        <div style="font-size:1.05rem;font-weight:600;color:var(--gold)">🏆 專業年費方案 <span style="font-size:0.75rem;background:var(--gold);color:#000;border-radius:4px;padding:2px 6px;margin-left:4px">最划算</span></div>
-        <div style="font-size:1.5rem;font-weight:700;margin:6px 0">NT$1,490 <span style="font-size:0.85rem;font-weight:400;color:var(--text-muted)">/ 年（約 NT$124/月）</span></div>
-        <div style="font-size:0.85rem;color:var(--text-muted);line-height:1.6">✓ 標準方案全部功能<br>✓ 合盤分析<br>✓ 人生節點<br>✓ 優先客服支援</div>
-        <button class="qq-chip" style="margin-top:12px;width:100%;text-align:center;padding:10px;border-color:var(--gold)" onclick="startCheckout('pro')">立即訂閱 →</button>
+      <!-- Current plan status -->
+      <div id="upgrade-current-plan" style="display:none;background:rgba(39,174,96,0.12);border:1px solid rgba(39,174,96,0.35);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:0.85rem;color:#27ae60;line-height:1.5"></div>
+      <!-- Plan comparison table -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+        <!-- Free plan -->
+        <div style="border:1px solid rgba(96,144,181,0.3);border-radius:10px;padding:12px 8px;text-align:center">
+          <div style="font-size:0.8rem;font-weight:600;color:var(--text-muted);margin-bottom:4px">免費版</div>
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px;color:var(--text-muted)">NT$0</div>
+          <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.7;text-align:left">✓ 每日10次對話<br>✓ 基礎命理問答<br>✗ 八字/流年/合盤<br>✗ 完整十二宮解說<br>✗ 命盤庫 / 收藏<br>✗ 人生節點</div>
+          <div style="margin-top:10px;font-size:0.75rem;color:var(--text-muted);background:rgba(96,144,181,0.1);border-radius:6px;padding:6px">目前方案</div>
+        </div>
+        <!-- Standard plan -->
+        <div style="border:1px solid rgba(201,162,39,0.5);border-radius:10px;padding:12px 8px;text-align:center">
+          <div style="font-size:0.8rem;font-weight:600;color:var(--gold);margin-bottom:4px">標準月費</div>
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px;color:var(--gold)">NT$199<span style="font-size:0.7rem;font-weight:400;color:var(--text-muted)">/月</span></div>
+          <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.7;text-align:left">✓ 無限AI對話<br>✓ 八字命盤<br>✓ 流年流月分析<br>✓ 完整十二宮解說<br>✓ 命盤庫、收藏<br>✓ 本週運勢</div>
+          <button class="qq-chip" style="margin-top:10px;width:100%;text-align:center;padding:8px;font-size:0.82rem" onclick="startCheckout('standard')">立即訂閱</button>
+        </div>
+        <!-- Pro plan -->
+        <div style="border:1px solid rgba(201,162,39,0.7);border-radius:10px;padding:12px 8px;text-align:center;background:rgba(201,162,39,0.05);position:relative">
+          <div style="position:absolute;top:-10px;left:50%;transform:translateX(-50%);background:var(--gold);color:#000;font-size:0.65rem;font-weight:700;border-radius:4px;padding:2px 8px;white-space:nowrap">最划算</div>
+          <div style="font-size:0.8rem;font-weight:600;color:var(--gold);margin-bottom:4px">專業年費</div>
+          <div style="font-size:1.1rem;font-weight:700;margin-bottom:8px;color:var(--gold)">NT$1,490<span style="font-size:0.7rem;font-weight:400;color:var(--text-muted)">/年</span></div>
+          <div style="font-size:0.75rem;color:var(--text-muted);line-height:1.7;text-align:left">✓ 標準版全部功能<br>✓ 合盤分析<br>✓ 人生節點<br>✓ 優先客服支援<br><br></div>
+          <button class="qq-chip" style="margin-top:10px;width:100%;text-align:center;padding:8px;font-size:0.82rem;border-color:var(--gold)" onclick="startCheckout('pro')">立即訂閱</button>
+        </div>
       </div>
-      <div id="upgrade-msg" style="margin-top:10px;text-align:center;font-size:0.85rem;color:var(--text-muted)"></div>
+      <div style="font-size:0.78rem;color:var(--text-muted);text-align:center;margin-bottom:6px">約 NT$124/月，省 37%　｜　付款後立即解鎖</div>
+      <div id="upgrade-msg" style="margin-top:8px;text-align:center;font-size:0.85rem;color:var(--text-muted)"></div>
     </div>
   </div>
 </div>
@@ -2656,8 +2715,8 @@
     const password = document.getElementById('login-password').value;
     const errEl = document.getElementById('login-error');
     errEl.textContent = '';
-    if (!username || !password) { errEl.textContent = '請填入帳號和密碼'; return; }
-    if (!_USERNAME_RE.test(username)) { errEl.textContent = '帳號只能包含英數字、底線、橫線或中文，長度 3-20'; return; }
+    if (!username || !password) { errEl.textContent = '請填入帳號／信箱和密碼'; return; }
+    if (username.length < 3 || username.length > 100) { errEl.textContent = '帳號或信箱長度不正確'; return; }
     try {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
@@ -2671,30 +2730,32 @@
     } catch { errEl.textContent = '網路錯誤，請稍後再試'; }
   }
 
+  const _EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
   async function doRegister() {
-    const username = document.getElementById('reg-username').value.trim();
+    const email    = document.getElementById('reg-email').value.trim().toLowerCase();
     const password = document.getElementById('reg-password').value;
     const confirm  = document.getElementById('reg-confirm').value;
     const errEl = document.getElementById('register-error');
     errEl.textContent = '';
-    if (!username || !password) { errEl.textContent = '請填入帳號和密碼'; return; }
-    if (!_USERNAME_RE.test(username)) { errEl.textContent = '帳號只能包含英數字、底線、橫線或中文，長度 3-20'; return; }
+    if (!email || !password) { errEl.textContent = '請填入信箱和密碼'; return; }
+    if (!_EMAIL_RE.test(email)) { errEl.textContent = '請輸入有效的電子信箱格式'; return; }
     if (password.length < 6) { errEl.textContent = '密碼至少需要 6 個字元'; return; }
     if (password !== confirm) { errEl.textContent = '兩次密碼輸入不一致'; return; }
     try {
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
       if (!res.ok) { errEl.textContent = data.detail || '註冊失敗'; return; }
       _saveAuth(data.token, data.username, data.session_id);
-      _onAuthSuccess(data.username, data.session_id);
+      _onAuthSuccess(data.username, data.session_id, true);
     } catch { errEl.textContent = '網路錯誤，請稍後再試'; }
   }
 
-  async function _onAuthSuccess(username, sessionId) {
+  async function _onAuthSuccess(username, sessionId, isNewUser = false) {
     SESSION_ID = sessionId;
     document.getElementById('auth-modal').classList.add('hidden');
     // topbar-user kept hidden (legacy); show in dropdown instead
@@ -2720,6 +2781,10 @@
         if (pr.ok) {
           const pd = await pr.json();
           _isPaid = pd.plan !== 'free';
+          _freeDailyLimit = pd.limit ?? 10;
+          _freeSummaryLimit = pd.chart_summary_limit ?? 10;
+          _freeSummaryCount = _isPaid ? 0 : (pd.chart_summary_used || 0);
+          _freeSummaryUsed = !_isPaid && _freeSummaryCount >= _freeSummaryLimit;
           _updateCallsIndicator(pd);
         }
       }
@@ -2744,7 +2809,7 @@
     _newFeaturesInit();
 
     if (hasChart) {
-      // 老用戶：有命盤 → 直接進入對話
+      // 有命盤 → 直接進入對話
       document.getElementById('welcome-screen')?.remove();
       chatStarted = true;
       const bi = (() => { try { return JSON.parse(sessionStorage.getItem('ziwei_birth_info') || 'null'); } catch { return null; } })();
@@ -2755,10 +2820,23 @@
       // 有歷史對話但尚未排盤 → 進入對話，顯示提示
       document.getElementById('welcome-screen')?.remove();
       chatStarted = true;
-      appendAIMessage(`你好，**${username}**！我是紫微AI算命大師 🔯\n\n請告訴我你的**出生年月日、時辰和性別**，我就能為你排出完整的紫微斗數命盤！\n\n例如：「我是1990年3月15日卯時出生的女生」`);
+      appendAIMessage(`歡迎回來，**${username}**！我是紫微AI算命大師 🔯\n\n請告訴我你的**出生年月日、時辰和性別**，我就能為你排出完整的紫微斗數命盤！\n\n例如：「我是1990年3月15日卯時出生的女生」`);
     } else {
-      // 全新用戶：無命盤、無歷史 → 顯示選擇卡片（welcome-screen 保留不刪）
-      chatStarted = false;
+      // 無命盤、無歷史（新註冊或重新登入）→ 顯示招呼說明
+      document.getElementById('welcome-screen')?.remove();
+      chatStarted = true;
+      const greeting = isNewUser ? `歡迎加入，**${username}**` : `歡迎回來，**${username}**`;
+      appendAIMessage(
+        `${greeting}！我是紫微AI算命大師 🔯\n\n` +
+        `我能根據你的出生資料排出**紫微斗數命盤**，並為你解析：\n` +
+        `- 🌟 命格特質與人生格局\n` +
+        `- 💼 事業運與財運走向\n` +
+        `- 💕 感情、婚姻與緣分\n` +
+        `- 🗓 流年、流月運勢\n\n` +
+        `**免費帳號**每天可提問 **${_freeDailyLimit} 次**，並享有 **${_freeSummaryLimit} 次精簡解說**。\n\n` +
+        `現在就告訴我你的**出生年月日、時辰和性別**，開始排盤吧！\n\n` +
+        `例如：「我是1990年3月15日卯時出生的女生」`
+      );
     }
     document.getElementById('user-input').focus();
   }
@@ -2799,6 +2877,10 @@
   let isLoading = false;
   let calendarMode = 'solar'; // 'solar' = 國曆, 'lunar' = 農曆
   let _isPaid = false;
+  let _freeDailyLimit = 10;     // populated from server (PLAN_DAILY_LIMITS["free"])
+  let _freeSummaryCount = 0;    // free tier usage count, synced from server
+  let _freeSummaryLimit = 10;   // populated from server (FREE_SUMMARY_LIMIT)
+  let _freeSummaryUsed = false; // true when count >= limit
 
   function _applySubscriptionGate() {
     document.querySelectorAll('[data-premium]').forEach(btn => {
@@ -2833,32 +2915,41 @@
         const pd = await pr.json();
         const wasUnpaid = !_isPaid;
         _isPaid = pd.plan !== 'free';
+        _freeSummaryLimit = pd.chart_summary_limit ?? 10;
+        _freeSummaryCount = _isPaid ? 0 : (pd.chart_summary_used || 0);
+        _freeSummaryUsed = !_isPaid && _freeSummaryCount >= _freeSummaryLimit;
         if (wasUnpaid !== !_isPaid) _applySubscriptionGate();
         _updateCallsIndicator(pd);
       }
     } catch {}
   }
 
-  function _showUpgradeMsg() {
-    if (!chatStarted) { document.getElementById('welcome-screen')?.remove(); chatStarted = true; }
-    appendAIMessage('🔒 此功能為**訂閱版**專屬。\n\n升級後可無限使用：八字排盤、流年流月、本週運勢、命盤查看、人生節點、合盤分析、命盤庫、收藏、歷史等全部功能。\n\n👉 [點此升級訂閱](#upgrade-modal)');
+  function _showUpgradeMsg(featureName = '') {
     closeMenu();
-    // Show upgrade modal directly
-    setTimeout(() => openUpgrade(), 300);
+    openUpgrade(featureName);
   }
 
   // Intercept clicks on locked premium buttons (capture phase, before onclick fires)
   document.getElementById('topbar-dropdown').addEventListener('click', async (e) => {
     const btn = e.target.closest('[data-premium]');
     if (!btn) return;
-    if (!_isPaid) {
-      // Re-check plan status in case subscription was completed in another tab
-      await _refreshPlanStatus();
-    }
-    if (_isPaid) return;  // now genuinely paid — let onclick proceed
+    if (_isPaid) return;  // fast path: already known paid — let onclick proceed
+
+    // Block synchronously BEFORE any await; otherwise the onclick fires during the await
     e.stopImmediatePropagation();
     e.preventDefault();
-    _showUpgradeMsg();
+
+    // Re-check plan in case subscription was completed in another tab
+    await _refreshPlanStatus();
+
+    if (_isPaid) {
+      // Now confirmed paid — re-trigger so the original onclick runs
+      btn.click();
+      return;
+    }
+    // Extract clean feature name from button text (strip emoji prefix if any)
+    const rawText = btn.textContent.trim().replace(/^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27FF}️\s]+/u, '').trim();
+    _showUpgradeMsg(rawText || btn.textContent.trim());
   }, true);
 
   function setCalendarMode(mode) {
@@ -3257,10 +3348,17 @@
             if (evt.rate_limited) {
               streamDone = true;
               if (bubble) flushRender(bubble, accumulated);
+              _refreshPlanStatus();
               // Show upgrade CTA chip
               const wrap = document.createElement('div');
               wrap.style.cssText = 'display:flex;justify-content:center;padding:4px 0 8px;';
-              wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;border-color:rgba(201,162,39,0.5);color:var(--gold)" onclick="openUpgrade()">⭐ 升級解除限制</div>`;
+              wrap.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;gap:8px;padding:8px 0">
+                <div style="font-size:0.82rem;color:var(--text-muted)">免費版每日 10 次已用完 · 訂閱後無限使用</div>
+                <div style="display:flex;gap:8px">
+                  <div class="qq-chip" style="padding:8px 18px;border-color:rgba(201,162,39,0.6);color:var(--gold)" onclick="openUpgrade()">⭐ NT$199/月 — 立即升級</div>
+                  <div class="qq-chip" style="padding:8px 14px;font-size:0.8rem;border-color:rgba(201,162,39,0.4)" onclick="openUpgrade()">查看方案比較</div>
+                </div>
+              </div>`;
               document.getElementById('messages').appendChild(wrap);
               wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
               break;
@@ -3299,6 +3397,7 @@
             if (_streamHadChart) {
               setTimeout(() => _showSummaryPrompt(), 400);
             }
+            if (!_isPaid) _refreshPlanStatus();
             streamDone = true;
             break;  // 跳出 for 迴圈
           }
@@ -4247,6 +4346,8 @@
   // ── Unified Library ───────────────────────────────────────────
   function openProfiles(tab) {
     document.getElementById('profiles-modal').classList.add('open');
+    const searchEl = document.getElementById('profile-search');
+    if (searchEl) searchEl.value = '';
     switchLibTab(tab || 'ziwei');
     _loadProfiles();
     _loadBaziLibrary();
@@ -4309,6 +4410,14 @@
       });
       body.appendChild(list);
     } catch { body.innerHTML = '<div class="profile-empty">載入失敗</div>'; }
+  }
+
+  function _filterProfileList(q) {
+    const term = q.trim().toLowerCase();
+    document.querySelectorAll('#profile-list-body .profile-item').forEach(item => {
+      const name = (item.querySelector('.profile-item-name')?.textContent || '').toLowerCase();
+      item.style.display = (!term || name.includes(term)) ? '' : 'none';
+    });
   }
 
   function _onProfileCbChange(cb) {
@@ -4424,7 +4533,7 @@
     wrap.id = 'full-analysis-prompt-chip';
     wrap.style.cssText = 'display:flex;justify-content:center;padding:4px 0 8px;';
     if (!_isPaid) {
-      wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;opacity:0.6" onclick="_showUpgradeMsg()">📖 完整解說 🔒</div>`;
+      wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;opacity:0.6" onclick="_showUpgradeMsg('完整十二宮解說')">📖 完整解說 🔒</div>`;
     } else {
       wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px" onclick="document.getElementById('full-analysis-prompt-chip')?.remove();_renderFullHoroscope()">📖 完整解說</div>`;
     }
@@ -4457,8 +4566,19 @@
     document.getElementById('send-btn').disabled = true;
     document.getElementById('stop-btn').style.display = '';
     showTyping();
+    // U4: progress indicator for long-running horoscope report
+    const progressEl = document.createElement('div');
+    progressEl.id = 'horoscope-progress';
+    progressEl.style.cssText = 'text-align:center;font-size:0.78rem;color:var(--text-muted);padding:4px 0;';
+    progressEl.textContent = '正在整理十二宮命盤解說，約需 20-40 秒…';
+    document.getElementById('messages').appendChild(progressEl);
     let bubble = null;
     let accumulated = '';
+    const _progressInterval = setInterval(() => {
+      if (accumulated && progressEl.parentNode) {
+        progressEl.textContent = `已生成 ${accumulated.length} 字，繼續產生中…`;
+      }
+    }, 1500);
     const tok = _getStoredToken() || '';
     const es = new EventSource(`/api/horoscope-report?session_id=${encodeURIComponent(SESSION_ID)}&token=${encodeURIComponent(tok)}`);
     es.onmessage = (e) => {
@@ -4471,6 +4591,8 @@
       }
       if (data.done) {
         es.close();
+        clearInterval(_progressInterval);
+        progressEl.remove();
         if (bubble) flushRender(bubble, accumulated);
         removeTyping();
         isLoading = false;
@@ -4480,6 +4602,8 @@
     };
     es.onerror = () => {
       es.close();
+      clearInterval(_progressInterval);
+      progressEl.remove();
       removeTyping();
       if (!accumulated) appendAIMessage('⚠️ 載入失敗，請稍後再試。');
       else if (bubble) flushRender(bubble, accumulated);
@@ -4495,12 +4619,21 @@
     const wrap = document.createElement('div');
     wrap.id = 'summary-prompt-chip';
     wrap.style.cssText = 'display:flex;justify-content:center;padding:8px 0 4px;';
-    wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;border-color:rgba(201,162,39,0.5);color:var(--gold)" onclick="document.getElementById('summary-prompt-chip')?.remove();openChartSummary()">📋 點擊查看命盤精簡解說</div>`;
+    if (!_isPaid && _freeSummaryUsed) {
+      wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;opacity:0.6" onclick="_showUpgradeMsg('精簡解說')">📋 精簡解說 🔒（免費 ${_freeSummaryLimit} 次已用完）</div>`;
+    } else {
+      const label = (!_isPaid) ? `📋 點擊查看命盤精簡解說（免費體驗，剩 ${_freeSummaryLimit - _freeSummaryCount} 次）` : '📋 點擊查看命盤精簡解說';
+      wrap.innerHTML = `<div class="qq-chip" style="font-size:0.88rem;padding:7px 16px;border-color:rgba(201,162,39,0.5);color:var(--gold)" onclick="document.getElementById('summary-prompt-chip')?.remove();openChartSummary()">${label}</div>`;
+    }
     document.getElementById('messages').appendChild(wrap);
     wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }
 
   function openChartSummary() {
+    if (!_isPaid && _freeSummaryUsed) {
+      _showUpgradeMsg('精簡解說');
+      return;
+    }
     if (isLoading) {
       // Don't remove the chip — user can retry once loading finishes
       appendAIMessage('⏳ 請等待目前操作完成後再試。');
@@ -4543,6 +4676,7 @@
         isLoading = false;
         document.getElementById('send-btn').disabled = false;
         document.getElementById('stop-btn').style.display = 'none';
+        if (!_isPaid) { _freeSummaryCount++; _freeSummaryUsed = _freeSummaryCount >= _freeSummaryLimit; }
         _showFullAnalysisPrompt();
       }
     };
@@ -4559,10 +4693,18 @@
     };
   }
 
-  async function openUpgrade() {
+  async function openUpgrade(featureName = '') {
     document.getElementById('upgrade-modal').classList.add('open');
     document.getElementById('upgrade-msg').textContent = '';
-    // Show current plan status inside the modal
+    // Contextual locked-feature banner
+    const lockedBanner = document.getElementById('upgrade-locked-feature');
+    if (featureName) {
+      document.getElementById('upgrade-locked-name').textContent = featureName;
+      lockedBanner.style.display = 'block';
+    } else {
+      lockedBanner.style.display = 'none';
+    }
+    // Show current plan status
     const planBanner = document.getElementById('upgrade-current-plan');
     planBanner.style.display = 'none';
     const token = _getStoredToken();
@@ -4573,13 +4715,11 @@
           const pd = await pr.json();
           const planNames = { free: '免費版', standard: '標準月費版', pro: '專業年費版' };
           const name = planNames[pd.plan] || pd.plan;
-          if (pd.plan === 'free') {
-            planBanner.innerHTML = `📋 目前方案：<strong>${name}</strong>　升級後立即解鎖所有功能`;
-          } else {
+          if (pd.plan !== 'free') {
             const exp = pd.expires_at ? `（到期：${pd.expires_at.slice(0,10)}）` : '';
             planBanner.innerHTML = `✅ 目前方案：<strong>${name}</strong>${exp}　感謝您的訂閱！`;
+            planBanner.style.display = 'block';
           }
-          planBanner.style.display = 'block';
         }
       } catch {}
     }

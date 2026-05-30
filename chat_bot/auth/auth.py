@@ -1,3 +1,4 @@
+import datetime as _dt
 import hashlib
 import hmac
 import logging
@@ -8,6 +9,16 @@ import time
 import uuid
 from pathlib import Path
 from typing import Optional
+
+_TZ_TAIPEI = _dt.timezone(_dt.timedelta(hours=8))
+
+
+def _taipei_today() -> str:
+    return _dt.datetime.now(_TZ_TAIPEI).strftime("%Y-%m-%d")
+
+
+def _taipei_now() -> str:
+    return _dt.datetime.now(_TZ_TAIPEI).strftime("%Y-%m-%d %H:%M:%S")
 
 logger = logging.getLogger(__name__)
 
@@ -69,7 +80,8 @@ def init_db() -> None:
                 api_calls_reset_at TEXT,
                 password_reset_token TEXT,
                 password_reset_expires TEXT,
-                password_version INTEGER NOT NULL DEFAULT 0
+                password_version INTEGER NOT NULL DEFAULT 0,
+                expiry_notified_at TEXT
             )
         """)
         conn.execute("""
@@ -82,6 +94,7 @@ def init_db() -> None:
             )
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_session ON chat_history(session_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_history_created ON chat_history(session_id, created_at DESC)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS daily_fortune (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -186,9 +199,21 @@ def init_db() -> None:
     _ensure_user_plan_columns()
 
 
+def _strip_chart_table(content: str) -> str:
+    """Remove large markdown table blocks (the 紫微 chart) from content before DB storage.
+    The chart is stored separately in the horoscope file, so it's redundant in chat history.
+    """
+    import re as _re
+    # Strip contiguous blocks of table rows (3+ lines starting with |)
+    stripped = _re.sub(r'(\|[^\n]+\n){3,}', ', 請於命盤查看\n', content)
+    return stripped.strip()
+
+
 def save_chat_message(session_id: str, role: str, content: str) -> None:
     """儲存單一訊息到 chat_history（背景執行）。role: 'user' | 'ai'"""
     now = time.strftime("%Y-%m-%d %H:%M:%S")
+    if role == "ai":
+        content = _strip_chart_table(content)
     try:
         with get_db() as conn:
             conn.execute(
@@ -285,7 +310,9 @@ def save_horoscope(session_id: str, horoscope: str, chart_table: str = "", birth
     data: dict = {"horoscope": horoscope, "chart_table": chart_table}
     if birth_info:
         data["birth_info"] = birth_info
-    path.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    tmp = path.with_suffix(".tmp")
+    tmp.write_text(_json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    tmp.replace(path)  # atomic rename — prevents partial-write corruption
     logger.info("[horoscope] 已儲存: %s", session_id)
 
 
@@ -360,15 +387,15 @@ def _verify_password(password: str, stored: str) -> bool:
         return False
 
 
-def create_user(username: str, password: str) -> Optional[dict]:
+def create_user(username: str, password: str, email: "str | None" = None) -> Optional[dict]:
     """Return user dict on success, None if username already taken."""
     session_id = str(uuid.uuid4())
-    now = time.strftime("%Y-%m-%d %H:%M:%S")
+    now = _taipei_now()
     try:
         with get_db() as conn:
             conn.execute(
-                "INSERT INTO users (username, password_hash, session_id, created_at) VALUES (?, ?, ?, ?)",
-                (username, _make_password_entry(password), session_id, now),
+                "INSERT INTO users (username, password_hash, session_id, created_at, email) VALUES (?, ?, ?, ?, ?)",
+                (username, _make_password_entry(password), session_id, now, email),
             )
             conn.commit()
         return {"username": username, "session_id": session_id, "password_version": 0}
@@ -862,9 +889,11 @@ def get_message_reaction(session_id: str, msg_id: str) -> "str | None":
 
 # ── Plan & subscription management ────────────────────────────
 
-_PLAN_DAILY_LIMITS: dict = {"free": 20, "standard": 200, "pro": 9999}
+_PLAN_DAILY_LIMITS: dict = {"free": 3, "standard": 200, "pro": 9999}
 _PLAN_PRICES: dict = {"standard": 199, "pro": 1490}
 _PLAN_DURATIONS: dict = {"standard": 30, "pro": 365}
+_TRIAL_DAYS: int = 7
+FREE_SUMMARY_LIMIT: int = 1
 
 
 def _ensure_user_plan_columns() -> None:
@@ -881,6 +910,8 @@ def _ensure_user_plan_columns() -> None:
         ("password_reset_token",  "TEXT"),
         ("password_reset_expires","TEXT"),
         ("password_version",      "INTEGER NOT NULL DEFAULT 0"),
+        ("expiry_notified_at",    "TEXT"),
+        ("chart_summary_used",    "INTEGER NOT NULL DEFAULT 0"),
     ]
     with get_db() as conn:
         existing = {row[1] for row in conn.execute("PRAGMA table_info(users)").fetchall()}
@@ -1039,24 +1070,34 @@ def get_user_plan(session_id: str) -> dict:
     try:
         with get_db() as conn:
             row = conn.execute(
-                "SELECT plan, plan_expires_at, api_calls_today, api_calls_reset_at, email, email_verified FROM users WHERE session_id=?",
+                "SELECT plan, plan_expires_at, api_calls_today, api_calls_reset_at, email, email_verified, created_at,"
+                " COALESCE(chart_summary_used, 0) AS chart_summary_used FROM users WHERE session_id=?",
                 (session_id,),
             ).fetchone()
         if not row:
-            return {"plan": "free", "expires_at": None, "calls_today": 0, "limit": 10, "email": None, "email_verified": False}
+            return {"plan": "free", "expires_at": None, "calls_today": 0, "limit": _PLAN_DAILY_LIMITS["free"], "email": None, "email_verified": False, "chart_summary_used": 0, "chart_summary_limit": FREE_SUMMARY_LIMIT}
         plan = row["plan"] or "free"
-        now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+        now_str = _taipei_now()
         if plan != "free" and row["plan_expires_at"] and row["plan_expires_at"] < now_str:
             plan = "free"
             with get_db() as conn:
                 conn.execute("UPDATE users SET plan='free', plan_expires_at=NULL WHERE session_id=?", (session_id,))
                 conn.commit()
-        today = time.strftime("%Y-%m-%d")
+        today = _taipei_today()
         reset_date = (row["api_calls_reset_at"] or "")[:10]
         calls_today = row["api_calls_today"] or 0
         if reset_date != today:
             calls_today = 0
         limit = _PLAN_DAILY_LIMITS.get(plan, 10)
+        # Detect trial: plan is paid but registered within TRIAL_DAYS ago
+        is_trial = False
+        if plan != "free" and row["plan_expires_at"] and row["created_at"]:
+            try:
+                created_dt = _dt.datetime.strptime(row["created_at"][:19], "%Y-%m-%d %H:%M:%S").replace(tzinfo=_TZ_TAIPEI)
+                age_days = (_dt.datetime.now(_TZ_TAIPEI) - created_dt).days
+                is_trial = age_days <= _TRIAL_DAYS
+            except Exception:
+                pass
         return {
             "plan": plan,
             "expires_at": row["plan_expires_at"],
@@ -1064,17 +1105,20 @@ def get_user_plan(session_id: str) -> dict:
             "limit": limit,
             "email": row["email"],
             "email_verified": bool(row["email_verified"]),
+            "is_trial": is_trial,
+            "chart_summary_used": row["chart_summary_used"],
+            "chart_summary_limit": FREE_SUMMARY_LIMIT if plan == "free" else None,
         }
     except Exception:
-        return {"plan": "free", "expires_at": None, "calls_today": 0, "limit": 10, "email": None, "email_verified": False}
+        return {"plan": "free", "expires_at": None, "calls_today": 0, "limit": _PLAN_DAILY_LIMITS["free"], "email": None, "email_verified": False, "is_trial": False, "chart_summary_used": 0, "chart_summary_limit": FREE_SUMMARY_LIMIT}
 
 
 def check_and_increment_api_calls(session_id: str) -> "tuple[bool, int]":
     """檢查速率限制並原子性遞增計數器。回傳 (allowed, remaining)。
     使用 BEGIN IMMEDIATE 確保 SELECT+UPDATE 不存在 TOCTOU 競態條件。
     """
-    today = time.strftime("%Y-%m-%d")
-    now_str = time.strftime("%Y-%m-%d %H:%M:%S")
+    today = _taipei_today()
+    now_str = _taipei_now()
     conn = get_db()
     conn.isolation_level = None  # 手動管理事務
     try:
@@ -1188,13 +1232,13 @@ def complete_payment_order(order_id: str, trade_no: str) -> "dict | None":
 def get_expiring_plans(days_before: int = 3) -> list:
     """
     Return list of {username, email, plan, plan_expires_at} for users whose
-    plan expires within *days_before* days and haven't been notified yet.
+    plan expires within *days_before* days and haven't been notified in the last 48 hours.
     Used by the scheduled expiry-warning job.
     """
-    import datetime as _dt
-    now = _dt.datetime.now()
+    now = _dt.datetime.now(_TZ_TAIPEI)
     warn_from = now.strftime("%Y-%m-%d %H:%M:%S")
     warn_until = (now + _dt.timedelta(days=days_before)).strftime("%Y-%m-%d %H:%M:%S")
+    notified_cutoff = (now - _dt.timedelta(hours=48)).strftime("%Y-%m-%d %H:%M:%S")
     try:
         with get_db() as conn:
             rows = conn.execute(
@@ -1204,10 +1248,50 @@ def get_expiring_plans(days_before: int = 3) -> list:
                      AND plan_expires_at IS NOT NULL
                      AND plan_expires_at BETWEEN ? AND ?
                      AND email IS NOT NULL
-                     AND email_verified = 1""",
-                (warn_from, warn_until),
+                     AND email_verified = 1
+                     AND (expiry_notified_at IS NULL OR expiry_notified_at < ?)""",
+                (warn_from, warn_until, notified_cutoff),
             ).fetchall()
         return [dict(r) for r in rows]
     except Exception:
         logger.warning("[plan_expiry] query 失敗")
         return []
+
+
+def mark_expiry_notified(username: str) -> None:
+    """Record that an expiry warning was sent to this user."""
+    now = _taipei_now()
+    try:
+        with get_db() as conn:
+            conn.execute("UPDATE users SET expiry_notified_at=? WHERE username=?", (now, username))
+            conn.commit()
+    except Exception:
+        logger.warning("[plan_expiry] mark_notified 失敗: %s", username)
+
+
+# ── Free chart-summary quota ──────────────────────────────────
+
+def get_free_summary_used(session_id: str) -> int:
+    """回傳免費帳號已使用精簡解說的次數。"""
+    try:
+        with get_db() as conn:
+            row = conn.execute(
+                "SELECT COALESCE(chart_summary_used, 0) FROM users WHERE session_id=?",
+                (session_id,),
+            ).fetchone()
+        return row[0] if row else 0
+    except Exception:
+        return 0
+
+
+def mark_free_summary_used(session_id: str) -> None:
+    """將免費精簡解說使用次數 +1。"""
+    try:
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE users SET chart_summary_used = COALESCE(chart_summary_used, 0) + 1 WHERE session_id=?",
+                (session_id,),
+            )
+            conn.commit()
+    except Exception:
+        logger.warning("[chart_summary] mark_used 失敗: %s", session_id)

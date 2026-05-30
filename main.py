@@ -132,6 +132,10 @@ def _run_periodic_maintenance():
         except Exception:
             logger.exception("[maintenance] plan expiry warning 失敗")
         try:
+            _recover_stale_orders()
+        except Exception:
+            logger.exception("[maintenance] stale order recovery 失敗")
+        try:
             from chat_bot.auth.auth import cleanup_orphan_horoscopes
             active = set(_store._last_seen.keys())
             cleanup_orphan_horoscopes(active)
@@ -155,15 +159,25 @@ def _vacuum_sqlite():
 
 
 def _backup_sqlite():
-    """Copy users.db to a timestamped backup, keeping the most recent 3 copies."""
-    import shutil
+    """Hot backup users.db using SQLite's native backup API (safe with WAL), keep last 3 copies."""
+    import sqlite3 as _sqlite3
     from chat_bot.auth.auth import DB_PATH
+    if not os.environ.get("DATA_DIR"):
+        logger.warning("[backup] DATA_DIR 未設定，備份與主 DB 在同一臨時目錄，重啟後均遺失")
     db_path = DB_PATH
     backup_dir = db_path.parent / "backups"
     backup_dir.mkdir(exist_ok=True)
     ts = time.strftime("%Y%m%d_%H%M%S")
     dest = backup_dir / f"users_{ts}.db"
-    shutil.copy2(db_path, dest)
+    # Use SQLite online backup API — handles WAL and concurrent writes safely
+    src = _sqlite3.connect(str(db_path))
+    dst = _sqlite3.connect(str(dest))
+    try:
+        src.backup(dst)
+    finally:
+        dst.close()
+        src.close()
+    size_kb = round(dest.stat().st_size / 1024, 1)
     # Prune old backups — keep newest 3
     existing = sorted(backup_dir.glob("users_*.db"), key=lambda p: p.stat().st_mtime, reverse=True)
     for old in existing[3:]:
@@ -171,7 +185,7 @@ def _backup_sqlite():
             old.unlink()
         except Exception:
             pass
-    logger.info("[maintenance] SQLite backup written: %s", dest.name)
+    logger.info("[maintenance] SQLite backup written: %s (%s KB)", dest.name, size_kb)
 
 
 def _send_expiry_warnings():
@@ -182,14 +196,42 @@ def _send_expiry_warnings():
         return
     try:
         from chat_bot.email_service import send_plan_expiry_warning
+        from chat_bot.auth.auth import mark_expiry_notified
         for u in expiring:
             try:
                 send_plan_expiry_warning(u["email"], u["username"], u["plan"], u["plan_expires_at"])
+                mark_expiry_notified(u["username"])
                 logger.info("[maintenance] expiry warning sent: %s", u["username"])
             except Exception:
                 logger.warning("[maintenance] expiry warning 發送失敗: %s", u["username"])
     except ImportError:
         pass  # email service not configured
+
+
+def _recover_stale_orders():
+    """M3: Check pending orders older than 20 minutes against ECPay and complete if paid."""
+    from chat_bot.auth.auth import get_db, complete_payment_order, activate_plan, _PLAN_DURATIONS
+    from chat_bot.payment.ecpay import query_trade_status, is_configured
+    if not is_configured():
+        return
+    cutoff = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(time.time() - 1200))  # 20 min ago
+    try:
+        with get_db() as conn:
+            rows = conn.execute(
+                "SELECT order_id, session_id, plan FROM orders WHERE status='pending' AND created_at < ?",
+                (cutoff,),
+            ).fetchall()
+    except Exception:
+        return
+    for row in rows:
+        order_id, session_id, plan = row["order_id"], row["session_id"], row["plan"]
+        trade_status = query_trade_status(order_id)
+        if trade_status == "1":
+            order = complete_payment_order(order_id, "auto-recovered")
+            if order:
+                duration = _PLAN_DURATIONS.get(plan, 30)
+                activate_plan(session_id, plan, duration)
+                logger.info("[maintenance] M3 recovered order %s → plan=%s session=%s", order_id, plan, session_id)
 
 
 @asynccontextmanager
@@ -207,8 +249,14 @@ async def lifespan(app: FastAPI):
     except Exception:
         _git_hash = "unknown"
     logger.info("[startup] 紫微AI 啟動 | git=%s | model=%s | pid=%d", _git_hash, GlobalConfig.MODEL, os.getpid())
-    # O3: document known limitation — _login_attempts is process-local, not shared across workers
-    logger.info("[startup] 注意：_login_attempts 為 process-local，多 worker 部署時暴力破解防護不跨 worker 共享")
+    # S5: cross-worker rate limiting limitation
+    worker_count = int(os.environ.get("WEB_CONCURRENCY", 1))
+    if worker_count > 1:
+        logger.warning(
+            "[startup] S5 限制：_login_attempts/_failed_logins 為 process-local（%d workers），"
+            "多 worker 部署時暴力破解防護不跨 worker 共享。如需跨 worker 速率限制，請導入 Redis。",
+            worker_count,
+        )
     _bg.submit(prune_chat_history)  # initial chat-history retention cleanup at startup
     # Start 30-minute periodic maintenance scheduler
     _scheduler_stop.clear()
@@ -301,6 +349,11 @@ _LOGIN_MAX_ATTEMPTS = 10   # 10 次
 _LOGIN_WINDOW_SECS  = 300  # 5 分鐘內
 _login_attempts_lock = threading.Lock()
 
+# Per-username failed login tracking (blocks distributed botnet attacks)
+_failed_logins: dict = _defaultdict(list)
+_FAILED_MAX = 8    # 8 次失敗
+_FAILED_WINDOW = 600  # 10 分鐘內
+
 
 def _check_login_rate(ip: str) -> bool:
     """回傳 True 表示允許，False 表示已超過速率限制。"""
@@ -312,6 +365,21 @@ def _check_login_rate(ip: str) -> bool:
             return False
         _login_attempts[ip].append(now)
     return True
+
+
+def _record_failed_login(username: str) -> None:
+    now = time.time()
+    with _login_attempts_lock:
+        _failed_logins[username] = [t for t in _failed_logins[username] if now - t < _FAILED_WINDOW]
+        _failed_logins[username].append(now)
+
+
+def _is_username_locked(username: str) -> bool:
+    now = time.time()
+    with _login_attempts_lock:
+        recent = [t for t in _failed_logins[username] if now - t < _FAILED_WINDOW]
+        _failed_logins[username] = recent
+        return len(recent) >= _FAILED_MAX
 
 
 # ── 啟動安全性檢查 ────────────────────────────────────────────
@@ -335,6 +403,12 @@ if not os.environ.get("GOOGLE_API_KEY") and not os.environ.get("ANTHROPIC_API_KE
     logger.error("[startup] 未設定任何 LLM API 金鑰，AI 功能將無法運作。")
 if _MISSING_CRITICAL:
     logger.error("[startup] 缺少必要設定項目: %s — 請檢查 .env 檔案", ", ".join(_MISSING_CRITICAL))
+# O1: warn if DATA_DIR is not set — data will be lost on pod restart
+if not os.environ.get("DATA_DIR"):
+    logger.warning(
+        "[startup] DATA_DIR 未設定！資料庫存放於程式目錄，Zeabur 重啟後資料將遺失。"
+        "請建立 Volume 掛載至 /data 並設定 DATA_DIR=/data 環境變數。"
+    )
 
 # ── API Key 驗證 ──────────────────────────────────────────────
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -372,16 +446,18 @@ class ResetRequest(BaseModel):
 
 
 class RegisterRequest(BaseModel):
-    username: str
+    email: str
     password: str
 
-    @field_validator("username")
+    @field_validator("email")
     @classmethod
-    def username_chars(cls, v: str) -> str:
+    def email_format(cls, v: str) -> str:
         import re as _re
-        v = v.strip()
-        if not _re.match(r"^[a-zA-Z0-9_\-一-鿿]{3,20}$", v):
-            raise ValueError("帳號只能包含英數字、底線、橫線或中文，長度 3-20")
+        v = v.strip().lower()
+        if not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("請輸入有效的電子信箱格式")
+        if len(v) > 100:
+            raise ValueError("信箱長度不得超過 100 字元")
         return v
 
 
@@ -569,12 +645,24 @@ def index(request: Request):
 @app.get("/health")
 async def health_check():
     """供 uptime 監控使用。回傳服務狀態與各子系統就緒狀態。"""
-    from chat_bot.auth.auth import get_db
+    from chat_bot.auth.auth import get_db, DB_PATH
     db_ok = False
     try:
         with get_db() as conn:
             conn.execute("SELECT 1")
         db_ok = True
+    except Exception:
+        pass
+    # Disk space check for persistent storage
+    disk_info = {}
+    try:
+        import shutil as _shutil
+        usage = _shutil.disk_usage(DB_PATH.parent)
+        disk_info = {
+            "free_gb": round(usage.free / 1e9, 2),
+            "total_gb": round(usage.total / 1e9, 2),
+            "persistent": bool(os.environ.get("DATA_DIR")),
+        }
     except Exception:
         pass
     status_code = 200 if _AppState.is_ready() and db_ok else 503
@@ -584,6 +672,7 @@ async def health_check():
             "status": "ok" if status_code == 200 else "degraded",
             "pipeline": _AppState.is_ready(),
             "db": db_ok,
+            "disk": disk_info,
         },
     )
 
@@ -607,17 +696,17 @@ async def api_register(body: RegisterRequest, request: Request):
     if not GlobalConfig.ALLOW_REGISTER:
         raise HTTPException(status_code=403, detail="目前不開放自行註冊")
     from chat_bot.auth.auth import create_user, create_token
-    username = body.username.strip()
+    email = body.email  # already validated & lowercased by pydantic
     password = body.password
-    if len(username) < 3 or len(username) > 20:
-        raise HTTPException(status_code=400, detail="帳號長度需為 3-20 字元")
     if len(password) < 6:
         raise HTTPException(status_code=400, detail="密碼至少需要 6 個字元")
-    user = create_user(username, password)
+    if not any(c.isalpha() for c in password):
+        raise HTTPException(status_code=400, detail="密碼必須包含至少一個英文字母")
+    user = create_user(email, password, email=email)
     if user is None:
-        raise HTTPException(status_code=409, detail="帳號已被使用")
+        raise HTTPException(status_code=409, detail="此信箱已被註冊，請直接登入或使用忘記密碼")
     token = create_token(user["username"], user["session_id"], user.get("password_version", 0))
-    return {"token": token, "username": user["username"], "session_id": user["session_id"]}
+    return {"token": token, "username": user["username"], "session_id": user["session_id"], "is_new_user": True}
 
 
 @app.post("/api/auth/login")
@@ -625,9 +714,13 @@ async def api_login(body: LoginRequest, request: Request):
     client_ip = request.client.host if request.client else "unknown"
     if not _check_login_rate(client_ip):
         raise HTTPException(status_code=429, detail="登入嘗試過於頻繁，請 5 分鐘後再試")
+    username = body.username.strip()
+    if _is_username_locked(username):
+        raise HTTPException(status_code=429, detail="此帳號登入失敗次數過多，請 10 分鐘後再試")
     from chat_bot.auth.auth import authenticate_user, create_token
-    user = authenticate_user(body.username.strip(), body.password)
+    user = authenticate_user(username, body.password)
     if user is None:
+        _record_failed_login(username)
         raise HTTPException(status_code=401, detail="帳號或密碼錯誤")
     token = create_token(user["username"], user["session_id"], user.get("password_version", 0))
     return {"token": token, "username": user["username"], "session_id": user["session_id"]}
@@ -674,12 +767,16 @@ async def api_chat(body: ChatRequest):
         _evict_stale_sessions()
         _touch_session(session_id)
 
-        # 速率限制：與 /api/chat/stream 保持一致（免費方案每日 10 次）
+        # 速率限制：排盤流程不計入（命盤建立後才開始計費）
         if not is_reset:
             from chat_bot.auth.auth import check_and_increment_api_calls as _check_rate
-            _allowed, _remaining = await run_in_threadpool(_check_rate, session_id)
-            if not _allowed:
-                return JSONResponse(status_code=429, content={"reply": "⚠️ 今日免費使用次數已達上限（20次）。升級付費方案即可無限使用！"})
+            from chat_bot.auth.auth import _HOROSCOPE_DIR, _safe_sid
+            _horo_file = _HOROSCOPE_DIR / f"{_safe_sid(session_id)}.json"
+            _session_has_horoscope = bool(HOROSCOPE.get(session_id)) or _horo_file.exists()
+            if _session_has_horoscope:
+                _allowed, _remaining = await run_in_threadpool(_check_rate, session_id)
+                if not _allowed:
+                    return JSONResponse(status_code=429, content={"reply": f"⚠️ 今日免費使用次數已達上限。升級付費方案即可無限使用！"})
 
         from chat_bot.utils.user_playbook import load_playbook, update_playbook
         user_profile = USER_PROFILES.get(session_id) or load_playbook(session_id)
@@ -742,7 +839,7 @@ async def api_chat(body: ChatRequest):
                     _new_bi = output.get("birth_info") or None
                     _store.set_horoscope_atomic(session_id, _new_h, _new_ct, _new_bi)
                     if HOROSCOPE[session_id]:
-                        from chat_bot.auth.auth import save_horoscope
+                        from chat_bot.auth.auth import save_horoscope, get_db as _get_db
                         _h_snap = HOROSCOPE[session_id]
                         _ct_snap = CHART_TABLE.get(session_id, "")
                         _bi_snap = BIRTH_INFO.get(session_id)
@@ -750,6 +847,12 @@ async def api_chat(body: ChatRequest):
                             save_horoscope(sid, h, ct, bi)
                             _auto_save_self_profile(sid, h, ct, bi)
                             _auto_activate_bazi(sid, bi)
+                            # L1: 排盤並行呼叫 12 個 LLM，額外計費 11 次（首次已計 1 次）
+                            try:
+                                with _get_db() as _c:
+                                    _c.execute("UPDATE users SET api_calls_today=api_calls_today+11 WHERE session_id=?", (sid,))
+                            except Exception:
+                                pass
                         _bg.submit(_save_new_chart)
 
                 reply = _extract_last_message(output)
@@ -862,15 +965,21 @@ async def api_chat_stream(body: ChatRequest):
     # Bug #3 Fix: 精確匹配避免一般訊息含 "/reset" 誤觸重置
     is_reset = msg.strip() == "/reset"
 
-    # ── API 用量速率限制（免費方案每日10次）──────────────────────
+    # ── API 用量速率限制（免費方案每日 N 次，排盤流程不計入）──────
+    # 排盤本身可能需多輪對話（逐一確認年月日時辰性別），不應消耗提問次數。
+    # 只有命盤已建立後的提問才計費。
     if not is_reset:
         from chat_bot.auth.auth import check_and_increment_api_calls as _check_rate
-        _allowed, _remaining = await run_in_threadpool(_check_rate, session_id)
-        if not _allowed:
-            async def _rate_limited():
-                yield f'data: {json.dumps({"token": "⚠️ 今日免費使用次數已達上限（20次）。升級付費方案即可無限使用！", "rate_limited": True})}\n\n'
-                yield f'data: {json.dumps({"done": True})}\n\n'
-            return StreamingResponse(_rate_limited(), media_type="text/event-stream")
+        from chat_bot.auth.auth import _HOROSCOPE_DIR, _safe_sid
+        _horo_file = _HOROSCOPE_DIR / f"{_safe_sid(session_id)}.json"
+        _session_has_horoscope = bool(HOROSCOPE.get(session_id)) or _horo_file.exists()
+        if _session_has_horoscope:
+            _allowed, _remaining = await run_in_threadpool(_check_rate, session_id)
+            if not _allowed:
+                async def _rate_limited():
+                    yield f'data: {json.dumps({"token": "⚠️ 今日免費使用次數已達上限。訂閱後即可無限使用全部功能！", "rate_limited": True})}\n\n'
+                    yield f'data: {json.dumps({"done": True})}\n\n'
+                return StreamingResponse(_rate_limited(), media_type="text/event-stream")
 
     from chat_bot.utils.user_playbook import load_playbook, update_playbook
     user_profile = USER_PROFILES.get(session_id) or load_playbook(session_id)
@@ -953,10 +1062,16 @@ async def api_chat_stream(body: ChatRequest):
                             )
                             # 命盤生成後存入 DB，伺服器重啟後不需重新排盤
                             if HOROSCOPE[session_id]:
-                                from chat_bot.auth.auth import save_horoscope
+                                from chat_bot.auth.auth import save_horoscope, get_db as _gdb
                                 save_horoscope(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id))
                                 _auto_save_self_profile(session_id, HOROSCOPE[session_id], CHART_TABLE.get(session_id, ""), BIRTH_INFO.get(session_id))
                                 _auto_activate_bazi(session_id, BIRTH_INFO.get(session_id))
+                                # L1: 排盤並行呼叫 12 個 LLM，額外計費 11 次
+                                try:
+                                    with _gdb() as _c:
+                                        _c.execute("UPDATE users SET api_calls_today=api_calls_today+11 WHERE session_id=?", (session_id,))
+                                except Exception:
+                                    pass
                         r = _extract_last_message(output)
                         SESSION_STATS[session_id].append(AIMessage(content=r))
                         return r
@@ -1298,9 +1413,23 @@ async def api_horoscope_report(request: Request, session_id: str = "web_default"
 
 @app.get("/api/chart-summary")
 async def api_chart_summary(request: Request, session_id: str = "web_default"):
-    """SSE 串流：回傳命盤精簡整體解說。"""
-    await _require_paid_plan(request, session_id)
-    session_id = _session_from_request(request, session_id)
+    """SSE 串流：回傳命盤精簡整體解說。付費無限制；免費帳號可使用一次。"""
+    from chat_bot.auth.auth import verify_token, get_user_plan, get_free_summary_used, mark_free_summary_used, FREE_SUMMARY_LIMIT
+    auth_header = request.headers.get("Authorization", "")
+    token = auth_header.removeprefix("Bearer ").strip() or request.query_params.get("token", "").strip()
+    if not token:
+        raise HTTPException(status_code=403, detail="此功能需要登入")
+    _user = verify_token(token)
+    if not _user:
+        raise HTTPException(status_code=403, detail="Token 無效，請重新登入")
+    resolved_sid = _user["session_id"]
+    plan_info = await run_in_threadpool(get_user_plan, resolved_sid)
+    if plan_info.get("plan", "free") == "free":
+        used = await run_in_threadpool(get_free_summary_used, resolved_sid)
+        if used >= FREE_SUMMARY_LIMIT:
+            raise HTTPException(status_code=403, detail=f"精簡解說免費次數已達上限（{FREE_SUMMARY_LIMIT}次），請升級訂閱以繼續使用")
+        await run_in_threadpool(mark_free_summary_used, resolved_sid)
+    session_id = resolved_sid
 
     async def _stream():
         horoscope = HOROSCOPE.get(session_id, "")
