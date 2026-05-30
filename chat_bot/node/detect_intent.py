@@ -19,6 +19,51 @@ _FIELD_NAMES = {
 
 _VALID_RANGES = {"year": (1800, 2100), "month": (1, 12), "day": (1, 31), "hour": (0, 23)}
 
+_ZHI_TO_HOUR = {
+    "子": 0, "丑": 2, "寅": 4, "卯": 6, "辰": 8, "巳": 10,
+    "午": 12, "未": 14, "申": 16, "酉": 18, "戌": 20, "亥": 22,
+}
+
+def _regex_extract(text: str) -> dict:
+    """從文字用正規表示式快速提取出生資訊。只擷取能確定的欄位，不猜測。"""
+    result: dict = {}
+    # Year
+    m = re.search(r'(1[6-9]\d{2}|20\d{2})\s*年', text)
+    if m:
+        result["year"] = int(m.group(1))
+    # Month
+    m = re.search(r'(\d{1,2})\s*月', text)
+    if m:
+        v = int(m.group(1))
+        if 1 <= v <= 12:
+            result["month"] = v
+    # Day
+    m = re.search(r'(\d{1,2})\s*[日號号]', text)
+    if m:
+        v = int(m.group(1))
+        if 1 <= v <= 31:
+            result["day"] = v
+    # Hour from 時辰 (地支)
+    for zhi, hr in _ZHI_TO_HOUR.items():
+        if re.search(zhi + r'[時时]?', text):
+            result["hour"] = hr
+            break
+    # Hour from numeric (fallback)
+    if "hour" not in result:
+        m = re.search(r'(\d{1,2})\s*[點点時时]', text)
+        if m:
+            v = int(m.group(1))
+            if 0 <= v <= 23:
+                result["hour"] = ((v + 1) // 2) * 2 % 24
+    # Gender
+    if re.search(r'男生|男性|(?<![女])男(?!友)', text):
+        result["is_male"] = 1
+    elif re.search(r'女生|女性|(?<![男])女(?!友)', text):
+        result["is_male"] = 0
+    # Lunar calendar
+    result["is_lunar"] = 1 if re.search(r'農曆|陰曆|舊曆', text) else 0
+    return result
+
 
 def _format_known(birth_info: dict) -> str:
     """將已知的 birth_info 格式化成人類可讀字串。"""
@@ -53,9 +98,24 @@ def get_birth_info(state: ChatState, llm):
         for m in recent_msgs
     )
 
+    # ── Regex 快速預解析（省 LLM call）──────────────────────────
+    latest_user = next(
+        (m.content for m in reversed(recent_msgs) if isinstance(m, HumanMessage)), ""
+    )
+    for key, val in _regex_extract(latest_user).items():
+        if birth_info.get(key) is None:
+            birth_info[key] = val
+
+    missing_keys = [k for k, v in birth_info.items() if v is None and k in _FIELD_NAMES]
+    if not missing_keys:
+        # 全部欄位由 regex 解出，跳過 LLM call
+        logger.debug("[get_birth_info] regex 解析完整，跳過 LLM")
+        state.birth_info = birth_info
+        state.is_fortune = True
+        return state
+
     # Bug #2 Fix: 在 prompt 中告知 LLM 哪些欄位已知，只需補充缺少的
     already_known_str = _format_known(birth_info)
-    missing_keys = [k for k, v in birth_info.items() if v is None and k in _FIELD_NAMES]
 
     prompt = f"""
 你是有用的資料整理人員，請從以下對話中抽取出生資訊，回覆 JSON 格式，不包含任何其他字句。

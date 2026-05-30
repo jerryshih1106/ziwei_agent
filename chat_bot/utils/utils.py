@@ -2,7 +2,7 @@ import logging
 import os
 import re
 import time
-from functools import wraps
+from functools import wraps, lru_cache
 from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.language_models import BaseChatModel as BaseLLM
@@ -77,6 +77,7 @@ except ImportError:
         return decorator
 
 
+@lru_cache(maxsize=16)
 def build_llm(model_name: str = "gemini-2.5-flash-lite", temperature: float = 0.5) -> BaseLLM:
     # Ensure Langfuse client is initialised so @observe decorators have a tracer to report to.
     _get_langfuse_client()
