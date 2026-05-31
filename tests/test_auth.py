@@ -159,7 +159,7 @@ def test_default_plan_is_free(_temp_db):
     user = _make_user(auth)
     plan = auth.get_user_plan(user["session_id"])
     assert plan["plan"] == "free"
-    assert plan["limit"] == 10
+    assert plan["limit"] == auth._PLAN_DAILY_LIMITS["free"]
 
 
 def test_activate_standard_plan(_temp_db):
@@ -189,13 +189,13 @@ def test_rate_limit_free_plan(_temp_db):
     user = _make_user(auth)
     sid = user["session_id"]
 
-    # Free plan: 10 calls allowed
-    for i in range(10):
+    limit = auth._PLAN_DAILY_LIMITS["free"]
+    for i in range(limit):
         allowed, remaining = auth.check_and_increment_api_calls(sid)
         assert allowed is True, f"Call {i+1} should be allowed"
-        assert remaining == 9 - i
+        assert remaining == limit - 1 - i
 
-    # 11th call denied
+    # one over the limit → denied
     allowed, remaining = auth.check_and_increment_api_calls(sid)
     assert allowed is False
     assert remaining == 0
@@ -226,7 +226,8 @@ def test_rate_limit_resets_next_day(_temp_db):
     sid = user["session_id"]
 
     # Exhaust today's limit
-    for _ in range(10):
+    limit = auth._PLAN_DAILY_LIMITS["free"]
+    for _ in range(limit):
         auth.check_and_increment_api_calls(sid)
 
     # Manually set reset date to yesterday
@@ -241,7 +242,7 @@ def test_rate_limit_resets_next_day(_temp_db):
     # Should be allowed again
     allowed, remaining = auth.check_and_increment_api_calls(sid)
     assert allowed is True
-    assert remaining == 9
+    assert remaining == auth._PLAN_DAILY_LIMITS["free"] - 1
 
 
 # ── Payment orders ─────────────────────────────────────────────
