@@ -108,6 +108,50 @@ _MAX_HISTORY = 20
 # Fix #5：session 閒置超過此秒數就清除（預設 2 小時）
 _SESSION_TTL_SECS = 7200
 
+# ── 對話式切換命盤 ─────────────────────────────────────────────
+import re as _re
+_PROFILE_SWITCH_RE = _re.compile(
+    r'(?:切換|換|載入|查看|幫我看|分析)\s*(?:到|成|一下|看)?\s*'
+    r'([^\s，,。！!？?「」【】]{1,15}?)\s*(?:的)?\s*命盤',
+    _re.UNICODE,
+)
+
+
+def _try_profile_switch(session_id: str, msg: str) -> "tuple[str, dict | None]":
+    """
+    若訊息含切換命盤意圖，查 DB 模糊匹配名稱後切換，回傳 (確認訊息, profile_dict|None)。
+    無意圖則回傳 ("", None)。
+    """
+    m = _PROFILE_SWITCH_RE.search(msg)
+    if not m:
+        return "", None
+    name_hint = m.group(1).strip()
+    from chat_bot.auth.auth import load_profiles, get_profile
+    profiles = load_profiles(session_id)
+    if not profiles:
+        return "命盤庫目前是空的，請先排盤並儲存。", None
+    # 精確 → 包含 → 被包含
+    matched = next((p for p in profiles if p["profile_name"] == name_hint), None)
+    if not matched:
+        matched = next((p for p in profiles if name_hint in p["profile_name"] or p["profile_name"] in name_hint), None)
+    if not matched:
+        names = "、".join(p["profile_name"] for p in profiles)
+        return f"找不到「{name_hint}」的命盤，目前命盤庫有：{names}", None
+    profile = get_profile(matched["id"], session_id)
+    if not profile or not profile.get("horoscope"):
+        return f"「{matched['profile_name']}」的命盤資料不完整，無法切換。", None
+    # 切換
+    HOROSCOPE[session_id] = profile["horoscope"]
+    CHART_TABLE[session_id] = profile.get("chart_table", "")
+    if profile.get("birth_info"):
+        BIRTH_INFO[session_id] = profile["birth_info"]
+    SESSION_STATS.pop(session_id, None)
+    NON_AGENT_THREAD.pop(session_id, None)
+    bi = profile.get("birth_info") or {}
+    bi_str = f"{bi.get('year','')}年{bi.get('month','')}月{bi.get('day','')}日" if bi.get("year") else ""
+    reply = f"✅ 已切換到「{matched['profile_name']}」的命盤{f'（{bi_str}）' if bi_str else ''}，現在可以針對此命盤提問！"
+    return reply, profile
+
 
 _scheduler_stop = threading.Event()
 _maintenance_tick = 0  # count iterations to run backups less frequently
@@ -964,6 +1008,17 @@ async def api_chat_stream(body: ChatRequest):
     _touch_session(session_id)
     # Bug #3 Fix: 精確匹配避免一般訊息含 "/reset" 誤觸重置
     is_reset = msg.strip() == "/reset"
+
+    # ── 對話式切換命盤（不計入速率限制）─────────────────────────
+    if not is_reset:
+        _sw_reply, _sw_profile = await run_in_threadpool(_try_profile_switch, session_id, msg)
+        if _sw_reply:
+            _sw_chart = _sw_profile.get("chart_table", "") if _sw_profile else ""
+            _sw_bi = _sw_profile.get("birth_info") if _sw_profile else None
+            async def _switch_stream():
+                yield f'data: {json.dumps({"token": _sw_reply})}\n\n'
+                yield f'data: {json.dumps({"done": True, "profile_switched": True, "chart_table": _sw_chart, "birth_info": _sw_bi})}\n\n'
+            return StreamingResponse(_switch_stream(), media_type="text/event-stream")
 
     # ── API 用量速率限制（免費方案每日 N 次，排盤流程不計入）──────
     # 排盤本身可能需多輪對話（逐一確認年月日時辰性別），不應消耗提問次數。

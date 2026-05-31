@@ -3388,6 +3388,19 @@
             if (_streamHadChart) {
               setTimeout(() => _showSummaryPrompt(), 400);
             }
+            // 對話式切換命盤：更新前端 sessionStorage 與 chart
+            if (evt.profile_switched) {
+              document.getElementById('summary-prompt-chip')?.remove();
+              document.getElementById('full-analysis-prompt-chip')?.remove();
+              if (evt.chart_table) {
+                sessionStorage.setItem('ziwei_chart', evt.chart_table);
+                _storeChart(evt.chart_table, evt.birth_info || null);
+              }
+              if (evt.birth_info) {
+                sessionStorage.setItem('ziwei_birth_info', JSON.stringify(evt.birth_info));
+              }
+              setTimeout(() => _showSummaryPrompt(), 400);
+            }
             if (!_isPaid) _refreshPlanStatus();
             streamDone = true;
             break;  // 跳出 for 迴圈
